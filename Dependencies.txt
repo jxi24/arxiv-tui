@@ -1,0 +1,46 @@
+CPMAddPackage(
+    NAME fmt
+    GIT_TAG 11.0.0
+    GITHUB_REPOSITORY fmtlib/fmt
+)
+add_library(fmt::fmt ALIAS fmt)
+
+CPMAddPackage(
+    NAME spdlog
+    GIT_TAG "v1.14.1"
+    GITHUB_REPOSITORY gabime/spdlog
+    OPTIONS
+        "SPDLOG_COMPILED_LIB ON"
+        "SPDLOG_FMT_EXTERNAL ON"
+        "SPDLOG_BUILD_SHARED ON"
+        "SPDLOG_INSTALL ON"
+)
+add_library(spdlog::spdlog ALIAS spdlog)
+
+set(ARXIV_TUI_USE_SYSTEM_CURL ON)
+find_package(CURL QUIET)
+if(NOT CURL_FOUND)
+    set(ARXIV_TUI_USE_SYSTEM_CURL OFF)
+endif()
+
+CPMAddPackage(
+    NAME cpr
+    VERSION 1.10.4
+    GITHUB_REPOSITORY libcpr/cpr
+    GIT_TAG "1.10.4"
+    OPTIONS "CPR_USE_SYSTEM_CURL ${ARXIV_TUI_USE_SYSTEM_CURL}"
+)
+add_library(cpr::cpr ALIAS cpr)
+
+CPMAddPackage(
+    Name ftxui
+    GIT_TAG main
+    GITHUB_REPOSITORY ArthurSonzogni/FTXUI
+)
+
+CPMAddPackage(
+    NAME pugixml
+    GITHUB_REPOSITORY zeux/pugixml
+    VERSION 1.15.0
+    GIT_TAG "v1.15"
+)
