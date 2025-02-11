@@ -32,7 +32,7 @@ class Fetcher {
     std::vector<Article> FetchToday();
 
   private:
-    static constexpr bool testing = true;
+    static constexpr bool testing = false;
     std::vector<std::string> m_topics; 
 
     std::optional<std::string> FetchFeeds();

@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <ftxui/component/component.hpp>
+#include <ftxui/component/screen_interactive.hpp>
 
 #include "Arxiv/DatabaseManager.hh"
 #include "Arxiv/Fetcher.hh"
@@ -17,24 +18,45 @@ namespace Arxiv {
 class ArxivApp {
   public:
     ArxivApp(const std::vector<std::string> &topics);
-    void Run();
+    void Run() { screen.Loop(event_handler); }
 
   private:
+    // Data handling
     std::vector<std::string> m_topics;
-    DatabaseManager db;
+    std::unique_ptr<DatabaseManager> db;
     Fetcher fetcher;
-    Component main_container;
-    Component tab_menu;
-    std::shared_ptr<ArticleListComponent> article_list;
-    Component detail_view;
+    void FetchArticles();
+    std::vector<std::string> current_titles;
     std::vector<Article> current_articles;
-    int current_tab = 0;
-    int current_view = 0;
 
-    void InitializeUI();
-    void RefreshArticles();
-    void ShowDetailView(const Article &article);
+    // UI handling
+    ftxui::ScreenInteractive screen;
+    int filter_index = 0;
+    int article_index = 0;
+    int focused_pane = 0;
+    bool show_detail = false;
+    bool needs_refresh = true;
+    static constexpr int arrow_size = 2;
+    static constexpr int padding = 4;
+    static constexpr int border_size = 3;
+
+    // Options
+    std::vector<std::string> filter_options = {"All Articles", "Bookmarks", "Today"};
+
+    // Components
+    Component filter_menu;
+    Component article_list;
+    Component article_pane;
+    Component detail_view;
+    Component main_container;
+    Component main_renderer;
+    Component event_handler;
+
+    // Helper functions
+    void SetupUI();
+    void RefreshTitles();
     void ToggleBookmark(Article &article);
+    int FilterPaneWidth();
 };
 
 }
