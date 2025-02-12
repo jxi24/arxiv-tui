@@ -28,6 +28,7 @@ class ArxivApp {
     void FetchArticles();
     std::vector<std::string> current_titles;
     std::vector<Article> current_articles;
+    std::vector<std::string> projects;
 
     // UI handling
     ftxui::ScreenInteractive screen;
@@ -41,7 +42,7 @@ class ArxivApp {
     static constexpr int border_size = 3;
 
     // Options
-    std::vector<std::string> filter_options = {"All Articles", "Bookmarks", "Today"};
+    std::vector<std::string> filter_options;
 
     // Components
     Component filter_menu;
@@ -57,6 +58,11 @@ class ArxivApp {
     void RefreshTitles();
     void ToggleBookmark(Article &article);
     int FilterPaneWidth();
+
+    // Project management
+    void AddProject();
+    void AddArticleToProjects();
+    void RefreshFilterOptions();
 };
 
 }
