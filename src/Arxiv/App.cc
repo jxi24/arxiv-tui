@@ -1,6 +1,7 @@
 #include "Arxiv/App.hh"
 
 #include "spdlog/spdlog.h"
+#include <ftxui/dom/elements.hpp>
 
 using namespace ftxui;
 using namespace Arxiv;
@@ -43,6 +44,15 @@ void ArxivApp::SetupUI() {
                 AddProject();
                 return true;
             }
+            if(event == Event::Character('x')) {
+                if(filter_index > 2) {
+                    db->RemoveProject(filter_options[static_cast<size_t>(filter_index)]);
+                    projects = db->GetProjects();
+                    RefreshFilterOptions();
+                    filter_index = std::min(filter_index, static_cast<int>(filter_options.size()));
+                }
+                return true;
+            }
             return false;
         });
     
@@ -71,7 +81,15 @@ void ArxivApp::SetupUI() {
             return false;
         });
 
-    article_pane = Renderer([&] {
+    filter_pane = Renderer(filter_menu, [&] {
+        return vbox({
+            text("Filters") | bold,
+            separator(),
+            filter_menu->Render()  | vscroll_indicator | frame
+        }) | border;
+    });
+
+    article_pane = Renderer(article_list, [&] {
         if(current_articles.empty()) {
             return vbox({
                 text("Articles") | bold,
@@ -85,7 +103,7 @@ void ArxivApp::SetupUI() {
         return vbox({
             text("Articles") | bold,
             separator(),
-            article_list->Render() | frame | vscroll_indicator
+            article_list->Render() | vscroll_indicator | frame
         }) | border;
     });
     
@@ -109,8 +127,8 @@ void ArxivApp::SetupUI() {
     });
 
     main_container = Container::Tab({
-        filter_menu,
-        article_list,
+        filter_pane,
+        article_pane,
         detail_view
     }, &focused_pane);
 
@@ -127,17 +145,13 @@ void ArxivApp::SetupUI() {
         int articles_width = show_detail ? remaining_width / 3 : remaining_width;
         int detail_width = show_detail ? (remaining_width * 2) / 3 : 0;
 
-        // auto title_style = [](const std::string &title, bool active) {
-        //     return active ? text(title) | inverted | bold : text(title) | dim;
-        // };
-
         std::vector<Element> panes = {
-            filter_menu->Render() | border | size(WIDTH, EQUAL, filter_width),
-            article_list->Render() | border | size(WIDTH, EQUAL, articles_width),
+            filter_pane ->Render()  | size(WIDTH, EQUAL, filter_width),
+            article_pane->Render() | size(WIDTH, EQUAL, articles_width),
         };
         if(show_detail) {
             spdlog::info("[App]: Rendering detail");
-            panes.push_back(detail_view->Render() | border | size(WIDTH, EQUAL, detail_width));
+            panes.push_back(detail_view->Render() | size(WIDTH, EQUAL, detail_width));
         }
         return hbox(std::move(panes));
     });
@@ -197,13 +211,13 @@ void ArxivApp::AddProject() {
 }
 
 void ArxivApp::AddArticleToProjects() {
-    spdlog::info("[App]: Adding article to projects {}", article_index);
     if(current_articles.empty() || article_index >= static_cast<int>(current_articles.size())) {
         return;
     }
 
     Article &article = current_articles[static_cast<size_t>(article_index)];
     std::vector<bool> project_statuses(projects.size(), false);
+    spdlog::info("[App]: Adding article ({}) to projects", article.link);
 
     // Fetch the projects this article is already linked to
     std::vector<Article> linked_articles;
@@ -211,21 +225,25 @@ void ArxivApp::AddArticleToProjects() {
         linked_articles = db->GetArticlesForProject(projects[i]);
         for(const auto &linked_article : linked_articles) {
             if(linked_article.link == article.link) {
+                spdlog::trace("[App]: Found matching link");
                 project_statuses[i] = true;
                 break;
             }
         }
     }
 
+    size_t selected_index = 0;
     std::vector<Component> checkboxes;
+    std::vector<std::shared_ptr<bool>> checkbox_states;
     for(size_t i = 0; i < projects.size(); ++i) {
         auto status = std::make_shared<bool>(project_statuses[i]);
+        checkbox_states.push_back(status);
         checkboxes.push_back(Checkbox(&projects[i], status.get()));
     }
     auto checkbox_container = Container::Vertical({checkboxes});
     auto button = Button("Save", [&] {
         for(size_t i = 0; i < projects.size(); ++i) {
-            if(project_statuses[i]) {
+            if(*checkbox_states[i]) {
                 db->LinkArticleToProject(article.link, projects[i]);
             } else {
                 db->UnlinkArticleFromProject(article.link, projects[i]);
@@ -238,16 +256,35 @@ void ArxivApp::AddArticleToProjects() {
         checkbox_container,
         button
     }), [&] {
-        return vbox({
-            text("Add Article to Projects"),
-            separator(),
-            checkbox_container->Render(),
-            separator(),
-            button->Render()
-        }) | border;
+        Elements elements;
+        elements.push_back(text("Add Article to Projects"));
+        elements.push_back(separator());
+        for(size_t i = 0; i < projects.size(); ++i) {
+            auto checkbox_element = checkboxes[i]->Render();
+            if(i == selected_index) {
+                checkbox_element = checkbox_element | inverted;
+            }
+            elements.push_back(checkbox_element);
+        }
+
+        elements.push_back(separator());
+        elements.push_back(text("Press [j] to move down, [k] to move up, [space] to toggle"));
+        return vbox(elements) | border;
     });
 
     auto project_event_handler = CatchEvent(project_dialog, [&](Event event) {
+        if(event == Event::Character("j")) {
+            if(selected_index + 1 < checkboxes.size()) selected_index++;
+            return true;
+        }
+        if(event == Event::Character("k")) {
+            if(selected_index > 0) selected_index--;
+            return true;
+        }
+        if(event == Event::Character(" ")) {
+            *checkbox_states[selected_index] = !(*checkbox_states[selected_index]);
+            return true;
+        }
         if(event == Event::Return) {
             button->OnEvent(Event::Return);
             return true;
@@ -282,9 +319,9 @@ void ArxivApp::FetchArticles() {
 
 void ArxivApp::RefreshTitles() {
     current_titles.clear();
-    for(const auto &art : current_articles) {
-        std::string display_title = art.title;
-        if(art.bookmarked) {
+    for(const auto &article : current_articles) {
+        std::string display_title = article.title;
+        if(article.bookmarked) {
             display_title = "⭐ " + display_title;
         }
         current_titles.push_back(display_title);

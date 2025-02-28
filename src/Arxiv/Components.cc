@@ -8,33 +8,21 @@
 
 using namespace ftxui;
 
-Arxiv::ArticleListComponent::ArticleListComponent(std::vector<Article> articles,
-                                                  SelectCallback on_select,
+Arxiv::ArticleListComponent::ArticleListComponent(const std::vector<Article> &articles,
                                                   BookmarkCallback on_bookmark)
-    : m_articles(std::move(articles)), m_on_select{on_select}, m_on_bookmark{on_bookmark} {
+    : m_on_bookmark{on_bookmark} {
 
-    // Create vertical container for articles
-    container = Container::Vertical({});
-    for(const auto &article : m_articles) {
-        std::string display_text = (article.bookmarked ? "★ " : "☆ ") + article.title;
-        container->Add(Button(display_text, []{}));
-    }
+    Refresh(articles);
 }
 
 bool Arxiv::ArticleListComponent::OnEvent(ftxui::Event event) {
-    if(m_articles.empty()) return false;
+    if(m_titles.empty()) return false;
 
     spdlog::trace("[ArticleList]: Got Event {}", event.character());
    
-    // Handle article selection
-    if(event == Event::ArrowLeft || event == Event::Character('l')) {
-        m_on_select(m_articles[selected]);
-        return true;
-    }
-
     // Handle bookmark toggle
     if(event == Event::Character('b')) {
-        m_on_bookmark(m_articles[selected]);
+        m_on_bookmark(selected);
         return true;
     }
 
@@ -64,7 +52,7 @@ bool Arxiv::ArticleListComponent::ScrollUp() {
 }
 
 bool Arxiv::ArticleListComponent::ScrollDown() {
-    if(selected < m_articles.size() - 1) {
+    if(selected < m_titles.size() - 1) {
         selected++;
         if(selected >= scroll_offset + max_visible) {
             scroll_offset = selected - max_visible + 1;
@@ -80,7 +68,7 @@ bool Arxiv::ArticleListComponent::PageUp() {
 }
 
 bool Arxiv::ArticleListComponent::PageDown() {
-    selected = std::min(m_articles.size(), selected + jump);
+    selected = std::min(m_titles.size(), selected + jump);
     if(selected >= scroll_offset + max_visible) {
         scroll_offset = selected - max_visible + 1;
     }
@@ -90,22 +78,17 @@ bool Arxiv::ArticleListComponent::PageDown() {
 Element Arxiv::ArticleListComponent::Render() {
     std::vector<Element> entries;
 
-    size_t start = std::min(scroll_offset, m_articles.size());
-    size_t end = std::min(start + max_visible, m_articles.size());
+    size_t start = std::min(scroll_offset, m_titles.size());
+    size_t end = std::min(start + max_visible, m_titles.size());
 
     spdlog::debug("[ArticleList]: Rendering with start = {} and end = {}, with {} articles",
-                  start, end, m_articles.size());
+                  start, end, m_titles.size());
 
-    for(size_t i = start; i < end && i < m_articles.size(); ++i) {
-        const auto &article = m_articles[i];
-        std::string display_text = (article.bookmarked ? "★ " : "☆ ") + article.title;
-
-        auto entry = text(display_text);
+    for(size_t i = start; i < end && i < m_titles.size(); ++i) {
+        auto entry = text(m_titles[i]);
         if(i == selected) {
             entry = entry | inverted;
         }
-        spdlog::trace("[ArticleList]: Adding article with display text = {}", display_text);
-
         entries.push_back(entry);
     }
 

@@ -46,6 +46,7 @@ class ArxivApp {
 
     // Components
     Component filter_menu;
+    Component filter_pane;
     Component article_list;
     Component article_pane;
     Component detail_view;

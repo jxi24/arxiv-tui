@@ -35,13 +35,22 @@ DatabaseManager::DatabaseManager(const std::string &path) {
                project_name TEXT,
                article_link TEXT,
                FOREIGN KEY(project_name) REFERENCES projects(name),
-               FOREIGN KEY(article_link) REFERENCES articles(link)))");
+               FOREIGN KEY(article_link) REFERENCES articles(link)
+               PRIMARY KEY (project_name, article_link)))");
     spdlog::info("[Database]: Initialized");
 }
 
 DatabaseManager::~DatabaseManager() {
     spdlog::info("[Database]: Closing database");
     sqlite3_close(db);
+}
+
+void DatabaseManager::SetupTracing() {
+    if(sqlite3_trace_v2(db, SQLITE_TRACE_STMT | SQLITE_TRACE_PROFILE, DatabaseManager::TraceCallback, nullptr) != SQLITE_OK) {
+        spdlog::error("[Database]: Failed to set up SQLite tracing: {}", sqlite3_errmsg(db));
+    } else {
+        spdlog::info("[Database]: SQLite tracing enabled");
+    }
 }
 
 void DatabaseManager::ExecuteSQL(const std::string &sql) {
@@ -157,24 +166,27 @@ std::vector<std::string> DatabaseManager::GetProjects() {
 }
 
 void DatabaseManager::LinkArticleToProject(const std::string &article_link, const std::string &project_name) {
-    std::string sql = fmt::format("INSERT INTO project_articles (project_name, article_link) VALUES ('{}', '{}')",
+    std::string sql = fmt::format("INSERT OR IGNORE INTO project_articles (project_name, article_link) VALUES ('{}', '{}')",
                                   project_name, article_link);
+    spdlog::debug("[Database]: Linking article {} to project {}", article_link, project_name);
     ExecuteSQL(sql);
 }
 
 void DatabaseManager::UnlinkArticleFromProject(const std::string &article_link, const std::string &project_name) {
     std::string sql = fmt::format("DELETE FROM project_articles WHERE project_name = '{}' AND article_link = '{}'",
                                   project_name, article_link);
+    spdlog::debug("[Database]: Unlinking article {} to project {}", article_link, project_name);
     ExecuteSQL(sql);
 }
 
 std::vector<Arxiv::Article> DatabaseManager::GetArticlesForProject(const std::string &project_name) {
     std::vector<Article> articles;
     sqlite3_stmt *stmt;
-    std::string sql = fmt::format(R"(SELECT a.link, a.title, a.authors, a.abstract, a.date, a.bookmared FROM articles a
+    std::string sql = fmt::format(R"(SELECT a.link, a.title, a.authors, a.abstract, a.date, a.bookmarked FROM articles a
                                   JOIN project_articles pa ON a.link = pa.article_link
                                   WHERE pa.project_name = '{}')",
                                   project_name);
+    spdlog::debug("[Database]: Collecting articles for project {}", project_name);
 
     if(sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) == SQLITE_OK) {
         while(sqlite3_step(stmt) == SQLITE_ROW) {
@@ -182,6 +194,7 @@ std::vector<Arxiv::Article> DatabaseManager::GetArticlesForProject(const std::st
         }
         sqlite3_finalize(stmt);
     }
+    spdlog::debug("[Database]: Success. Found {} articles", articles.size());
     return articles;
 }
 
@@ -192,26 +205,38 @@ const char* DatabaseManager::ExtractColumn(sqlite3_stmt *stmt, int index) {
 
 Arxiv::Article DatabaseManager::RowToArticle(sqlite3_stmt *stmt) {
     Article article;
+    article.link = ExtractColumn(stmt,0);
     article.title = ExtractColumn(stmt, 1);
-    article.link = ExtractColumn(stmt,2);
+    article.authors = ExtractColumn(stmt,2);
     article.abstract = ExtractColumn(stmt,3);
-    article.category = ExtractColumn(stmt,4);
-    article.authors = ExtractColumn(stmt,5);
+    // article.category = ExtractColumn(stmt,4);
 
     // Convert Unix timestamp back to time_point
-    int64_t timestamp = sqlite3_column_int64(stmt, 6);
+    int64_t timestamp = sqlite3_column_int64(stmt, 4);
     article.date = std::chrono::system_clock::from_time_t(timestamp);
 
-    article.bookmarked = sqlite3_column_int(stmt, 7) != 0;
+    article.bookmarked = sqlite3_column_int(stmt, 5) != 0;
 
     return article;
 }
 
-int DatabaseManager::TraceCallback(unsigned type, void *, void *p, void *) {
+int DatabaseManager::TraceCallback(unsigned type, void *, void *p, void *x) {
     if(type == SQLITE_TRACE_STMT) {
-        const char *sql = static_cast<const char*>(p);
-        if(sql) {
-            spdlog::trace("[SQL]: {}", sql);
+        auto *stmt = static_cast<sqlite3_stmt*>(p);
+        if(stmt) {
+            const char *sql = sqlite3_sql(stmt);
+            if(sql) {
+                spdlog::trace("[Database]: SQL Executed: {}", sql);
+            }
+        }
+    } else if(type == SQLITE_TRACE_PROFILE) {
+        auto *stmt = static_cast<sqlite3_stmt*>(p);
+        auto time = *static_cast<sqlite3_int64*>(x);
+        if(stmt) {
+            const char *sql = sqlite3_sql(stmt);
+            if(sql) {
+                spdlog::trace("[Database]: SQL Profile: {} ({} us)", sql, time);
+            }
         }
     }
     return 0;

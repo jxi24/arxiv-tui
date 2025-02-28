@@ -31,6 +31,7 @@ class DatabaseManager {
   private:
     sqlite3 *db;
 
+    void SetupTracing();
     void ExecuteSQL(const std::string &sql);
     std::string EscapeString(const std::string &str);
     void Query(const std::string &query);
