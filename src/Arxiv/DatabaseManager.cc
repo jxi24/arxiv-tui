@@ -1,5 +1,6 @@
 #include "Arxiv/DatabaseManager.hh"
 #include "Arxiv/Fetcher.hh"
+#include "Arxiv/Article.hh"
 #include "fmt/core.h"
 #include "spdlog/spdlog.h"
 #include <chrono>
@@ -139,7 +140,7 @@ void DatabaseManager::ToggleBookmark(const std::string &link, bool bookmarked) {
 
 void DatabaseManager::AddProject(const std::string &project_name) {
     std::string sql = fmt::format("INSERT OR REPLACE INTO projects (name) VALUES ('{}')",
-                                  project_name);
+                                  EscapeString(project_name));
     ExecuteSQL(sql);
 }
 
@@ -240,4 +241,20 @@ int DatabaseManager::TraceCallback(unsigned type, void *, void *p, void *x) {
         }
     }
     return 0;
+}
+
+std::vector<std::string> DatabaseManager::GetProjectsForArticle(const std::string &article_link) {
+    std::vector<std::string> projects;
+    sqlite3_stmt *stmt;
+    std::string sql = fmt::format("SELECT project_name FROM project_articles WHERE article_link = '{}'",
+                                  article_link);
+    spdlog::debug("[Database]: Getting projects for article {}", article_link);
+
+    if(sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) == SQLITE_OK) {
+        while(sqlite3_step(stmt) == SQLITE_ROW) {
+            projects.push_back(reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0)));
+        }
+        sqlite3_finalize(stmt);
+    }
+    return projects;
 }

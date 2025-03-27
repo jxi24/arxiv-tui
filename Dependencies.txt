@@ -37,6 +37,9 @@ CPMAddPackage(
     GIT_TAG main
     GITHUB_REPOSITORY ArthurSonzogni/FTXUI
 )
+add_library(ftxui::component ALIAS component)
+add_library(ftxui::dom ALIAS dom)
+add_library(ftxui::screen ALIAS screen)
 
 CPMAddPackage(
     NAME pugixml

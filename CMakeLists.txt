@@ -9,6 +9,9 @@ endif()
 project(ARXIV_TUI LANGUAGES CXX VERSION 1.0.0)
 include(CMake/StandardProjectSettings.cmake)
 
+# Generate compile_commands.json
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # RPATH handling
 set(CMAKE_MACOSX_RPATH 1)
 set(CMAKE_SKIP_BUILD_RPATH FALSE)

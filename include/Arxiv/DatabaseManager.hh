@@ -12,21 +12,22 @@ class Article;
 class DatabaseManager {
   public:
     explicit DatabaseManager(const std::string &path);
-    ~DatabaseManager();
+    virtual ~DatabaseManager();
 
     // Article management
-    void AddArticle(const Article &article);
-    std::vector<Article> GetRecent(int days);
-    std::vector<Article> ListBookmarked();
-    std::vector<Article> GetArticlesForProject(const std::string &project_name);
-    void ToggleBookmark(const std::string &link, bool bookmarked=true);
+    virtual void AddArticle(const Article &article);
+    virtual std::vector<Article> GetRecent(int days);
+    virtual std::vector<Article> ListBookmarked();
+    virtual std::vector<Article> GetArticlesForProject(const std::string &project_name);
+    virtual void ToggleBookmark(const std::string &link, bool bookmarked=true);
 
     // Project management
-    void AddProject(const std::string &project_name);
-    void RemoveProject(const std::string &project_name);
-    std::vector<std::string> GetProjects();
-    void LinkArticleToProject(const std::string &article_link, const std::string &project_name);
-    void UnlinkArticleFromProject(const std::string &article_link, const std::string &project_name);
+    virtual void AddProject(const std::string &project_name);
+    virtual void RemoveProject(const std::string &project_name);
+    virtual std::vector<std::string> GetProjects();
+    virtual void LinkArticleToProject(const std::string &article_link, const std::string &project_name);
+    virtual void UnlinkArticleFromProject(const std::string &article_link, const std::string &project_name);
+    virtual std::vector<std::string> GetProjectsForArticle(const std::string &article_link);
 
   private:
     sqlite3 *db;

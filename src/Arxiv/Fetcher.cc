@@ -1,10 +1,12 @@
 #include "Arxiv/Fetcher.hh"
+#include "Arxiv/Article.hh"
 
 #include "cpr/cpr.h"
 #include "spdlog/spdlog.h"
 #include "fmt/ranges.h"
 #include "pugixml.hpp"
 #include <sstream>
+#include <fstream>
 
 using Arxiv::Fetcher;
 using Arxiv::Article;
@@ -20,6 +22,74 @@ std::vector<Article> Fetcher::Fetch() {
 
     spdlog::info("[Fetcher]: Fetched {} articles", all_articles.size());
     return all_articles;
+}
+
+std::vector<Article> Fetcher::FetchToday() {
+    // For now, just return the most recent articles from Fetch()
+    // In a real implementation, this would filter for today's articles
+    return Fetch();
+}
+
+bool Fetcher::DownloadPaper(const std::string &paper_id, const std::string &output_path) {
+    if(testing) {
+        // In testing mode, just create an empty file
+        std::ofstream file(output_path);
+        return file.good();
+    }
+
+    try {
+        auto url = ConstructPaperUrl(paper_id, "pdf");
+        auto response = cpr::Get(cpr::Url{url});
+
+        if(response.status_code == 200) {
+            std::ofstream file(output_path, std::ios::binary);
+            if (file.is_open()) {
+                file.write(response.text.c_str(), static_cast<std::streamsize>(response.text.size()));
+                file.close();
+                spdlog::info("[Fetcher]: Successfully downloaded paper {} to {}", paper_id, output_path);
+                return true;
+            } else {
+                spdlog::error("[Fetcher]: Failed to open output file {}", output_path);
+                return false;
+            }
+        } else {
+            spdlog::error("[Fetcher]: Failed to download paper {}: HTTP {}", paper_id, response.status_code);
+            return false;
+        }
+    } catch (const std::exception &e) {
+        spdlog::error("[Fetcher]: Error downloading paper {}: {}", paper_id, e.what());
+        return false;
+    }
+}
+
+std::string Fetcher::GetPaperAbstract(const std::string &paper_id) {
+    if(testing) {
+        return "Sample abstract for testing purposes.";
+    }
+
+    try {
+        auto url = ConstructPaperUrl(paper_id, "abs");
+        auto response = cpr::Get(cpr::Url{url});
+
+        if(response.status_code == 200) {
+            pugi::xml_document doc;
+            if(doc.load_string(response.text.c_str())) {
+                auto abstract_node = doc.select_node("//div[@class='abstract']");
+                if(abstract_node) {
+                    return abstract_node.node().text().get();
+                }
+            }
+        }
+        spdlog::error("[Fetcher]: Failed to fetch abstract for paper {}: HTTP {}", paper_id, response.status_code);
+        return "";
+    } catch (const std::exception &e) {
+        spdlog::error("[Fetcher]: Error fetching abstract for paper {}: {}", paper_id, e.what());
+        return "";
+    }
+}
+
+std::string Fetcher::ConstructPaperUrl(const std::string &paper_id, const std::string &format) const {
+    return fmt::format("https://arxiv.org/{}/{}", format, paper_id);
 }
 
 std::optional<std::string> Fetcher::FetchFeeds() {
