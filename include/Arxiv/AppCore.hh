@@ -22,6 +22,7 @@ public:
     // Article management
     void FetchArticles();
     void ToggleBookmark(const std::string& article_link);
+    bool DownloadArticle(const std::string& article_id);
     std::vector<Article> GetCurrentArticles() const;
     std::vector<std::string> GetCurrentTitles() const;
     std::vector<std::string> &GetCurrentTitles();

@@ -2,6 +2,7 @@
 #define ARXIV_FETCHER
 
 #include <chrono>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <vector>
@@ -14,7 +15,7 @@ class Article;
 
 class Fetcher {
   public:
-    explicit Fetcher(const std::vector<std::string> &topics);
+    explicit Fetcher(const std::vector<std::string> &topics, const std::string &base_path="downloads");
     virtual ~Fetcher() = default;
     virtual std::vector<Article> Fetch();
     virtual std::vector<Article> FetchToday();
@@ -29,6 +30,7 @@ class Fetcher {
     std::vector<Article> ParseFeed(const std::string &content);
     std::optional<time_point> ParseDate(const std::string &date) const;
     std::string ConstructPaperUrl(const std::string &paper_id, const std::string &format) const;
+    std::filesystem::path base_path;
 };
 
 }

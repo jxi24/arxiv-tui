@@ -123,6 +123,17 @@ void ArxivApp::SetupUI() {
                 selected_project_index = 0;
                 return true;
             }
+            if(event == Event::Character('d')) {
+                // Download the article pdf to an articles folder
+                auto article = core.GetCurrentArticles()[static_cast<size_t>(core.GetArticleIndex())];
+                spdlog::debug("[App]: Downloading article ({}) to articles folder", article.title);
+                bool success = core.DownloadArticle(article.id());
+                if(!success) {
+                    dialog_depth = 3;
+                    err_msg = fmt::format("Failed to download article: {}", article.id());
+                }
+                return true;
+            }
             return false;
         });
 
@@ -294,19 +305,31 @@ void ArxivApp::SetupUI() {
                 document,
                 project_dialog->Render(),
             });
+        } else if (dialog_depth == 3) {
+            auto error_dialog = vbox({
+                text("ERROR") | bold | center,
+                separator(),
+                text(err_msg),
+            }) | border | clear_under | center;
+
+            document = dbox({
+                document,
+                error_dialog,
+            });
         }
 
         return document;
     });
 
     event_handler = CatchEvent(main_renderer, [&](Event event) {
-        if(event == Event::Character('d')) {
+        if(event == Event::Character('a')) {
             show_detail = !show_detail;
             return true;
         }
         if(event == Event::Character('q') || event == Event::Escape) {
             if (dialog_depth > 0) {
                 dialog_depth = 0;
+                err_msg = "";
                 return true;
             }
             screen.Exit();

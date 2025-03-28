@@ -11,7 +11,15 @@
 using Arxiv::Fetcher;
 using Arxiv::Article;
 
-Fetcher::Fetcher(const std::vector<std::string> &topics) : m_topics{topics} {}
+Fetcher::Fetcher(const std::vector<std::string> &topics, const std::string &_base_path) : m_topics{topics} {
+    base_path = _base_path;
+    if(!std::filesystem::exists(base_path)) {
+        std::filesystem::create_directory(base_path);
+    } else if(!std::filesystem::is_directory(base_path)) {
+        throw std::logic_error(fmt::format("[Fetcher]: {} already exists and is not a directory!",
+                                           base_path.string()));
+    }
+}
 
 std::vector<Article> Fetcher::Fetch() {
     std::vector<Article> all_articles;
@@ -42,7 +50,7 @@ bool Fetcher::DownloadPaper(const std::string &paper_id, const std::string &outp
         auto response = cpr::Get(cpr::Url{url});
 
         if(response.status_code == 200) {
-            std::ofstream file(output_path, std::ios::binary);
+            std::ofstream file(base_path / output_path, std::ios::binary);
             if (file.is_open()) {
                 file.write(response.text.c_str(), static_cast<std::streamsize>(response.text.size()));
                 file.close();

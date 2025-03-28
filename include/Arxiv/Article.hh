@@ -1,6 +1,7 @@
 #ifndef ARXIV_ARTICLE
 #define ARXIV_ARTICLE
 
+#include "spdlog/spdlog.h"
 #include <chrono>
 #include <string>
 
@@ -42,6 +43,15 @@ struct Article {
                date == other.date &&
                category == other.category &&
                bookmarked == other.bookmarked;
+    }
+
+    std::string id() const {
+        size_t last_slash_pos = link.find_last_of('/');
+        if(last_slash_pos == std::string::npos) {
+            spdlog::error("[Article]: Invalid link format {}", link);
+            return "";
+        }
+        return link.substr(last_slash_pos+1);
     }
 };
 

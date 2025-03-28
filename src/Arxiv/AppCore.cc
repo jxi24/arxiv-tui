@@ -54,6 +54,10 @@ void AppCore::ToggleBookmark(const std::string& article_link) {
     }
 }
 
+bool AppCore::DownloadArticle(const std::string &article_id) {
+    return m_fetcher->DownloadPaper(article_id, article_id + ".pdf");
+}
+
 std::vector<Article> AppCore::GetCurrentArticles() const {
     return m_current_articles;
 }
