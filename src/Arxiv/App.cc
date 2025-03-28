@@ -17,6 +17,19 @@ ArxivApp::ArxivApp(const std::vector<std::string>& topics)
     SetupUI();
 }
 
+void ArxivApp::UpdateTitleScrollPositions() {
+    if(focused_pane != 1 || !show_detail) return;
+    auto now = std::chrono::steady_clock::now();
+    auto article = core.GetCurrentArticles()[static_cast<size_t>(core.GetArticleIndex())];
+    
+    auto elapsed = std::chrono::duration<float>(now - last_update).count();
+    spdlog::info("[App]: time elapsed = {}", elapsed);
+        
+    // Update scroll position based on elapsed time
+    title_start_position += scroll_speed * elapsed;
+    last_update = now;
+}
+
 void ArxivApp::SetupUI() {
     filter_menu = Menu(&core.GetFilterOptions(), &core.GetFilterIndex())
         | CatchEvent([&](Event event) {
@@ -52,10 +65,12 @@ void ArxivApp::SetupUI() {
             if(event == Event::Character('j')) {
                 core.SetArticleIndex(std::min(core.GetArticleIndex() + 1, 
                     static_cast<int>(core.GetCurrentArticles().size()) - 1));
+                title_start_position = 0;
                 return true;
             }
             if(event == Event::Character('k')) {
                 core.SetArticleIndex(std::max(core.GetArticleIndex() - 1, 0));
+                title_start_position = 0;
                 return true;
             }
             if(event == Event::Character('h')) {
@@ -115,10 +130,38 @@ void ArxivApp::SetupUI() {
             }) | border;
         }
 
+        Elements menu_items;
+        for(size_t i = 0; i < articles.size(); ++i) {
+            const auto& article = articles[i];
+            std::string title = article.title;
+            
+            // Create title element with proper focus handling
+            Element title_element;
+            if(i == static_cast<size_t>(core.GetArticleIndex())) {
+                // Only scroll the focused title
+                size_t start_pos = static_cast<size_t>(std::floor(title_start_position)) % article.title.length();
+                int filter_width = FilterPaneWidth();
+                int remaining_width = Terminal::Size().dimx - filter_width - border_size; 
+                int articles_width = show_detail ? remaining_width / 3 : remaining_width;
+                // Create a sliding window of the title
+                std::string visible_title;
+                if(title.length() > static_cast<size_t>(articles_width - 2)) {
+                    title = title.substr(start_pos) + "    " + title.substr(0, start_pos);
+                }
+                title = "> " + title;
+                title_element = text(title) | bold;
+            } else {
+                title = "  " + title;
+                title_element = text(title);
+            }
+            
+            menu_items.push_back(title_element);
+        }
+
         return vbox({
             text("Articles") | bold,
             separator(),
-            article_list->Render() | vscroll_indicator | frame
+            vbox(menu_items) | vscroll_indicator | frame
         }) | border;
     });
 
@@ -251,6 +294,7 @@ void ArxivApp::SetupUI() {
             screen.Exit();
             return true;
         }
+
         if (dialog_depth == 1) {
             if (event == Event::Return) {
                 if (!new_project_name.empty()) {
@@ -312,6 +356,16 @@ void ArxivApp::SetupUI() {
 
     // Set up UI refresh callback
     core.SetArticleUpdateCallback([&]() { RefreshUI(); });
+
+    // Setup animation
+    refresh_ui = std::thread([&] {
+        while (refresh_ui_continue) {
+            using namespace std::chrono_literals;
+            std::this_thread::sleep_for(0.05s);
+            screen.Post([&] { UpdateTitleScrollPositions(); });
+            screen.Post(Event::Custom);
+        }
+    });
 }
 
 void ArxivApp::RefreshUI() {
