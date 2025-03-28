@@ -30,6 +30,20 @@ void ArxivApp::UpdateTitleScrollPositions() {
     last_update = now;
 }
 
+void ArxivApp::UpdateVisibleRange() {
+    auto articles = core.GetCurrentArticles();
+    if(articles.empty()) return;
+
+    int current_index = core.GetArticleIndex();
+    
+    // If current selection is outside visible range, update top_article_index
+    if(current_index < top_article_index) {
+        top_article_index = current_index;
+    } else if(current_index >= top_article_index + visible_rows) {
+        top_article_index = current_index - visible_rows + 1;
+    }
+}
+
 void ArxivApp::SetupUI() {
     filter_menu = Menu(&core.GetFilterOptions(), &core.GetFilterIndex())
         | CatchEvent([&](Event event) {
@@ -60,7 +74,9 @@ void ArxivApp::SetupUI() {
             return false;
         });
     
-    article_list = Container::Vertical({Menu(&core.GetCurrentTitles(), &core.GetArticleIndex())})
+    article_list = Menu(&core.GetCurrentTitles(), &core.GetArticleIndex())
+        | vscroll_indicator
+        | frame
         | CatchEvent([&](Event event) {
             if(event == Event::Character('j')) {
                 core.SetArticleIndex(std::min(core.GetArticleIndex() + 1, 
@@ -130,32 +146,34 @@ void ArxivApp::SetupUI() {
             }) | border;
         }
 
+        // Calculate visible rows based on terminal size
+        int filter_width = FilterPaneWidth();
+        int remaining_width = Terminal::Size().dimx - filter_width - border_size; 
+        int articles_width = show_detail ? remaining_width / 3 : remaining_width;
+        visible_rows = Terminal::Size().dimy - 4;  // Account for header, separator, and borders
+
+        // Update visible range
+        UpdateVisibleRange();
+
         Elements menu_items;
-        for(size_t i = 0; i < articles.size(); ++i) {
+        // Only render articles in the visible range
+        for(size_t i = static_cast<size_t>(top_article_index); 
+            i < std::min(static_cast<size_t>(top_article_index + visible_rows), articles.size()); 
+            ++i) {
             const auto& article = articles[i];
             std::string title = article.title;
             
-            // Create title element with proper focus handling
-            Element title_element;
             if(i == static_cast<size_t>(core.GetArticleIndex())) {
-                // Only scroll the focused title
                 size_t start_pos = static_cast<size_t>(std::floor(title_start_position)) % article.title.length();
-                int filter_width = FilterPaneWidth();
-                int remaining_width = Terminal::Size().dimx - filter_width - border_size; 
-                int articles_width = show_detail ? remaining_width / 3 : remaining_width;
-                // Create a sliding window of the title
-                std::string visible_title;
                 if(title.length() > static_cast<size_t>(articles_width - 2)) {
                     title = title.substr(start_pos) + "    " + title.substr(0, start_pos);
                 }
                 title = "> " + title;
-                title_element = text(title) | bold;
+                menu_items.push_back(text(title) | bold);
             } else {
                 title = "  " + title;
-                title_element = text(title);
+                menu_items.push_back(text(title));
             }
-            
-            menu_items.push_back(title_element);
         }
 
         return vbox({

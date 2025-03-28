@@ -45,7 +45,11 @@ private:
     static constexpr int arrow_size = 2;
     static constexpr int padding = 4;
     static constexpr int border_size = 3;
-    static constexpr float scroll_speed = 4.0f;  
+    static constexpr float scroll_speed = 4.0f;  // Scroll speed in characters per second
+
+    // Article pane scrolling
+    int visible_rows = 0;  // Number of rows visible in the article pane
+    int top_article_index = 0;  // Index of the article at the top of the visible area
 
     // Components
     Component filter_menu;
@@ -66,6 +70,7 @@ private:
     void RefreshUI();
     int FilterPaneWidth();
     void UpdateTitleScrollPositions();  // New function to handle automatic scrolling
+    void UpdateVisibleRange();  // Update visible range based on selected article
 };
 
 } // namespace Arxiv
