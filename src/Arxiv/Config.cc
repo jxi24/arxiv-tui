@@ -11,7 +11,7 @@ Config::Config(const std::string& config_file) {
 void Config::load_from_file(const std::string& config_file) {
     if (!std::filesystem::exists(config_file)) {
         // Create default configuration
-        article_settings_.download_dir = std::filesystem::current_path() / "articles";
+        article_settings_.download_dir = "downloads";
         article_settings_.topics = {"hep-ph", "hep-ex", "hep-lat", "hep-th"};
         
         // Default key mappings

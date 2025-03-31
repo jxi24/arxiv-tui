@@ -10,7 +10,7 @@ using namespace Arxiv;
 ArxivApp::ArxivApp(const Config& config)
     : core(config,
            std::make_unique<DatabaseManager>("articles.db"),
-           std::make_unique<Fetcher>(config.get_topics()))
+           std::make_unique<Fetcher>(config.get_topics(), config.get_download_dir()))
     , key_bindings(config.get_key_mappings())
     , screen(ScreenInteractive::Fullscreen()) {
     
