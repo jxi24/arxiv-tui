@@ -11,6 +11,7 @@
 #include <chrono>
 
 #include "Arxiv/AppCore.hh"
+#include "Arxiv/KeyBindings.hh"
 
 using ftxui::Component;
 
@@ -18,7 +19,7 @@ namespace Arxiv {
 
 class ArxivApp {
 public:
-    explicit ArxivApp(const std::vector<std::string>& topics);
+    explicit ArxivApp(const Config &config);
     void Run() { screen.Loop(event_handler); }
     ~ArxivApp() {
         refresh_ui_continue = false;
@@ -28,6 +29,7 @@ public:
 private:
     // Core application logic
     AppCore core;
+    KeyBindings key_bindings;
     
     // UI handling
     ftxui::ScreenInteractive screen;
@@ -35,6 +37,7 @@ private:
     int dialog_depth = 0;
     std::string new_project_name;
     bool show_detail = false;
+    bool show_help = false;
     std::set<std::string> selected_projects;
     int selected_project_index = 0;
     std::map<std::string, bool> checkbox_states;
@@ -61,6 +64,7 @@ private:
     Component main_container;
     Component main_renderer;
     Component event_handler;
+    Component help_dialog;
     
     // Project dialog components
     Component project_checkbox_container;
@@ -72,6 +76,7 @@ private:
     int FilterPaneWidth();
     void UpdateTitleScrollPositions();  // New function to handle automatic scrolling
     void UpdateVisibleRange();  // Update visible range based on selected article
+    void ToggleHelp();  // Toggle the help dialog
 };
 
 } // namespace Arxiv

@@ -6,6 +6,7 @@
 #include <vector>
 #include <functional>
 
+#include "Arxiv/Config.hh"
 #include "Arxiv/DatabaseManager.hh"
 #include "Arxiv/Fetcher.hh"
 #include "Arxiv/Article.hh"
@@ -15,7 +16,7 @@ namespace Arxiv {
 class AppCore {
 public:
     // Constructor with dependency injection
-    explicit AppCore(const std::vector<std::string>& topics,
+    explicit AppCore(const Config &config,
                     std::unique_ptr<DatabaseManager> db,
                     std::unique_ptr<Fetcher> fetcher);
     
@@ -55,6 +56,7 @@ public:
     void SetProjectUpdateCallback(ArticleUpdateCallback callback);
 
 private:
+    Config m_config;
     std::vector<std::string> m_topics;
     std::unique_ptr<DatabaseManager> m_db;
     std::unique_ptr<Fetcher> m_fetcher;

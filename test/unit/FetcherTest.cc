@@ -2,15 +2,17 @@
 #include <catch2/matchers/catch_matchers.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <Arxiv/Fetcher.hh>
+#include <Arxiv/Config.hh>
 #include <fixtures/test_data.hh>
 #include <mocks/FetcherMock.hh>
 #include <filesystem>
 
-using namespace arxiv_tui;
+using namespace Arxiv;
 using namespace arxiv_tui::test;
 using namespace Catch::Matchers;
 
 TEST_CASE("Article fetching", "[fetcher]") {
+    Config config("test/fixtures/test_config.yml");
     FetcherMock fetcher;
     
     SECTION("Should fetch articles from arXiv") {
@@ -35,11 +37,12 @@ TEST_CASE("Article fetching", "[fetcher]") {
 }
 
 TEST_CASE("Paper downloading", "[fetcher]") {
+    Config config("test/fixtures/test_config.yml");
     FetcherMock fetcher;
     
     SECTION("Should download paper PDF") {
         std::string paper_id = "2403.12345";
-        std::string output_path = "test.pdf";
+        std::string output_path = config.get_download_dir() + "/test.pdf";
         
         // Set up mock expectations
         REQUIRE_CALL(fetcher, DownloadPaper(paper_id, output_path))
@@ -53,7 +56,7 @@ TEST_CASE("Paper downloading", "[fetcher]") {
     
     SECTION("Should handle download failures") {
         std::string paper_id = "2403.12345";
-        std::string output_path = "test.pdf";
+        std::string output_path = config.get_download_dir() + "/test.pdf";
         
         // Set up mock expectations
         REQUIRE_CALL(fetcher, DownloadPaper(paper_id, output_path))
@@ -64,6 +67,7 @@ TEST_CASE("Paper downloading", "[fetcher]") {
 }
 
 TEST_CASE("Abstract retrieval", "[fetcher]") {
+    Config config("test/fixtures/test_config.yml");
     FetcherMock fetcher;
     
     SECTION("Should retrieve paper abstract") {

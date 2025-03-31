@@ -1,0 +1,22 @@
+article_settings:
+  download_dir: "test_articles"
+  topics:
+    - "cs.AI"
+    - "cs.LG"
+    - "cs.CL"
+
+key_mappings:
+  - action: "next"
+    key: "j"
+  - action: "previous"
+    key: "k"
+  - action: "quit"
+    key: "q"
+  - action: "create_project"
+    key: "p"
+  - action: "delete_project"
+    key: "x"
+  - action: "download_article"
+    key: "d"
+  - action: "show_detail"
+    key: "a" 

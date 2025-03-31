@@ -2,18 +2,19 @@
 #include <catch2/matchers/catch_matchers.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <Arxiv/AppCore.hh>
+#include <Arxiv/Config.hh>
 #include <fixtures/test_data.hh>
 #include <mocks/DatabaseManagerMock.hh>
 #include <mocks/FetcherMock.hh>
 
-using namespace arxiv_tui;
+using namespace Arxiv;
 using namespace arxiv_tui::test;
 using namespace arxiv_tui::test::fixtures;
 using namespace Catch::Matchers;
 
 TEST_CASE("AppCore initialization", "[app]") {
-    SECTION("Should initialize with topics") {
-        std::vector<std::string> topics = {"cs.AI", "cs.LG"};
+    SECTION("Should initialize with config") {
+        Config config("test/fixtures/test_config.yml");
         auto db = std::make_unique<DatabaseManagerMock>();
         auto fetcher = std::make_unique<FetcherMock>();
         auto* db_ptr = db.get();
@@ -26,7 +27,7 @@ TEST_CASE("AppCore initialization", "[app]") {
         REQUIRE_CALL(*db_ptr, GetProjects())
             .RETURN(std::vector<std::string>{});
         
-        Arxiv::AppCore core(topics, std::move(db), std::move(fetcher));
+        Arxiv::AppCore core(config, std::move(db), std::move(fetcher));
         
         auto articles = core.GetCurrentArticles();
         auto titles = core.GetCurrentTitles();
@@ -41,7 +42,7 @@ TEST_CASE("AppCore initialization", "[app]") {
 }
 
 TEST_CASE("AppCore article management", "[app]") {
-    std::vector<std::string> topics = {"cs.AI"};
+    Config config("test/fixtures/test_config.yml");
     auto db = std::make_unique<DatabaseManagerMock>();
     auto fetcher = std::make_unique<FetcherMock>();
     auto* db_ptr = db.get();
@@ -53,7 +54,7 @@ TEST_CASE("AppCore article management", "[app]") {
     db_ptr->setBookmarkedArticles({}); // Empty bookmarked articles initially
     db_ptr->setProjects({}); // Empty projects initially
     
-    Arxiv::AppCore core(topics, std::move(db), std::move(fetcher));
+    Arxiv::AppCore core(config, std::move(db), std::move(fetcher));
     
     SECTION("Should handle article filtering") {
         // Set up mock responses for different filter scenarios
@@ -98,7 +99,7 @@ TEST_CASE("AppCore article management", "[app]") {
 }
 
 TEST_CASE("AppCore project management", "[app]") {
-    std::vector<std::string> topics = {"cs.AI"};
+    Config config("test/fixtures/test_config.yml");
     auto db = std::make_unique<DatabaseManagerMock>();
     auto fetcher = std::make_unique<FetcherMock>();
     auto* db_ptr = db.get();
@@ -110,7 +111,7 @@ TEST_CASE("AppCore project management", "[app]") {
     db_ptr->setBookmarkedArticles({}); // Empty bookmarked articles initially
     db_ptr->setProjects({}); // Empty projects initially
     
-    Arxiv::AppCore core(topics, std::move(db), std::move(fetcher));
+    Arxiv::AppCore core(config, std::move(db), std::move(fetcher));
     
     SECTION("Should handle project creation and removal") {
         std::string project_name = "Test Project";
@@ -162,7 +163,7 @@ TEST_CASE("AppCore project management", "[app]") {
 }
 
 TEST_CASE("AppCore state management", "[app]") {
-    std::vector<std::string> topics = {"cs.AI"};
+    Config config("test/fixtures/test_config.yml");
     auto db = std::make_unique<DatabaseManagerMock>();
     auto fetcher = std::make_unique<FetcherMock>();
     auto* db_ptr = db.get();
@@ -174,7 +175,7 @@ TEST_CASE("AppCore state management", "[app]") {
     db_ptr->setBookmarkedArticles({}); // Empty bookmarked articles initially
     db_ptr->setProjects({}); // Empty projects initially
     
-    Arxiv::AppCore core(topics, std::move(db), std::move(fetcher));
+    Arxiv::AppCore core(config, std::move(db), std::move(fetcher));
     
     SECTION("Should handle article index changes") {
         auto articles = core.GetCurrentArticles();

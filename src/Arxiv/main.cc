@@ -1,4 +1,5 @@
 #include "Arxiv/App.hh"
+#include "Arxiv/Config.hh"
 
 #include "spdlog/spdlog.h"
 #include "spdlog/sinks/basic_file_sink.h"
@@ -16,8 +17,8 @@ void CreateLogger(int level, int flush_time) {
 int main() {
     CreateLogger(0, 1);
     // try {
-        std::vector<std::string> topics = {"hep-ph"};
-        Arxiv::ArxivApp app(topics);
+        Arxiv::Config config(".arxiv-tui.yml");
+        Arxiv::ArxivApp app(config);
         app.Run();
     // } catch(const std::exception &e) {
     //     spdlog::error("[Arxiv-TUI]: Unhandled exception {}", e.what());

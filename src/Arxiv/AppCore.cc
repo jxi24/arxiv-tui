@@ -5,10 +5,11 @@
 
 namespace Arxiv {
 
-AppCore::AppCore(const std::vector<std::string>& topics,
+AppCore::AppCore(const Config& config,
                  std::unique_ptr<DatabaseManager> db,
                  std::unique_ptr<Fetcher> fetcher)
-    : m_topics(topics)
+    : m_config(config)
+    , m_topics(config.get_topics())
     , m_db(std::move(db))
     , m_fetcher(std::move(fetcher)) {
     

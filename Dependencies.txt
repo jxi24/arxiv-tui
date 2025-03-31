@@ -47,3 +47,15 @@ CPMAddPackage(
     VERSION 1.15.0
     GIT_TAG "v1.15"
 )
+
+CPMAddPackage(
+    NAME yaml-cpp
+    VERSION 0.7.0
+    GITHUB_REPOSITORY jbeder/yaml-cpp
+    GIT_TAG "yaml-cpp-0.7.0"
+    OPTIONS
+        "YAML_BUILD_SHARED_LIBS ON"
+        "YAML_CPP_BUILD_TESTS OFF"
+        "YAML_CPP_BUILD_TOOLS OFF"
+)
+add_library(yaml-cpp::yaml-cpp ALIAS yaml-cpp)

@@ -7,10 +7,11 @@
 using namespace ftxui;
 using namespace Arxiv;
 
-ArxivApp::ArxivApp(const std::vector<std::string>& topics)
-    : core(topics,
+ArxivApp::ArxivApp(const Config& config)
+    : core(config,
            std::make_unique<DatabaseManager>("articles.db"),
-           std::make_unique<Fetcher>(topics))
+           std::make_unique<Fetcher>(config.get_topics()))
+    , key_bindings(config.get_key_mappings())
     , screen(ScreenInteractive::Fullscreen()) {
     
     spdlog::info("ArXiv Application Initialized");
@@ -44,28 +45,32 @@ void ArxivApp::UpdateVisibleRange() {
     }
 }
 
+void ArxivApp::ToggleHelp() {
+    show_help = !show_help;
+}
+
 void ArxivApp::SetupUI() {
     filter_menu = Menu(&core.GetFilterOptions(), &core.GetFilterIndex())
         | CatchEvent([&](Event event) {
-            if(event == Event::Character('j')) {
+            if(key_bindings.matches(event, KeyBindings::Action::Next)) {
                 core.SetFilterIndex(std::min(core.GetFilterIndex() + 1, 
                     static_cast<int>(core.GetFilterOptions().size()) - 1));
                 return true;
             }
-            if(event == Event::Character('k')) {
+            if(key_bindings.matches(event, KeyBindings::Action::Previous)) {
                 core.SetFilterIndex(std::max(core.GetFilterIndex() - 1, 0));
                 return true;
             }
-            if(event == Event::Character('l')) {
+            if(key_bindings.matches(event, KeyBindings::Action::MoveRight)) {
                 focused_pane = 1;
                 return true;
             }
-            if(event == Event::Character('p')) {
+            if(key_bindings.matches(event, KeyBindings::Action::CreateProject)) {
                 dialog_depth = 1;
                 new_project_name.clear();
                 return true;
             }
-            if(event == Event::Character('x')) {
+            if(key_bindings.matches(event, KeyBindings::Action::DeleteProject)) {
                 if(core.GetFilterIndex() > 2) {
                     core.RemoveProject(core.GetFilterOptions()[static_cast<size_t>(core.GetFilterIndex())]);
                 }
@@ -78,29 +83,30 @@ void ArxivApp::SetupUI() {
         | vscroll_indicator
         | frame
         | CatchEvent([&](Event event) {
-            if(event == Event::Character('j')) {
+            if(key_bindings.matches(event, KeyBindings::Action::Next)) {
                 core.SetArticleIndex(std::min(core.GetArticleIndex() + 1, 
                     static_cast<int>(core.GetCurrentArticles().size()) - 1));
                 title_start_position = 0;
                 return true;
             }
-            if(event == Event::Character('k')) {
+            if(key_bindings.matches(event, KeyBindings::Action::Previous)) {
                 core.SetArticleIndex(std::max(core.GetArticleIndex() - 1, 0));
                 title_start_position = 0;
                 return true;
             }
-            if(event == Event::Character('h')) {
+            if(key_bindings.matches(event, KeyBindings::Action::MoveLeft)) {
                 focused_pane = 0;
+                title_start_position = 0;
                 return true;
             }
-            if(event == Event::Character('b')) {
+            if(key_bindings.matches(event, KeyBindings::Action::Bookmark)) {
                 auto articles = core.GetCurrentArticles();
                 if(!articles.empty()) {
                     core.ToggleBookmark(articles[static_cast<size_t>(core.GetArticleIndex())].link);
                 }
                 return true;
             }
-            if(event == Event::Character('p')) {
+            if(key_bindings.matches(event, KeyBindings::Action::CreateProject)) {
                 dialog_depth = 2;
                 // Initialize project selections
                 auto projects = core.GetProjects();
@@ -123,10 +129,10 @@ void ArxivApp::SetupUI() {
                 selected_project_index = 0;
                 return true;
             }
-            if(event == Event::Character('d')) {
+            if(key_bindings.matches(event, KeyBindings::Action::DownloadArticle)) {
                 // Download the article pdf to an articles folder
                 auto article = core.GetCurrentArticles()[static_cast<size_t>(core.GetArticleIndex())];
-                spdlog::debug("[App]: Downloading article ({}) to articles folder", article.title);
+                spdlog::debug("[App]: Downloading article ({}) to articles folder", article.id());
                 bool success = core.DownloadArticle(article.id());
                 if(!success) {
                     dialog_depth = 3;
@@ -269,6 +275,66 @@ void ArxivApp::SetupUI() {
         }
     });
 
+    // Create help dialog
+    help_dialog = Renderer([&] {
+        if (!show_help) return emptyElement();
+
+        auto bindings = key_bindings.get_all_bindings();
+        
+        // Sort bindings by action name
+        std::sort(bindings.begin(), bindings.end(),
+                 [](const auto& a, const auto& b) { return a.first < b.first; });
+
+        // Calculate terminal width and column widths
+        int term_width = Terminal::Size().dimx;
+        int dialog_width = std::min(term_width - 4, 80);  // Leave 2 chars margin on each side
+        int column_width = (dialog_width - 4) / 3;  // 4 chars for separators between columns
+
+        // Create three columns of bindings
+        std::vector<Element> columns[3];
+        for (size_t i = 0; i < bindings.size(); ++i) {
+            const auto& [action, key] = bindings[i];
+            columns[i % 3].push_back(
+                hbox({
+                    text(action) | bold,
+                    text(": "),
+                    text(key) | dim
+                }) | size(WIDTH, EQUAL, column_width)
+            );
+        }
+
+        // Create the dialog content
+        std::vector<Element> dialog_content = {
+            text("Key Bindings") | bold | center,
+            separator(),
+        };
+
+        // Add columns side by side
+        for (size_t i = 0; i < columns[0].size(); ++i) {
+            Elements row;
+            for (int col = 0; col < 3; ++col) {
+                if (i < columns[col].size()) {
+                    row.push_back(columns[col][i]);
+                } else {
+                    row.push_back(text("") | size(WIDTH, EQUAL, column_width));
+                }
+                if (col < 2) row.push_back(text(" | "));
+            }
+            dialog_content.push_back(hbox(row));
+        }
+
+        dialog_content.push_back(separator());
+        dialog_content.push_back(
+            hbox({
+                text("Press ") | dim,
+                text(key_bindings.get_key(KeyBindings::Action::ShowHelp)) | bold,
+                text(" to close") | dim,
+            }) | center
+        );
+
+        return vbox(dialog_content) | border | clear_under | center;
+    });
+
     main_renderer = Renderer(main_container, [&] {
         int filter_width = FilterPaneWidth();
         int remaining_width = Terminal::Size().dimx - filter_width - border_size; 
@@ -318,15 +384,40 @@ void ArxivApp::SetupUI() {
             });
         }
 
+        // Add help dialog if active
+        if (show_help) {
+            document = dbox({
+                document,
+                help_dialog->Render(),
+            });
+        }
+
         return document;
     });
 
     event_handler = CatchEvent(main_renderer, [&](Event event) {
-        if(event == Event::Character('a')) {
+        // Handle help dialog first
+        if (show_help) {
+            if(key_bindings.matches(event, KeyBindings::Action::ShowHelp) || event == Event::Escape) {
+                show_help = false;
+                return true;
+            }
+            // Block all other events when help is shown
+            return true;
+        }
+
+        // Handle help toggle
+        if(key_bindings.matches(event, KeyBindings::Action::ShowHelp)) {
+            ToggleHelp();
+            return true;
+        }
+
+        // Rest of the event handling
+        if(key_bindings.matches(event, KeyBindings::Action::ShowDetail)) {
             show_detail = !show_detail;
             return true;
         }
-        if(event == Event::Character('q') || event == Event::Escape) {
+        if(key_bindings.matches(event, KeyBindings::Action::Quit) || event == Event::Escape) {
             if (dialog_depth > 0) {
                 dialog_depth = 0;
                 err_msg = "";
@@ -370,14 +461,14 @@ void ArxivApp::SetupUI() {
                 dialog_depth = 0;
                 return true;
             }
-            if (event == Event::Character('j')) {
+            if(key_bindings.matches(event, KeyBindings::Action::Next)) {
                 auto projects = core.GetProjects();
                 if(selected_project_index < static_cast<int>(projects.size()) - 1) {
                     selected_project_index++;
                 }
                 return true;
             }
-            if (event == Event::Character('k')) {
+            if(key_bindings.matches(event, KeyBindings::Action::Previous)) {
                 if(selected_project_index > 0) {
                     selected_project_index--;
                 }
