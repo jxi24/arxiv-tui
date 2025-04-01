@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <ftxui/dom/elements.hpp>
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/screen_interactive.hpp>
 #include <map>
@@ -14,6 +15,7 @@
 #include "Arxiv/KeyBindings.hh"
 
 using ftxui::Component;
+using ftxui::Color;
 
 namespace Arxiv {
 

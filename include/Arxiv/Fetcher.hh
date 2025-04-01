@@ -30,6 +30,8 @@ class Fetcher {
     std::vector<Article> ParseFeed(const std::string &content);
     std::optional<time_point> ParseDate(const std::string &date) const;
     std::string ConstructPaperUrl(const std::string &paper_id, const std::string &format) const;
+    std::string ReplaceLatexAccents(const std::string& text) const;
+    std::string StyleLatex(const std::string& text) const;
     std::filesystem::path base_path;
 };
 

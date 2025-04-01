@@ -7,6 +7,18 @@
 using namespace ftxui;
 using namespace Arxiv;
 
+namespace TextColors {
+// Color scheme (Catppuccin Frappe)
+const Color base = Color::RGB(48, 52, 70);          // #232634
+const Color surface = Color::RGB(65, 69, 89);       // #303446
+const Color text = Color::RGB(198, 208, 245);       // #c6d0f5
+const Color subtext = Color::RGB(165, 173, 206);    // #a5adce
+const Color primary = Color::RGB(133, 193, 220);    // #8caaee
+const Color border = Color::RGB(153, 209, 219);     // #99d1db
+const Color secondary = Color::RGB(244, 184, 228);  // #f4b8e4
+const Color error = Color::RGB(231, 130, 132);      // #e78284
+}
+
 ArxivApp::ArxivApp(const Config& config)
     : core(config,
            std::make_unique<DatabaseManager>("articles.db"),
@@ -94,11 +106,6 @@ void ArxivApp::SetupUI() {
                 title_start_position = 0;
                 return true;
             }
-            if(key_bindings.matches(event, KeyBindings::Action::MoveLeft)) {
-                focused_pane = 0;
-                title_start_position = 0;
-                return true;
-            }
             if(key_bindings.matches(event, KeyBindings::Action::Bookmark)) {
                 auto articles = core.GetCurrentArticles();
                 if(!articles.empty()) {
@@ -145,28 +152,28 @@ void ArxivApp::SetupUI() {
 
     filter_pane = Renderer(filter_menu, [&] {
         return vbox({
-            text("Filters") | bold,
-            separator(),
-            filter_menu->Render() | vscroll_indicator | frame
-        }) | border;
+            text("Filters") | (focused_pane == 0 ? inverted : bold) | color(TextColors::primary),
+            separator() | color(TextColors::border),
+            filter_menu->Render() | vscroll_indicator | frame | color(TextColors::text)
+        }) | borderStyled(ROUNDED, TextColors::border) | bgcolor(TextColors::base);
     });
 
     article_pane = Renderer(article_list, [&] {
         auto articles = core.GetCurrentArticles();
         if(articles.empty()) {
             return vbox({
-                text("Articles") | bold,
-                separator(),
-                text("No articles available") | dim | center,
-                separator(),
-                text("Try changing filters.") | dim | center,
-            }) | border;
+                text("Articles") | (focused_pane == 1 ? inverted : bold) | color(TextColors::primary),
+                separator() | color(TextColors::border),
+                text("No articles available") | center | color(TextColors::subtext),
+                separator() | color(TextColors::border),
+                text("Try changing filters.") | center | color(TextColors::subtext),
+            }) | borderStyled(ROUNDED, TextColors::border) | bgcolor(TextColors::base);
         }
 
         // Calculate visible rows based on terminal size
         int filter_width = FilterPaneWidth();
         int remaining_width = Terminal::Size().dimx - filter_width - border_size; 
-        int articles_width = show_detail ? remaining_width / 3 : remaining_width;
+        int articles_width = show_detail ? remaining_width / 2 : remaining_width;
         visible_rows = Terminal::Size().dimy - 4;  // Account for header, separator, and borders
 
         // Update visible range
@@ -186,34 +193,36 @@ void ArxivApp::SetupUI() {
                     title = title.substr(start_pos) + "    " + title.substr(0, start_pos);
                 }
                 title = "> " + title;
-                menu_items.push_back(text(title) | bold);
+                menu_items.push_back(text(title) | bold | color(TextColors::primary));
             } else {
                 title = "  " + title;
-                menu_items.push_back(text(title));
+                menu_items.push_back(text(title) | color(TextColors::text));
             }
         }
 
         return vbox({
-            text("Articles") | bold,
-            separator(),
+            text("Articles") | (focused_pane == 1 ? inverted : bold) | color(TextColors::primary),
+            separator() | color(TextColors::border),
             vbox(menu_items) | vscroll_indicator | frame
-        }) | border;
+        }) | borderStyled(ROUNDED, TextColors::border) | bgcolor(TextColors::base);
     });
 
     detail_view = Renderer([&] {
         auto articles = core.GetCurrentArticles();
         if(articles.empty() || core.GetArticleIndex() >= static_cast<int>(articles.size())) {
-            return window(text("Detail View"), text("No details available.") | center);
+            return window(text("Detail View") | color(TextColors::primary), 
+                         text("No details available.") | center | color(TextColors::subtext))
+                         | bgcolor(TextColors::base);
         }
         
         const auto& article = articles[static_cast<size_t>(core.GetArticleIndex())];
         return vbox({
-            text("Title: " + article.title) | bold,
-            text("Authors: " + article.authors),
-            text("Link: " + article.link),
-            separator(),
-            paragraph("Abstract: \n" + article.abstract),
-        }) | border;
+            text("Title: " + article.title) | bold | color(TextColors::primary),
+            paragraph("Authors: " + article.authors) | color(TextColors::text),
+            text("Link: " + article.link) | color(TextColors::secondary),
+            separator() | color(TextColors::border),
+            paragraph("Abstract: \n" + article.abstract) | color(TextColors::text),
+        }) | borderStyled(ROUNDED, TextColors::border) | bgcolor(TextColors::base);
     });
 
     main_container = Container::Tab({
@@ -230,14 +239,14 @@ void ArxivApp::SetupUI() {
         auto projects = core.GetProjects();
         if (projects.empty()) {
             return vbox({
-                text("Add to Projects") | bold,
-                separator(),
-                text("No projects available. Create a project first.") | center,
-                separator(),
+                text("Add to Projects") | bold | color(TextColors::primary),
+                separator() | color(TextColors::border),
+                text("No projects available. Create a project first.") | center | color(TextColors::subtext),
+                separator() | color(TextColors::border),
                 hbox({
-                    text("Press Esc to close"),
+                    text("Press Esc to close") | color(TextColors::subtext),
                 }) | center,
-            }) | border | clear_under | center;
+            }) | borderStyled(ROUNDED, TextColors::border) | bgcolor(TextColors::surface) | clear_under | center;
         }
 
         std::vector<Element> menu_items;
@@ -248,18 +257,18 @@ void ArxivApp::SetupUI() {
             if(i == static_cast<size_t>(selected_project_index)) {
                 item |= inverted;
             }
-            menu_items.push_back(item);
+            menu_items.push_back(item | color(TextColors::subtext));
         }
 
         return vbox({
-            text("Add to Projects") | bold,
-            separator(),
+            text("Add to Projects") | bold | color(TextColors::primary),
+            separator() | color(TextColors::border),
             vbox(menu_items) | vscroll_indicator | frame,
-            separator(),
+            separator() | color(TextColors::border),
             hbox({
-                text("Use j/k to navigate, Space to toggle, Enter to save, Esc to cancel"),
+                text("Use j/k to navigate, Space to toggle, Enter to save, Esc to cancel") | color(TextColors::subtext),
             }) | center,
-        }) | border | clear_under | center;
+        }) | borderStyled(ROUNDED, TextColors::border) | bgcolor(TextColors::surface) | clear_under | center;
     });
 
     // Update project checkboxes when projects change
@@ -296,17 +305,17 @@ void ArxivApp::SetupUI() {
             const auto& [action, key] = bindings[i];
             columns[i % 3].push_back(
                 hbox({
-                    text(action) | bold,
-                    text(": "),
-                    text(key) | dim
+                    text(action) | bold | color(TextColors::primary),
+                    text(": ") | color(TextColors::primary),
+                    text(key) | color(TextColors::subtext)
                 }) | size(WIDTH, EQUAL, column_width)
             );
         }
 
         // Create the dialog content
         std::vector<Element> dialog_content = {
-            text("Key Bindings") | bold | center,
-            separator(),
+            text("Key Bindings") | bold | center | color(TextColors::primary),
+            separator() | color(TextColors::border),
         };
 
         // Add columns side by side
@@ -318,29 +327,29 @@ void ArxivApp::SetupUI() {
                 } else {
                     row.push_back(text("") | size(WIDTH, EQUAL, column_width));
                 }
-                if (col < 2) row.push_back(text(" | "));
+                if (col < 2) row.push_back(text(" | ") | color(TextColors::border));
             }
             dialog_content.push_back(hbox(row));
         }
 
-        dialog_content.push_back(separator());
+        dialog_content.push_back(separator() | color(TextColors::border));
         dialog_content.push_back(
             hbox({
-                text("Press ") | dim,
-                text(key_bindings.get_key(KeyBindings::Action::ShowHelp)) | bold,
-                text(" to close") | dim,
+                text("Press ") | color(TextColors::subtext),
+                text(key_bindings.get_key(KeyBindings::Action::ShowHelp)) | bold | color(TextColors::primary),
+                text(" to close") | color(TextColors::subtext),
             }) | center
         );
 
-        return vbox(dialog_content) | border | clear_under | center;
+        return vbox(dialog_content) | borderStyled(ROUNDED, TextColors::border) | bgcolor(TextColors::surface) | clear_under | center;
     });
 
     main_renderer = Renderer(main_container, [&] {
         int filter_width = FilterPaneWidth();
         int remaining_width = Terminal::Size().dimx - filter_width - border_size; 
 
-        int articles_width = show_detail ? remaining_width / 3 : remaining_width;
-        int detail_width = show_detail ? (remaining_width * 2) / 3 : 0;
+        int articles_width = show_detail ? remaining_width / 2 : remaining_width;
+        int detail_width = show_detail ? remaining_width / 2 : 0;
 
         std::vector<Element> panes = {
             filter_pane->Render() | size(WIDTH, EQUAL, filter_width),
@@ -349,18 +358,18 @@ void ArxivApp::SetupUI() {
         if(show_detail) {
             panes.push_back(detail_view->Render() | size(WIDTH, EQUAL, detail_width));
         }
-        Element document = hbox(std::move(panes));
+        Element document = hbox(std::move(panes)) | bgcolor(TextColors::base);
 
         if (dialog_depth == 1) {
             auto new_project_dialog = vbox({
-                text("New Project") | bold,
-                separator(),
-                text("Enter project name: " + new_project_name),
-                separator(),
+                text("New Project") | bold | color(TextColors::primary),
+                separator() | color(TextColors::border),
+                text("Enter project name: " + new_project_name) | color(TextColors::text),
+                separator() | color(TextColors::border),
                 hbox({
-                    text("Press Enter to create, Esc to cancel"),
+                    text("Press Enter to create, Esc to cancel") | color(TextColors::subtext),
                 }) | center,
-            }) | border | clear_under | center;
+            }) | borderStyled(ROUNDED, TextColors::border) | bgcolor(TextColors::surface) | clear_under | center;
 
             document = dbox({
                 document,
@@ -373,10 +382,10 @@ void ArxivApp::SetupUI() {
             });
         } else if (dialog_depth == 3) {
             auto error_dialog = vbox({
-                text("ERROR") | bold | center,
-                separator(),
-                text(err_msg),
-            }) | border | clear_under | center;
+                text("ERROR") | bold | center | color(TextColors::error),
+                separator() | color(TextColors::error),
+                text(err_msg) | color(TextColors::text),
+            }) | borderStyled(ROUNDED, TextColors::error) | bgcolor(TextColors::surface) | clear_under | center;
 
             document = dbox({
                 document,
@@ -409,6 +418,17 @@ void ArxivApp::SetupUI() {
         // Handle help toggle
         if(key_bindings.matches(event, KeyBindings::Action::ShowHelp)) {
             ToggleHelp();
+            return true;
+        }
+
+        // Handle pane navigation
+        if(key_bindings.matches(event, KeyBindings::Action::MoveLeft)) {
+            focused_pane = 0;
+            title_start_position = 0;
+            return true;
+        }
+        if(key_bindings.matches(event, KeyBindings::Action::MoveRight)) {
+            focused_pane = 1;
             return true;
         }
 
