@@ -21,7 +21,9 @@ public:
         MoveRight,
         MoveLeft,
         Bookmark,
-        ShowHelp
+        ShowHelp,
+        SetDateRange,
+        Search
     };
 
     KeyBindings() = default;

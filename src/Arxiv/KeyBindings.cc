@@ -32,7 +32,9 @@ void KeyBindings::init_defaults() {
         {Action::MoveRight, "l"},
         {Action::MoveLeft, "h"},
         {Action::Bookmark, "b"},
-        {Action::ShowHelp, "?"}
+        {Action::ShowHelp, "?"},
+        {Action::SetDateRange, "r"},
+        {Action::Search, "/"}
     };
 }
 
@@ -54,6 +56,8 @@ std::string KeyBindings::get_action_name(Action action) {
         case Action::MoveLeft: return "Move Left";
         case Action::Bookmark: return "Bookmark";
         case Action::ShowHelp: return "Show Help";
+        case Action::SetDateRange: return "Set Date Range";
+        case Action::Search: return "Search";
         default: return "Unknown";
     }
 }

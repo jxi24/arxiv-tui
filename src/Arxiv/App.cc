@@ -344,6 +344,64 @@ void ArxivApp::SetupUI() {
         return vbox(dialog_content) | borderStyled(ROUNDED, TextColors::border) | bgcolor(TextColors::surface) | clear_under | center;
     });
 
+    // Add date range dialog renderer
+    date_range_dialog = Renderer([&] {
+        if (dialog_depth != 4) return emptyElement();
+        
+        std::string start_prompt = "Start date (YYYY-MM-DD): " + start_date;
+        std::string end_prompt = "End date (YYYY-MM-DD): " + end_date;
+        
+        if (date_input_mode == DateInputMode::Start) {
+            start_prompt = "> " + start_prompt;
+        } else {
+            end_prompt = "> " + end_prompt;
+        }
+
+        return vbox({
+            text("Set Date Range") | bold | color(TextColors::primary),
+            separator() | color(TextColors::border),
+            text(start_prompt) | color(TextColors::text),
+            text(end_prompt) | color(TextColors::text),
+            separator() | color(TextColors::border),
+            hbox({
+                text("Use Tab to switch between dates, Enter to save, Esc to cancel") | color(TextColors::subtext),
+            }) | center,
+        }) | borderStyled(ROUNDED, TextColors::border) | bgcolor(TextColors::surface) | clear_under | center;
+    });
+
+    // Add search dialog renderer
+    search_dialog = Renderer([&] {
+        if (dialog_depth != 5) return emptyElement();
+        
+        std::vector<Element> elements = {
+            text("Search Articles") | bold | color(TextColors::primary),
+            separator() | color(TextColors::border),
+        };
+
+        // Query input
+        if (selected_search_option == 0) {
+            elements.push_back(text("> Query: " + search_query) | color(TextColors::primary));
+        } else {
+            elements.push_back(text("  Query: " + search_query) | color(TextColors::text));
+        }
+
+        elements.push_back(text("Search in:") | color(TextColors::text));
+
+        // Search options
+        elements.push_back(text("  [" + std::string(search_field == AppCore::SearchMode::title ? "X" : " ") + "] Title") | color(TextColors::text));
+        elements.push_back(text("  [" + std::string(search_field == AppCore::SearchMode::authors ? "X" : " ") + "] Authors") | color(TextColors::text));
+        elements.push_back(text("  [" + std::string(search_field == AppCore::SearchMode::abstract ? "X" : " ") + "] Abstract") | color(TextColors::text));
+
+        elements.push_back(separator() | color(TextColors::border));
+        elements.push_back(
+            hbox({
+                text("Use Tab to move, Space to toggle, Enter to search, Esc to cancel") | color(TextColors::subtext),
+            }) | center
+        );
+
+        return vbox(elements) | borderStyled(ROUNDED, TextColors::border) | bgcolor(TextColors::surface) | clear_under | center;
+    });
+
     main_renderer = Renderer(main_container, [&] {
         int filter_width = FilterPaneWidth();
         int remaining_width = Terminal::Size().dimx - filter_width - border_size; 
@@ -391,6 +449,16 @@ void ArxivApp::SetupUI() {
                 document,
                 error_dialog,
             });
+        } else if (dialog_depth == 4) {
+            document = dbox({
+                document,
+                date_range_dialog->Render(),
+            });
+        } else if (dialog_depth == 5) {
+            document = dbox({
+                document,
+                search_dialog->Render(),
+            });
         }
 
         // Add help dialog if active
@@ -418,6 +486,117 @@ void ArxivApp::SetupUI() {
         // Handle help toggle
         if(key_bindings.matches(event, KeyBindings::Action::ShowHelp)) {
             ToggleHelp();
+            return true;
+        }
+
+        // Handle date range dialog
+        if (dialog_depth == 4) {
+            if (event == Event::Return) {
+                if (!start_date.empty() && !end_date.empty()) {
+                    core.SetDateRange(start_date, end_date);
+                }
+                dialog_depth = 0;
+                start_date.clear();
+                end_date.clear();
+                return true;
+            }
+            if (event.is_character()) {
+                if (date_input_mode == DateInputMode::Start) {
+                    start_date += event.character();
+                } else {
+                    end_date += event.character();
+                }
+                return true;
+            }
+            if (event == Event::Backspace) {
+                if (date_input_mode == DateInputMode::Start) {
+                    if (!start_date.empty()) {
+                        start_date.pop_back();
+                    }
+                } else {
+                    if (!end_date.empty()) {
+                        end_date.pop_back();
+                    }
+                }
+                return true;
+            }
+            if (event == Event::Tab) {
+                date_input_mode = (date_input_mode == DateInputMode::Start) ? 
+                    DateInputMode::End : DateInputMode::Start;
+                return true;
+            }
+            if (event == Event::Escape) {
+                dialog_depth = 0;
+                start_date.clear();
+                end_date.clear();
+                return true;
+            }
+            return true;
+        }
+
+        // Handle date range key binding
+        if (key_bindings.matches(event, KeyBindings::Action::SetDateRange) && 
+            core.GetFilterIndex() == 3) {  // Range filter is selected
+            dialog_depth = 4;
+            date_input_mode = DateInputMode::Start;
+            start_date.clear();
+            end_date.clear();
+            return true;
+        }
+
+        // Handle search dialog
+        if (dialog_depth == 5) {
+            if (event == Event::Return) {
+                if (!search_query.empty()) {
+                    core.SetSearchQuery(search_query, search_field == AppCore::SearchMode::title,
+                                      search_field == AppCore::SearchMode::authors,
+                                      search_field == AppCore::SearchMode::abstract);
+                    core.SetFilterIndex(4);
+                }
+                dialog_depth = 0;
+                search_query.clear();
+                selected_search_option = 0;
+                return true;
+            }
+            if (event.is_character() && selected_search_option == 0) {
+                search_query += event.character();
+                return true;
+            }
+            if (event == Event::Backspace && selected_search_option == 0) {
+                if (!search_query.empty()) {
+                    search_query.pop_back();
+                }
+                return true;
+            }
+            if (event == Event::Tab) {
+                selected_search_option = (selected_search_option + 1) % 4;  // Cycle through 0-3
+                return true;
+            }
+            if (event == Event::Character(' ')) {
+                if (selected_search_option > 0) {
+                    // Set the search field based on selected option
+                    switch (selected_search_option) {
+                        case 1: search_field = AppCore::SearchMode::title; break;
+                        case 2: search_field = AppCore::SearchMode::authors; break;
+                        case 3: search_field = AppCore::SearchMode::abstract; break;
+                    }
+                }
+                return true;
+            }
+            if (event == Event::Escape) {
+                dialog_depth = 0;
+                search_query.clear();
+                selected_search_option = 0;
+                return true;
+            }
+            return true;
+        }
+
+        // Handle search key binding
+        if (key_bindings.matches(event, KeyBindings::Action::Search)) {  // Search filter is selected
+            dialog_depth = 5;
+            search_query.clear();
+            selected_search_option = 0;
             return true;
         }
 

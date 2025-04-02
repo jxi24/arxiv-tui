@@ -1,7 +1,9 @@
 #include "Arxiv/AppCore.hh"
 #include "spdlog/spdlog.h"
+#include "fmt/format.h"
 
 #include <algorithm>
+#include <chrono>
 
 namespace Arxiv {
 
@@ -23,23 +25,37 @@ AppCore::AppCore(const Config& config,
 }
 
 void AppCore::FetchArticles() {
-    spdlog::debug("[AppCore]: Fetching articles for filter_index {}", m_filter_index);
-    m_article_index = 0;
-    std::vector<Article> new_articles;
+    m_current_articles.clear();
     
-    if(m_filter_index == 1) {
-        new_articles = m_db->ListBookmarked();
-    } else if(m_filter_index == 0) {
-        new_articles = m_db->GetRecent(-1);
-    } else if(m_filter_index == 2) {
-        new_articles = m_db->GetRecent(1);
-    } else if(m_filter_index >= 3) {
-        new_articles = m_db->GetArticlesForProject(m_filter_options[static_cast<size_t>(m_filter_index)]);
+    if (m_filter_index == 0) {  // All Articles
+        m_current_articles = m_db->GetRecent(-1);
+    } else if (m_filter_index == 1) {  // Bookmarks
+        m_current_articles = m_db->ListBookmarked();
+    } else if (m_filter_index == 2) {  // Today
+        m_current_articles = m_db->GetRecent(1);
+    } else if (m_filter_index == 3) {  // Range
+        if (has_date_range) {
+            m_current_articles = m_db->GetArticlesForDateRange(start_date, end_date);
+        } else {
+            m_current_articles = m_db->GetRecent(-1);
+        }
+    } else if (m_filter_index == 4) {  // Search
+        if (has_search_query) {
+            bool search_title = (search_mode == SearchMode::title);
+            bool search_authors = (search_mode == SearchMode::authors);
+            bool search_abstract = (search_mode == SearchMode::abstract);
+            m_current_articles = m_db->SearchArticles(search_query, search_title, 
+                                                    search_authors, search_abstract);
+        } else {
+            m_current_articles = m_db->GetRecent(-1);
+        }
+    } else {  // Project
+        std::string project_name = m_filter_options[static_cast<size_t>(m_filter_index)];
+        m_current_articles = GetArticlesForProject(project_name);
     }
-
-    spdlog::debug("[AppCore]: Found {} articles", new_articles.size());
-    m_current_articles = std::move(new_articles);
+    
     RefreshTitles();
+    m_article_index = 0;
     NotifyArticleUpdate();
 }
 
@@ -173,10 +189,41 @@ void AppCore::RefreshTitles() {
 }
 
 void AppCore::RefreshFilterOptions() {
-    m_filter_options = {"All Articles", "Bookmarks", "Today"};
+    m_filter_options = {"All Articles", "Bookmarks", "Today", "Range", "Search"};
     for(const auto& project : GetProjects()) {
         m_filter_options.push_back(project);
     }
+}
+
+void AppCore::SetDateRange(const std::string& start, const std::string& end) {
+    start_date = start;
+    end_date = end;
+    has_date_range = true;
+    FetchArticles();
+}
+
+void AppCore::ClearDateRange() {
+    has_date_range = false;
+    start_date.clear();
+    end_date.clear();
+    FetchArticles();
+}
+
+void AppCore::SetSearchQuery(const std::string& query, bool _search_title, 
+                             bool _search_authors, bool _search_abstract) {
+    search_query = query;
+    if (_search_title) search_mode = SearchMode::title;
+    else if (_search_authors) search_mode = SearchMode::authors;
+    else if (_search_abstract) search_mode = SearchMode::abstract;
+    has_search_query = true;
+    FetchArticles();
+}
+
+void AppCore::ClearSearch() {
+    has_search_query = false;
+    search_query.clear();
+    search_mode = SearchMode::title;
+    FetchArticles();
 }
 
 void AppCore::NotifyArticleUpdate() {

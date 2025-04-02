@@ -6,6 +6,7 @@
 #include <chrono>
 #include <sqlite3.h>
 #include <stdexcept>
+#include <ctime>
 
 using Arxiv::DatabaseManager;
 
@@ -257,4 +258,99 @@ std::vector<std::string> DatabaseManager::GetProjectsForArticle(const std::strin
         sqlite3_finalize(stmt);
     }
     return projects;
+}
+
+std::vector<Arxiv::Article> DatabaseManager::GetArticlesForDateRange(const std::string &start_date, const std::string &end_date) {
+    std::vector<Article> articles;
+    sqlite3_stmt *stmt;
+    
+    // Convert date strings to Unix timestamps
+    std::tm start_tm = {};
+    std::tm end_tm = {};
+    
+    // Parse start date
+    if (strptime(start_date.c_str(), "%Y-%m-%d", &start_tm) == nullptr) {
+        spdlog::error("[Database]: Invalid start date format: {}", start_date);
+        return articles;
+    }
+    
+    // Parse end date
+    if (strptime(end_date.c_str(), "%Y-%m-%d", &end_tm) == nullptr) {
+        spdlog::error("[Database]: Invalid end date format: {}", end_date);
+        return articles;
+    }
+    
+    // Convert to Unix timestamps
+    time_t start_time = mktime(&start_tm);
+    time_t end_time = mktime(&end_tm);
+    
+    // Add one day to end_time to include the entire end date
+    end_time += 24 * 60 * 60;
+    
+    std::string sql = fmt::format(R"(SELECT link, title, authors, abstract, date, bookmarked 
+                                   FROM articles 
+                                   WHERE date >= {} AND date < {}
+                                   ORDER BY date DESC)",
+                                   start_time, end_time);
+    
+    spdlog::debug("[Database]: Fetching articles between {} and {}", start_date, end_date);
+    
+    if(sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) == SQLITE_OK) {
+        while(sqlite3_step(stmt) == SQLITE_ROW) {
+            articles.push_back(RowToArticle(stmt));
+        }
+        sqlite3_finalize(stmt);
+    }
+    
+    spdlog::debug("[Database]: Found {} articles in date range", articles.size());
+    return articles;
+}
+
+std::vector<Arxiv::Article> DatabaseManager::SearchArticles(const std::string &query, bool search_title, 
+                                                          bool search_authors, bool search_abstract) {
+    std::vector<Article> articles;
+    sqlite3_stmt *stmt;
+    
+    // Build the WHERE clause based on search options
+    std::vector<std::string> conditions;
+    std::string escaped_query = EscapeString(query);
+    
+    if (search_title) {
+        conditions.push_back("title LIKE '%" + escaped_query + "%'");
+    }
+    if (search_authors) {
+        conditions.push_back("authors LIKE '%" + escaped_query + "%'");
+    }
+    if (search_abstract) {
+        conditions.push_back("abstract LIKE '%" + escaped_query + "%'");
+    }
+    
+    if (conditions.empty()) {
+        spdlog::warn("[Database]: No search fields selected");
+        return articles;
+    }
+    
+    std::string where_clause = "WHERE " + conditions[0];
+    for (size_t i = 1; i < conditions.size(); ++i) {
+        where_clause += " OR " + conditions[i];
+    }
+    
+    std::string sql = fmt::format(R"(SELECT link, title, authors, abstract, date, bookmarked 
+                                   FROM articles 
+                                   {}
+                                   ORDER BY date DESC)",
+                                   where_clause);
+    
+    spdlog::debug("[Database]: Searching for '{}' in title: {}, authors: {}, abstract: {}", 
+                  query, search_title, search_authors, search_abstract);
+    
+    if(sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) == SQLITE_OK) {
+        while(sqlite3_step(stmt) == SQLITE_ROW) {
+            articles.push_back(RowToArticle(stmt));
+        }
+        sqlite3_finalize(stmt);
+    }
+    
+    spdlog::debug("[Database]: Found {} articles matching search criteria", articles.size());
+    return articles;
 }

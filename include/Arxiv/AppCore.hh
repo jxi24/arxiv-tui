@@ -20,6 +20,12 @@ public:
                     std::unique_ptr<DatabaseManager> db,
                     std::unique_ptr<Fetcher> fetcher);
     
+    enum class SearchMode {
+        title,
+        authors,
+        abstract
+    };
+    
     // Article management
     void FetchArticles();
     void ToggleBookmark(const std::string& article_link);
@@ -55,6 +61,19 @@ public:
     void SetArticleUpdateCallback(ArticleUpdateCallback callback);
     void SetProjectUpdateCallback(ArticleUpdateCallback callback);
 
+    // Date range methods
+    void SetDateRange(const std::string& start_date, const std::string& end_date);
+    void ClearDateRange();
+    bool HasDateRange() const { return has_date_range; }
+    std::pair<std::string, std::string> GetDateRange() const { return {start_date, end_date}; }
+
+    // Search methods
+    void SetSearchQuery(const std::string& query, bool search_title = true, 
+                       bool search_authors = true, bool search_abstract = true);
+    void ClearSearch();
+    bool HasSearchQuery() const { return has_search_query; }
+    std::string GetSearchQuery() const { return search_query; }
+
 private:
     Config m_config;
     std::vector<std::string> m_topics;
@@ -70,6 +89,16 @@ private:
     
     ArticleUpdateCallback m_article_update_callback;
     ArticleUpdateCallback m_project_update_callback;
+    
+    // Date range members
+    bool has_date_range = false;
+    std::string start_date;
+    std::string end_date;
+    
+    // Search members
+    bool has_search_query = false;
+    std::string search_query;
+    SearchMode search_mode = SearchMode::title;
     
     void RefreshTitles();
     void RefreshFilterOptions();

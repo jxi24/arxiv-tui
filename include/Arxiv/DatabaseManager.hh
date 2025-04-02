@@ -19,6 +19,9 @@ class DatabaseManager {
     virtual std::vector<Article> GetRecent(int days);
     virtual std::vector<Article> ListBookmarked();
     virtual std::vector<Article> GetArticlesForProject(const std::string &project_name);
+    virtual std::vector<Article> GetArticlesForDateRange(const std::string &start_date, const std::string &end_date);
+    virtual std::vector<Article> SearchArticles(const std::string &query, bool search_title = true, 
+                                              bool search_authors = true, bool search_abstract = true);
     virtual void ToggleBookmark(const std::string &link, bool bookmarked=true);
 
     // Project management

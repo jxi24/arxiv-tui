@@ -53,6 +53,22 @@ private:
     static constexpr int border_size = 3;
     static constexpr float scroll_speed = 4.0f;  // Scroll speed in characters per second
 
+    // Date range dialog
+    enum class DateInputMode {
+        Start,
+        End
+    };
+    DateInputMode date_input_mode = DateInputMode::Start;
+    std::string start_date;
+    std::string end_date;
+    Component date_range_dialog;
+
+    // Search dialog
+    std::string search_query;
+    AppCore::SearchMode search_field = AppCore::SearchMode::title;  // Default to searching in title
+    int selected_search_option = 0;  // 0: query, 1: title, 2: authors, 3: abstract
+    Component search_dialog;
+
     // Article pane scrolling
     int visible_rows = 0;  // Number of rows visible in the article pane
     int top_article_index = 0;  // Index of the article at the top of the visible area
