@@ -216,9 +216,26 @@ void ArxivApp::SetupUI() {
         }
         
         const auto& article = articles[static_cast<size_t>(core.GetArticleIndex())];
+        
+        // Process authors to limit to 15
+        std::string authors_display = article.authors;
+        size_t comma_count = 0;
+        size_t last_comma_pos = 0;
+        
+        for(size_t i = 0; i < authors_display.length(); i++) {
+            if(authors_display[i] == ',') {
+                comma_count++;
+                last_comma_pos = i;
+                if(comma_count >= 14) {  // After 14 commas, we have 15 authors
+                    authors_display = authors_display.substr(0, last_comma_pos) + ", et. al.";
+                    break;
+                }
+            }
+        }
+        
         return vbox({
             text("Title: " + article.title) | bold | color(TextColors::primary),
-            paragraph("Authors: " + article.authors) | color(TextColors::text),
+            paragraph("Authors: " + authors_display) | color(TextColors::text),
             text("Link: " + article.link) | color(TextColors::secondary),
             separator() | color(TextColors::border),
             paragraph("Abstract: \n" + article.abstract) | color(TextColors::text),

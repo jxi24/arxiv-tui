@@ -1,9 +1,7 @@
 #include "Arxiv/AppCore.hh"
 #include "spdlog/spdlog.h"
-#include "fmt/format.h"
 
 #include <algorithm>
-#include <chrono>
 
 namespace Arxiv {
 
