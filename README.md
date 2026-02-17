@@ -187,9 +187,10 @@ All dependencies except SQLite3 are fetched automatically via [CPM](https://gith
 
 ### Article Ranking
 - Assign a personal relevance score (1–5 stars) to individual articles
-- Sort the article list by score in addition to date
 - Persist scores in the SQLite database alongside bookmarks
-- Surface highly-rated papers prominently in a dedicated "Top Rated" filter
+- Learn from rated articles to infer relevance of new, unrated papers — bringing the most interesting new articles to the top of the list automatically
+- Provide a "Recommended" filter that surfaces unread papers ranked by predicted relevance
+- Fall back to date ordering when no ranking signal is available
 
 ### Extended Project Management
 - Nest projects in a hierarchy (sub-projects / collections)
@@ -220,4 +221,4 @@ Contributions are welcome. Please open an issue to discuss a feature or bug befo
 
 ## License
 
-This project does not currently specify a license. All rights reserved by the author unless otherwise noted.
+This project is licensed under the [GNU General Public License v3.0](LICENSE) (GPLv3). You are free to use, modify, and distribute this software under the terms of the GPLv3.
