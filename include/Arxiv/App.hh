@@ -48,6 +48,7 @@ private:
     std::atomic<bool> refresh_ui_continue = true;
     std::thread refresh_ui;
     std::string err_msg = "";
+    std::string bibtex_content;
     static constexpr int arrow_size = 2;
     static constexpr int padding = 4;
     static constexpr int border_size = 3;

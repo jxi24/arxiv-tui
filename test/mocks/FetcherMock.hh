@@ -19,6 +19,7 @@ public:
     MAKE_MOCK0(FetchToday, std::vector<Arxiv::Article>(), override);
     MAKE_MOCK2(DownloadPaper, bool(const std::string&, const std::string&), override);
     MAKE_MOCK1(GetPaperAbstract, std::string(const std::string&), override);
+    MAKE_MOCK1(FetchBibtex, std::string(const std::string&), override);
 
     // Helper methods for testing
     void setFetchResponse(const std::vector<Arxiv::Article>& articles) {
@@ -39,6 +40,11 @@ public:
     void setGetPaperAbstractResponse(const std::string& abstract) {
         ALLOW_CALL(*this, GetPaperAbstract(trompeloeil::_))
             .RETURN(abstract);
+    }
+
+    void setFetchBibtexResponse(const std::string& bibtex) {
+        ALLOW_CALL(*this, FetchBibtex(trompeloeil::_))
+            .RETURN(bibtex);
     }
 };
 

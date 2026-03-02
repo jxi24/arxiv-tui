@@ -147,6 +147,20 @@ void ArxivApp::SetupUI() {
                 }
                 return true;
             }
+            if(key_bindings.matches(event, KeyBindings::Action::GenerateBibtex)) {
+                auto articles = core.GetCurrentArticles();
+                if(!articles.empty()) {
+                    auto article = articles[static_cast<size_t>(core.GetArticleIndex())];
+                    bibtex_content = core.GetBibtex(article);
+                    if(bibtex_content.empty()) {
+                        dialog_depth = 3;
+                        err_msg = fmt::format("Failed to generate BibTeX for: {}", article.id());
+                    } else {
+                        dialog_depth = 6;
+                    }
+                }
+                return true;
+            }
             return false;
         });
 
@@ -476,6 +490,36 @@ void ArxivApp::SetupUI() {
                 document,
                 search_dialog->Render(),
             });
+        } else if (dialog_depth == 6) {
+            // Split bibtex_content into lines for display
+            Elements bibtex_lines;
+            std::string line;
+            for(char ch : bibtex_content) {
+                if(ch == '\n') {
+                    bibtex_lines.push_back(text(line) | color(TextColors::text));
+                    line.clear();
+                } else {
+                    line += ch;
+                }
+            }
+            if(!line.empty()) {
+                bibtex_lines.push_back(text(line) | color(TextColors::text));
+            }
+
+            auto bibtex_dialog = vbox({
+                text("BibTeX Citation") | bold | color(TextColors::primary),
+                separator() | color(TextColors::border),
+                vbox(bibtex_lines) | frame,
+                separator() | color(TextColors::border),
+                hbox({
+                    text("Press y to copy to clipboard, Esc to close") | color(TextColors::subtext),
+                }) | center,
+            }) | borderStyled(ROUNDED, TextColors::border) | bgcolor(TextColors::surface) | clear_under | center;
+
+            document = dbox({
+                document,
+                bibtex_dialog,
+            });
         }
 
         // Add help dialog if active
@@ -604,6 +648,27 @@ void ArxivApp::SetupUI() {
                 dialog_depth = 0;
                 search_query.clear();
                 selected_search_option = 0;
+                return true;
+            }
+            return true;
+        }
+
+        // Handle BibTeX dialog
+        if (dialog_depth == 6) {
+            if (event == Event::Escape) {
+                dialog_depth = 0;
+                bibtex_content.clear();
+                return true;
+            }
+            if (event == Event::Character('y')) {
+                // Copy to clipboard using available clipboard tool
+                FILE* pipe = popen("xclip -selection clipboard 2>/dev/null || xsel --clipboard --input 2>/dev/null || wl-copy 2>/dev/null", "w");
+                if(pipe) {
+                    fwrite(bibtex_content.c_str(), 1, bibtex_content.size(), pipe);
+                    pclose(pipe);
+                }
+                dialog_depth = 0;
+                bibtex_content.clear();
                 return true;
             }
             return true;

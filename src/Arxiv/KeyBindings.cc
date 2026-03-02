@@ -17,6 +17,7 @@ KeyBindings::KeyBindings(const std::vector<Config::KeyMapping>& mappings) {
         else if (mapping.action == "download_article") bindings_[Action::DownloadArticle] = mapping.key;
         else if (mapping.action == "show_detail") bindings_[Action::ShowDetail] = mapping.key;
         else if (mapping.action == "show_help") bindings_[Action::ShowHelp] = mapping.key;
+        else if (mapping.action == "generate_bibtex") bindings_[Action::GenerateBibtex] = mapping.key;
     }
 }
 
@@ -34,7 +35,8 @@ void KeyBindings::init_defaults() {
         {Action::Bookmark, "b"},
         {Action::ShowHelp, "?"},
         {Action::SetDateRange, "r"},
-        {Action::Search, "/"}
+        {Action::Search, "/"},
+        {Action::GenerateBibtex, "c"}
     };
 }
 
@@ -58,6 +60,7 @@ std::string KeyBindings::get_action_name(Action action) {
         case Action::ShowHelp: return "Show Help";
         case Action::SetDateRange: return "Set Date Range";
         case Action::Search: return "Search";
+        case Action::GenerateBibtex: return "Generate BibTeX";
         default: return "Unknown";
     }
 }

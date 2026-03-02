@@ -96,6 +96,24 @@ std::string Fetcher::GetPaperAbstract(const std::string &paper_id) {
     }
 }
 
+std::string Fetcher::FetchBibtex(const std::string &arxiv_id) {
+    try {
+        auto url = fmt::format("https://inspirehep.net/api/arxiv/{}?format=bibtex", arxiv_id);
+        auto response = cpr::Get(cpr::Url{url}, cpr::Timeout{5000});
+
+        if(response.status_code == 200) {
+            spdlog::info("[Fetcher]: Successfully fetched BibTeX for {}", arxiv_id);
+            return response.text;
+        } else {
+            spdlog::warn("[Fetcher]: Failed to fetch BibTeX for {}: HTTP {}", arxiv_id, response.status_code);
+            return "";
+        }
+    } catch (const std::exception &e) {
+        spdlog::warn("[Fetcher]: Error fetching BibTeX for {}: {}", arxiv_id, e.what());
+        return "";
+    }
+}
+
 std::string Fetcher::ConstructPaperUrl(const std::string &paper_id, const std::string &format) const {
     return fmt::format("https://arxiv.org/{}/{}", format, paper_id);
 }

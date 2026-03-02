@@ -23,7 +23,8 @@ public:
         Bookmark,
         ShowHelp,
         SetDateRange,
-        Search
+        Search,
+        GenerateBibtex
     };
 
     KeyBindings() = default;

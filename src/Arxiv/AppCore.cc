@@ -1,5 +1,6 @@
 #include "Arxiv/AppCore.hh"
 #include "spdlog/spdlog.h"
+#include "fmt/format.h"
 
 #include <algorithm>
 
@@ -71,6 +72,76 @@ void AppCore::ToggleBookmark(const std::string& article_link) {
 
 bool AppCore::DownloadArticle(const std::string &article_id) {
     return m_fetcher->DownloadPaper(article_id, article_id + ".pdf");
+}
+
+std::string AppCore::GetBibtex(const Article& article) {
+    std::string arxiv_id = article.id();
+    if(arxiv_id.empty()) return "";
+
+    std::string bibtex = m_fetcher->FetchBibtex(arxiv_id);
+    if(!bibtex.empty()) {
+        return bibtex;
+    }
+
+    return ConstructBibtexFromArticle(article);
+}
+
+std::string AppCore::ConstructBibtexFromArticle(const Article& article) const {
+    std::string arxiv_id = article.id();
+    if(arxiv_id.empty()) return "";
+
+    // Extract first author's last name for the cite key
+    std::string first_author_last;
+    std::string authors_str = article.authors;
+    size_t comma_pos = authors_str.find(',');
+    std::string first_author = (comma_pos != std::string::npos)
+        ? authors_str.substr(0, comma_pos) : authors_str;
+
+    // Get last name (last word of the first author)
+    size_t last_space = first_author.rfind(' ');
+    if(last_space != std::string::npos) {
+        first_author_last = first_author.substr(last_space + 1);
+    } else {
+        first_author_last = first_author;
+    }
+
+    // Extract year and month from article date
+    auto time_t = std::chrono::system_clock::to_time_t(article.date);
+    std::tm tm = *std::localtime(&time_t);
+    std::string year = std::to_string(1900 + tm.tm_year);
+    std::string month = std::to_string(1 + tm.tm_mon);
+
+    // Extract primary class from category (first one)
+    std::string primary_class = article.category;
+    size_t cat_comma = primary_class.find(',');
+    if(cat_comma != std::string::npos) {
+        primary_class = primary_class.substr(0, cat_comma);
+    }
+    // Trim whitespace
+    while(!primary_class.empty() && primary_class.back() == ' ') primary_class.pop_back();
+
+    // Format authors for BibTeX (replace ", " with " and ")
+    std::string bibtex_authors = article.authors;
+    std::string search = ", ";
+    std::string replace = " and ";
+    size_t pos = 0;
+    while((pos = bibtex_authors.find(search, pos)) != std::string::npos) {
+        bibtex_authors.replace(pos, search.length(), replace);
+        pos += replace.length();
+    }
+
+    return fmt::format(
+        "@article{{{0}:{1},\n"
+        "    author = \"{2}\",\n"
+        "    title = \"{{{3}}}\",\n"
+        "    eprint = \"{1}\",\n"
+        "    archivePrefix = \"arXiv\",\n"
+        "    primaryClass = \"{4}\",\n"
+        "    year = \"{5}\",\n"
+        "    month = \"{6}\"\n"
+        "}}",
+        first_author_last, arxiv_id, bibtex_authors, article.title,
+        primary_class, year, month);
 }
 
 std::vector<Article> AppCore::GetCurrentArticles() const {

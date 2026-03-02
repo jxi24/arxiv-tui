@@ -21,6 +21,7 @@ class Fetcher {
     virtual std::vector<Article> FetchToday();
     virtual bool DownloadPaper(const std::string &paper_id, const std::string &output_path);
     virtual std::string GetPaperAbstract(const std::string &paper_id);
+    virtual std::string FetchBibtex(const std::string &arxiv_id);
 
   private:
     static constexpr bool testing = false;
