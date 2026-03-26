@@ -13,6 +13,7 @@ void Config::load_from_file(const std::string& config_file) {
         // Create default configuration
         article_settings_.download_dir = "downloads";
         article_settings_.topics = {"hep-ph", "hep-ex", "hep-lat", "hep-th"};
+        recommend_threshold_ = 3.5f;
         
         // Default key mappings
         key_mappings_ = {
@@ -36,6 +37,11 @@ void Config::load_from_file(const std::string& config_file) {
         const auto& ds = config["article_settings"];
         article_settings_.download_dir = ds["download_dir"].as<std::string>();
         article_settings_.topics = ds["topics"].as<std::vector<std::string>>();
+    }
+
+    // Load recommendation threshold
+    if (config["recommend_threshold"]) {
+        recommend_threshold_ = config["recommend_threshold"].as<float>();
     }
 
     // Load key mappings
@@ -68,6 +74,8 @@ void Config::save_to_file(const std::string& config_file) const {
         key_mappings.push_back(mapping_node);
     }
     config["key_mappings"] = key_mappings;
+
+    config["recommend_threshold"] = recommend_threshold_;
 
     std::ofstream fout(config_file);
     fout << config;

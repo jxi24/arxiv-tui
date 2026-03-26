@@ -193,7 +193,79 @@ TEST_CASE("AppCore state management", "[app]") {
     }
 }
 
+TEST_CASE("AppCore rating and recommendation", "[app][ranking]") {
+    Config config("test/fixtures/test_config.yml");
+    auto db = std::make_unique<DatabaseManagerMock>();
+    auto fetcher = std::make_unique<FetcherMock>();
+    auto* db_ptr = db.get();
+    auto* fetcher_ptr = fetcher.get();
+
+    fetcher_ptr->setFetchResponse(sample_articles);
+    db_ptr->setArticles(sample_articles);
+    db_ptr->setBookmarkedArticles({});
+    db_ptr->setProjects({});
+
+    Arxiv::AppCore core(config, std::move(db), std::move(fetcher));
+
+    SECTION("RateArticle stores rating and retrieves it") {
+        auto articles = core.GetCurrentArticles();
+        REQUIRE_FALSE(articles.empty());
+        const std::string& link = articles[0].link;
+
+        // Set up expectation: SetRating will be called
+        REQUIRE_CALL(*db_ptr, SetRating(link, 4));
+        // After rating, GetRatedArticles is called again for retraining
+        std::vector<std::pair<Arxiv::Article, int>> rated = {{articles[0], 4}};
+        ALLOW_CALL(*db_ptr, GetRatedArticles()).RETURN(rated);
+        ALLOW_CALL(*db_ptr, GetRecent(-1)).RETURN(sample_articles);
+
+        core.RateArticle(link, 4);
+
+        // GetRating should return the mocked value
+        ALLOW_CALL(*db_ptr, GetRating(link)).RETURN(4);
+        REQUIRE(core.GetArticleRating(link) == 4);
+    }
+
+    SECTION("Rating out of range [1,5] is rejected") {
+        auto articles = core.GetCurrentArticles();
+        REQUIRE_FALSE(articles.empty());
+        const std::string& link = articles[0].link;
+
+        // SetRating should NOT be called for invalid ratings
+        FORBID_CALL(*db_ptr, SetRating(link, ANY(int)));
+
+        core.RateArticle(link, 0);
+        core.RateArticle(link, 6);
+    }
+
+    SECTION("Recommended filter is present in filter options") {
+        auto options = core.GetFilterOptions();
+        auto it = std::find(options.begin(), options.end(), "Recommended");
+        REQUIRE(it != options.end());
+        // Recommended should be at index 5
+        REQUIRE(std::distance(options.begin(), it) == 5);
+    }
+
+    SECTION("Recommend threshold getter and setter") {
+        float default_threshold = core.GetRecommendThreshold();
+        REQUIRE(default_threshold > 0.0f);
+        REQUIRE(default_threshold <= 5.0f);
+
+        ALLOW_CALL(*db_ptr, GetRecent(1)).RETURN(sample_articles);
+        core.SetRecommendThreshold(4.0f);
+        REQUIRE(core.GetRecommendThreshold() == 4.0f);
+    }
+
+    SECTION("GetPredictedScore returns 0 when ranker is untrained") {
+        auto articles = core.GetCurrentArticles();
+        REQUIRE_FALSE(articles.empty());
+        // No ratings provided, so ranker is untrained
+        REQUIRE_FALSE(core.IsRankerTrained());
+        REQUIRE(core.GetPredictedScore(articles[0]) == 0.0f);
+    }
+}
+
 // Note: Most of the ArxivApp's functionality is UI-based and involves
 // private components that can't be directly tested in unit tests.
 // The actual functionality should be tested through integration tests
-// that simulate user interactions with the UI. 
+// that simulate user interactions with the UI.

@@ -11,8 +11,9 @@ AppCore::AppCore(const Config& config,
     : m_config(config)
     , m_topics(config.get_topics())
     , m_db(std::move(db))
-    , m_fetcher(std::move(fetcher)) {
-    
+    , m_fetcher(std::move(fetcher))
+    , m_recommend_threshold(config.get_recommend_threshold()) {
+
     spdlog::info("ArxivAppCore Initialized");
     auto articles = m_fetcher->Fetch();
     for(const auto &article : articles) {
@@ -20,6 +21,13 @@ AppCore::AppCore(const Config& config,
     }
     RefreshFilterOptions();
     FetchArticles();
+    // Fit vocabulary on the full corpus and train if ratings exist
+    auto all_articles = m_db->GetRecent(-1);
+    m_ranker.FitVocabulary(all_articles);
+    auto rated = m_db->GetRatedArticles();
+    if (!rated.empty()) {
+        m_ranker.Train(rated);
+    }
 }
 
 void AppCore::FetchArticles() {
@@ -42,12 +50,35 @@ void AppCore::FetchArticles() {
             bool search_title = (search_mode == SearchMode::title);
             bool search_authors = (search_mode == SearchMode::authors);
             bool search_abstract = (search_mode == SearchMode::abstract);
-            m_current_articles = m_db->SearchArticles(search_query, search_title, 
+            m_current_articles = m_db->SearchArticles(search_query, search_title,
                                                     search_authors, search_abstract);
         } else {
             m_current_articles = m_db->GetRecent(-1);
         }
-    } else {  // Project
+    } else if (m_filter_index == 5) {  // Recommended
+        auto today_articles = m_db->GetRecent(1);
+        if (m_ranker.IsTrained()) {
+            // Score each article and keep those above the threshold
+            std::vector<std::pair<float, Article>> scored;
+            scored.reserve(today_articles.size());
+            for (const auto &a : today_articles) {
+                float score = m_ranker.Predict(a);
+                if (score >= m_recommend_threshold) {
+                    scored.emplace_back(score, a);
+                }
+            }
+            // Sort by predicted score descending
+            std::sort(scored.begin(), scored.end(),
+                      [](const auto &lhs, const auto &rhs) { return lhs.first > rhs.first; });
+            m_current_articles.clear();
+            for (auto &[score, article] : scored) {
+                m_current_articles.push_back(std::move(article));
+            }
+        } else {
+            // Ranker not trained yet — show today's articles unranked
+            m_current_articles = today_articles;
+        }
+    } else {  // Project (index >= 6)
         std::string project_name = m_filter_options[static_cast<size_t>(m_filter_index)];
         m_current_articles = GetArticlesForProject(project_name);
     }
@@ -187,7 +218,7 @@ void AppCore::RefreshTitles() {
 }
 
 void AppCore::RefreshFilterOptions() {
-    m_filter_options = {"All Articles", "Bookmarks", "Today", "Range", "Search"};
+    m_filter_options = {"All Articles", "Bookmarks", "Today", "Range", "Search", "Recommended"};
     for(const auto& project : GetProjects()) {
         m_filter_options.push_back(project);
     }
@@ -222,6 +253,40 @@ void AppCore::ClearSearch() {
     search_query.clear();
     search_mode = SearchMode::title;
     FetchArticles();
+}
+
+void AppCore::RateArticle(const std::string &article_link, int rating) {
+    if (rating < 1 || rating > 5) return;
+    m_db->SetRating(article_link, rating);
+    spdlog::info("[AppCore]: Rated article {} with {}", article_link, rating);
+
+    // Retrain the ranker with the updated ratings
+    auto all_articles = m_db->GetRecent(-1);
+    m_ranker.FitVocabulary(all_articles);
+    auto rated = m_db->GetRatedArticles();
+    m_ranker.Train(rated);
+
+    // Refresh the current view if on the Recommended filter
+    if (m_filter_index == 5) {
+        FetchArticles();
+    } else {
+        NotifyArticleUpdate();
+    }
+}
+
+int AppCore::GetArticleRating(const std::string &article_link) const {
+    return m_db->GetRating(article_link);
+}
+
+float AppCore::GetPredictedScore(const Article &article) const {
+    return m_ranker.Predict(article);
+}
+
+void AppCore::SetRecommendThreshold(float threshold) {
+    m_recommend_threshold = threshold;
+    if (m_filter_index == 5) {
+        FetchArticles();
+    }
 }
 
 void AppCore::NotifyArticleUpdate() {

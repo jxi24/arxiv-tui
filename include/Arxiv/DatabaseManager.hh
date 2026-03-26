@@ -24,6 +24,11 @@ class DatabaseManager {
                                               bool search_authors = true, bool search_abstract = true);
     virtual void ToggleBookmark(const std::string &link, bool bookmarked=true);
 
+    // Rating management
+    virtual void SetRating(const std::string &link, int rating);
+    virtual int GetRating(const std::string &link);
+    virtual std::vector<std::pair<Article, int>> GetRatedArticles();
+
     // Project management
     virtual void AddProject(const std::string &project_name);
     virtual void RemoveProject(const std::string &project_name);

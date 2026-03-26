@@ -5,6 +5,7 @@ add_library(libarxiv-tui
     DatabaseManager.cc
     Config.cc
     KeyBindings.cc
+    Ranker.cc
 )
 target_link_libraries(libarxiv-tui PRIVATE arxiv_tui_options arxiv_tui_warnings
                                     PUBLIC spdlog::spdlog std::filesystem

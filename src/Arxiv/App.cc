@@ -83,7 +83,7 @@ void ArxivApp::SetupUI() {
                 return true;
             }
             if(key_bindings.matches(event, KeyBindings::Action::DeleteProject)) {
-                if(core.GetFilterIndex() > 2) {
+                if(core.GetFilterIndex() > 5) {
                     core.RemoveProject(core.GetFilterOptions()[static_cast<size_t>(core.GetFilterIndex())]);
                 }
                 return true;
@@ -179,23 +179,33 @@ void ArxivApp::SetupUI() {
         // Update visible range
         UpdateVisibleRange();
 
+        bool show_scores = (core.GetFilterIndex() == 5) && core.IsRankerTrained();
         Elements menu_items;
         // Only render articles in the visible range
-        for(size_t i = static_cast<size_t>(top_article_index); 
-            i < std::min(static_cast<size_t>(top_article_index + visible_rows), articles.size()); 
+        for(size_t i = static_cast<size_t>(top_article_index);
+            i < std::min(static_cast<size_t>(top_article_index + visible_rows), articles.size());
             ++i) {
             const auto& article = articles[i];
             std::string title = article.title;
-            
+
+            // Append predicted score badge for Recommended view
+            std::string score_badge;
+            if (show_scores) {
+                float score = core.GetPredictedScore(article);
+                char buf[16];
+                std::snprintf(buf, sizeof(buf), " [%.1f★]", score);
+                score_badge = buf;
+            }
+
             if(i == static_cast<size_t>(core.GetArticleIndex())) {
                 size_t start_pos = static_cast<size_t>(std::floor(title_start_position)) % article.title.length();
                 if(title.length() > static_cast<size_t>(articles_width - 2)) {
                     title = title.substr(start_pos) + "    " + title.substr(0, start_pos);
                 }
-                title = "> " + title;
+                title = "> " + title + score_badge;
                 menu_items.push_back(text(title) | bold | color(TextColors::primary));
             } else {
-                title = "  " + title;
+                title = "  " + title + score_badge;
                 menu_items.push_back(text(title) | color(TextColors::text));
             }
         }
@@ -419,6 +429,46 @@ void ArxivApp::SetupUI() {
         return vbox(elements) | borderStyled(ROUNDED, TextColors::border) | bgcolor(TextColors::surface) | clear_under | center;
     });
 
+    // Rating dialog (dialog_depth == 6)
+    rating_dialog = Renderer([&] {
+        if (dialog_depth != 6) return emptyElement();
+
+        auto articles = core.GetCurrentArticles();
+        std::string article_title = articles.empty() ? "" :
+            articles[static_cast<size_t>(core.GetArticleIndex())].title;
+        int current_rating = articles.empty() ? 0 :
+            core.GetArticleRating(articles[static_cast<size_t>(core.GetArticleIndex())].link);
+
+        std::vector<Element> stars;
+        for (int i = 1; i <= 5; ++i) {
+            std::string label = std::to_string(i) + " star" + (i > 1 ? "s" : "");
+            auto item = text(label);
+            if (i == pending_rating) {
+                item = text("> " + label) | bold | color(TextColors::primary);
+            } else {
+                item = text("  " + label) | color(TextColors::text);
+            }
+            if (i == current_rating) {
+                item = item | color(TextColors::secondary);
+            }
+            stars.push_back(item);
+        }
+
+        return vbox({
+            text("Rate Article") | bold | color(TextColors::primary),
+            separator() | color(TextColors::border),
+            paragraph(article_title) | color(TextColors::subtext),
+            separator() | color(TextColors::border),
+            text(current_rating > 0
+                 ? "Current rating: " + std::to_string(current_rating) + "/5"
+                 : "Not yet rated") | color(TextColors::subtext),
+            separator() | color(TextColors::border),
+            vbox(stars),
+            separator() | color(TextColors::border),
+            text("j/k to select, Enter to save, Esc to cancel") | color(TextColors::subtext),
+        }) | borderStyled(ROUNDED, TextColors::border) | bgcolor(TextColors::surface) | clear_under | center;
+    });
+
     main_renderer = Renderer(main_container, [&] {
         int filter_width = FilterPaneWidth();
         int remaining_width = Terminal::Size().dimx - filter_width - border_size; 
@@ -475,6 +525,11 @@ void ArxivApp::SetupUI() {
             document = dbox({
                 document,
                 search_dialog->Render(),
+            });
+        } else if (dialog_depth == 6) {
+            document = dbox({
+                document,
+                rating_dialog->Render(),
             });
         }
 
@@ -610,10 +665,61 @@ void ArxivApp::SetupUI() {
         }
 
         // Handle search key binding
-        if (key_bindings.matches(event, KeyBindings::Action::Search)) {  // Search filter is selected
+        if (key_bindings.matches(event, KeyBindings::Action::Search)) {
             dialog_depth = 5;
             search_query.clear();
             selected_search_option = 0;
+            return true;
+        }
+
+        // Handle rating dialog events
+        if (dialog_depth == 6) {
+            if (event == Event::Return) {
+                if (pending_rating >= 1 && pending_rating <= 5) {
+                    auto articles = core.GetCurrentArticles();
+                    if (!articles.empty()) {
+                        core.RateArticle(
+                            articles[static_cast<size_t>(core.GetArticleIndex())].link,
+                            pending_rating);
+                    }
+                }
+                dialog_depth = 0;
+                pending_rating = 0;
+                return true;
+            }
+            if (key_bindings.matches(event, KeyBindings::Action::Next)) {
+                pending_rating = std::min(pending_rating + 1, 5);
+                return true;
+            }
+            if (key_bindings.matches(event, KeyBindings::Action::Previous)) {
+                pending_rating = std::max(pending_rating - 1, 1);
+                return true;
+            }
+            // Allow pressing 1-5 directly
+            if (event.is_character() && event.character().size() == 1) {
+                char c = event.character()[0];
+                if (c >= '1' && c <= '5') {
+                    pending_rating = c - '0';
+                }
+                return true;
+            }
+            if (event == Event::Escape) {
+                dialog_depth = 0;
+                pending_rating = 0;
+                return true;
+            }
+            return true;
+        }
+
+        // Open rating dialog
+        if (key_bindings.matches(event, KeyBindings::Action::RateArticle)) {
+            auto articles = core.GetCurrentArticles();
+            if (!articles.empty()) {
+                dialog_depth = 6;
+                int existing = core.GetArticleRating(
+                    articles[static_cast<size_t>(core.GetArticleIndex())].link);
+                pending_rating = existing > 0 ? existing : 3;
+            }
             return true;
         }
 

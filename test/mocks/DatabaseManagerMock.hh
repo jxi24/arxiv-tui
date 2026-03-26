@@ -13,7 +13,13 @@ namespace test {
 class DatabaseManagerMock : public Arxiv::DatabaseManager {
 public:
     // Constructor
-    DatabaseManagerMock() : Arxiv::DatabaseManager(":memory:") {} // Use in-memory SQLite database for testing
+    DatabaseManagerMock() : Arxiv::DatabaseManager(":memory:") {
+        // Default: rated articles list is empty unless overridden
+        ALLOW_CALL(*this, GetRatedArticles())
+            .RETURN(std::vector<std::pair<Arxiv::Article, int>>{});
+        ALLOW_CALL(*this, GetRating(ANY(std::string)))
+            .RETURN(0);
+    }
 
     // Mock methods using trompeloeil
     MAKE_MOCK1(AddArticle, void(const Arxiv::Article&), override);
@@ -26,6 +32,14 @@ public:
     MAKE_MOCK0(GetProjects, std::vector<std::string>(), override);
     MAKE_MOCK2(LinkArticleToProject, void(const std::string&, const std::string&), override);
     MAKE_MOCK2(UnlinkArticleFromProject, void(const std::string&, const std::string&), override);
+    MAKE_MOCK1(GetProjectsForArticle, std::vector<std::string>(const std::string&), override);
+    MAKE_MOCK2(GetArticlesForDateRange, std::vector<Arxiv::Article>(const std::string&, const std::string&), override);
+    MAKE_MOCK4(SearchArticles, std::vector<Arxiv::Article>(const std::string&, bool, bool, bool), override);
+
+    // Rating mocks
+    MAKE_MOCK2(SetRating, void(const std::string&, int), override);
+    MAKE_MOCK1(GetRating, int(const std::string&), override);
+    MAKE_MOCK0(GetRatedArticles, std::vector<std::pair<Arxiv::Article, int>>(), override);
 
     // Helper methods to set up mock responses
     void setArticles(const std::vector<Arxiv::Article>& articles) {
@@ -52,6 +66,16 @@ public:
             .RETURN(projects);
     }
 
+    void setRatedArticles(const std::vector<std::pair<Arxiv::Article, int>>& rated) {
+        m_rated_articles = rated;
+        ALLOW_CALL(*this, GetRatedArticles())
+            .RETURN(rated);
+        for (const auto &[article, rating] : rated) {
+            ALLOW_CALL(*this, GetRating(article.link))
+                .RETURN(rating);
+        }
+    }
+
     void setBookmarkState(const std::string& article_link, bool is_bookmarked) {
         if (is_bookmarked) {
             auto it = std::find_if(m_articles.begin(), m_articles.end(),
@@ -75,6 +99,7 @@ private:
     std::vector<Arxiv::Article> m_bookmarked_articles;
     std::vector<std::string> m_projects;
     std::unordered_map<std::string, std::vector<Arxiv::Article>> m_project_articles;
+    std::vector<std::pair<Arxiv::Article, int>> m_rated_articles;
 };
 
 } // namespace test

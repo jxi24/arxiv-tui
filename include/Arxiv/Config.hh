@@ -30,11 +30,13 @@ public:
     const std::string& get_download_dir() const { return article_settings_.download_dir; }
     const std::vector<std::string>& get_topics() const { return article_settings_.topics; }
     const std::vector<KeyMapping>& get_key_mappings() const { return key_mappings_; }
+    float get_recommend_threshold() const { return recommend_threshold_; }
 
     // Setters
     void set_download_dir(const std::string& dir) { article_settings_.download_dir = dir; }
     void set_topics(const std::vector<std::string>& topics) { article_settings_.topics = topics; }
     void set_key_mappings(const std::vector<KeyMapping>& mappings) { key_mappings_ = mappings; }
+    void set_recommend_threshold(float t) { recommend_threshold_ = t; }
 
     // Save/Load configuration
     void save_to_file(const std::string& config_file) const;
@@ -43,6 +45,7 @@ public:
 private:
     ArticleSettings article_settings_;
     std::vector<KeyMapping> key_mappings_;
+    float recommend_threshold_{3.5f};
 };
 
 } // namespace arxiv_tui 

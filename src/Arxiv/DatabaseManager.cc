@@ -39,6 +39,12 @@ DatabaseManager::DatabaseManager(const std::string &path) {
                FOREIGN KEY(project_name) REFERENCES projects(name),
                FOREIGN KEY(article_link) REFERENCES articles(link)
                PRIMARY KEY (project_name, article_link)))");
+
+    // Create article ratings table
+    ExecuteSQL(R"(CREATE TABLE IF NOT EXISTS article_ratings (
+               article_link TEXT PRIMARY KEY,
+               rating INTEGER NOT NULL,
+               FOREIGN KEY(article_link) REFERENCES articles(link)))");
     spdlog::info("[Database]: Initialized");
 }
 
@@ -304,6 +310,48 @@ std::vector<Arxiv::Article> DatabaseManager::GetArticlesForDateRange(const std::
     
     spdlog::debug("[Database]: Found {} articles in date range", articles.size());
     return articles;
+}
+
+void DatabaseManager::SetRating(const std::string &link, int rating) {
+    spdlog::debug("[Database]: Setting rating {} for {}", rating, link);
+    std::string sql = fmt::format(
+        "INSERT OR REPLACE INTO article_ratings (article_link, rating) VALUES ('{}', {})",
+        EscapeString(link), rating);
+    ExecuteSQL(sql);
+}
+
+int DatabaseManager::GetRating(const std::string &link) {
+    sqlite3_stmt *stmt;
+    std::string sql = fmt::format(
+        "SELECT rating FROM article_ratings WHERE article_link = '{}'",
+        EscapeString(link));
+    int rating = 0;
+    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) == SQLITE_OK) {
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            rating = sqlite3_column_int(stmt, 0);
+        }
+        sqlite3_finalize(stmt);
+    }
+    return rating;
+}
+
+std::vector<std::pair<Arxiv::Article, int>> DatabaseManager::GetRatedArticles() {
+    std::vector<std::pair<Article, int>> result;
+    sqlite3_stmt *stmt;
+    std::string sql = R"(SELECT a.link, a.title, a.authors, a.abstract, a.date, a.bookmarked,
+                                r.rating
+                         FROM articles a
+                         JOIN article_ratings r ON a.link = r.article_link)";
+    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) == SQLITE_OK) {
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            Article article = RowToArticle(stmt);
+            int rating = sqlite3_column_int(stmt, 6);
+            result.emplace_back(std::move(article), rating);
+        }
+        sqlite3_finalize(stmt);
+    }
+    spdlog::debug("[Database]: Found {} rated articles", result.size());
+    return result;
 }
 
 std::vector<Arxiv::Article> DatabaseManager::SearchArticles(const std::string &query, bool search_title, 

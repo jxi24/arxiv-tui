@@ -23,7 +23,8 @@ public:
         Bookmark,
         ShowHelp,
         SetDateRange,
-        Search
+        Search,
+        RateArticle
     };
 
     KeyBindings() = default;

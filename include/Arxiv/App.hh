@@ -69,6 +69,10 @@ private:
     int selected_search_option = 0;  // 0: query, 1: title, 2: authors, 3: abstract
     Component search_dialog;
 
+    // Rating dialog (dialog_depth == 6)
+    int pending_rating = 0;  // 1-5 chosen by user
+    Component rating_dialog;
+
     // Article pane scrolling
     int visible_rows = 0;  // Number of rows visible in the article pane
     int top_article_index = 0;  // Index of the article at the top of the visible area

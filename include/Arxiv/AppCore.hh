@@ -10,6 +10,7 @@
 #include "Arxiv/DatabaseManager.hh"
 #include "Arxiv/Fetcher.hh"
 #include "Arxiv/Article.hh"
+#include "Arxiv/Ranker.hh"
 
 namespace Arxiv {
 
@@ -33,6 +34,14 @@ public:
     std::vector<Article> GetCurrentArticles() const;
     std::vector<std::string> GetCurrentTitles() const;
     std::vector<std::string> &GetCurrentTitles();
+
+    // Rating and ranking
+    void RateArticle(const std::string& article_link, int rating);
+    int GetArticleRating(const std::string& article_link) const;
+    float GetPredictedScore(const Article& article) const;
+    bool IsRankerTrained() const { return m_ranker.IsTrained(); }
+    void SetRecommendThreshold(float threshold);
+    float GetRecommendThreshold() const { return m_recommend_threshold; }
     
     // Project management
     void AddProject(const std::string& project_name);
@@ -79,6 +88,8 @@ private:
     std::vector<std::string> m_topics;
     std::unique_ptr<DatabaseManager> m_db;
     std::unique_ptr<Fetcher> m_fetcher;
+    Ranker m_ranker;
+    float m_recommend_threshold{3.5f};
     
     std::vector<Article> m_current_articles;
     std::vector<std::string> m_current_titles;
