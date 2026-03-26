@@ -8,27 +8,29 @@ A keyboard-driven terminal user interface for browsing, managing, and downloadin
 
 - **Live feed fetching** — pulls articles from arXiv RSS feeds for any set of categories
 - **Local persistence** — stores articles in a SQLite database so they remain available offline
-- **Filtering** — switch between All Articles, Bookmarks, Today, a custom date range, or a text search
+- **Filtering** — switch between All Articles, Bookmarks, Today, a custom date range, text search, or Recommended
 - **Full-text search** — search across titles, authors, and abstracts
 - **Bookmarks** — mark papers for later reading
 - **Projects** — group related articles into named collections
 - **PDF download** — fetch papers directly to a configurable local directory
 - **Configurable key bindings** — remap every action via a YAML file
 - **Scrolling detail pane** — read full titles and abstracts without leaving the terminal
+- **Personalised ranking** — rate articles 1–5 stars; a lightweight neural network learns your preferences and surfaces today's most relevant papers in the Recommended filter
 
 ---
 
 ## Screenshots
 
 ```
-┌─ Filter ─┬──────────────── Articles ─────────────────┬──── Detail ────┐
-│ All       │ Higgs boson production at NLO   Doe  2024 │ Higgs boson    │
-│ Bookmarks │ QCD corrections to top pair     Smith2024 │ production at  │
-│ Today     │ Lattice QCD at finite density   Lee  2024 │ NLO            │
-│ Range     │                                           │                │
-│ Search    │                                           │ J. Doe et al.  │
-│ my-project│                                           │                │
-└───────────┴───────────────────────────────────────────┴────────────────┘
+┌─ Filter ──────┬──────────────── Articles ──────────────────────┬──── Detail ────┐
+│ All           │ Higgs boson production at NLO [4.2★]  Doe  2024│ Higgs boson    │
+│ Bookmarks     │ QCD corrections to top pair   [3.8★]  Smith2024│ production at  │
+│ Today         │ Lattice QCD at finite density [3.1★]  Lee  2024│ NLO            │
+│ Range         │                                                 │                │
+│ Search        │                                                 │ J. Doe et al.  │
+│ Recommended   │                                                 │                │
+│ my-project    │                                                 │                │
+└───────────────┴─────────────────────────────────────────────────┴────────────────┘
 ```
 
 ---
@@ -89,6 +91,8 @@ article_settings:
     - hep-ex
     - hep-lat
     - hep-th
+recommend_threshold: 3.5
+retrain_interval: 5
 key_mappings:
   - action: next
     key: j
@@ -110,6 +114,10 @@ key_mappings:
 
 **`download_dir`** is the directory where PDFs are saved. It is created automatically if it does not exist.
 
+**`recommend_threshold`** is the minimum predicted score (1.0–5.0) an article must have to appear in the Recommended filter. Default: `3.5`.
+
+**`retrain_interval`** is the number of new article ratings that must accumulate before the ranking model is automatically retrained. Default: `5`. Press `R` at any time to force an immediate full retrain.
+
 ---
 
 ## Key Bindings
@@ -125,10 +133,12 @@ key_mappings:
 | `x` | Delete selected project |
 | `r` | Set date range filter |
 | `/` | Open search dialog |
+| `n` | Rate selected article (1–5 stars) |
+| `R` | Force a full retrain of the ranking model |
 | `?` | Toggle help overlay |
 | `q` | Quit |
 
-All bindings are remappable in `.arxiv-tui.yml`.
+All bindings except `R` (force retrain) are remappable in `.arxiv-tui.yml`.
 
 ---
 
@@ -137,7 +147,8 @@ All bindings are remappable in `.arxiv-tui.yml`.
 | File | Description |
 |------|-------------|
 | `.arxiv-tui.yml` | Configuration (created on first run) |
-| `articles.db` | SQLite database of fetched articles |
+| `articles.db` | SQLite database of fetched articles and ratings |
+| `ranker.bin` | Saved ranking model weights (created after first retrain) |
 | `arxiv_tui.log` | Application log (spdlog) |
 | `downloads/` | Default PDF download directory |
 
@@ -158,7 +169,8 @@ arxiv-tui/
 │   ├── Config.hh           # YAML config loader/saver
 │   ├── DatabaseManager.hh  # SQLite3 persistence interface
 │   ├── Fetcher.hh          # arXiv RSS fetcher / PDF downloader
-│   └── KeyBindings.hh      # Keyboard action mapping
+│   ├── KeyBindings.hh      # Keyboard action mapping
+│   └── Ranker.hh           # TF-IDF + MLP article ranking model
 ├── src/Arxiv/              # Implementations
 └── test/                   # Catch2 unit tests + trompeloeil mocks
 ```
@@ -183,14 +195,36 @@ All dependencies except SQLite3 are fetched automatically via [CPM](https://gith
 
 ---
 
-## Future Goals
+## Article Ranking
 
-### Article Ranking
-- Assign a personal relevance score (1–5 stars) to individual articles
-- Persist scores in the SQLite database alongside bookmarks
-- Learn from rated articles to infer relevance of new, unrated papers — bringing the most interesting new articles to the top of the list automatically
-- Provide a "Recommended" filter that surfaces unread papers ranked by predicted relevance
-- Fall back to date ordering when no ranking signal is available
+arxiv-tui includes a built-in personalised ranking system that learns from the articles you rate and automatically surfaces the most relevant new papers each day.
+
+### How it works
+
+1. **Rate articles** — press `n` on any article to give it a score from 1 to 5 stars.
+2. **Automatic learning** — once you have rated at least 3 articles, and every `retrain_interval` new ratings thereafter, the model retrains in the background on a separate thread so the TUI stays responsive. A `[Training…]` badge appears in the article pane header while training is in progress, and a `[N rating(s) pending]` counter shows how many more ratings are needed to trigger the next retrain.
+3. **Recommended filter** — select **Recommended** in the filter pane to see today's articles that score at or above `recommend_threshold`. Articles are sorted by predicted score, and each entry shows a `[X.X★]` badge.
+4. **Force retrain** — press `R` at any time to immediately trigger a full cold-start retrain (rebuilds the vocabulary and resets the network weights). Use this when the corpus has grown significantly or scores feel stale.
+
+### Technical details
+
+The ranker is implemented in pure C++17 with no external ML dependencies:
+
+- **TF-IDF vectorisation** — article text (title weighted 2×, abstract 1×) is tokenised, stop-word filtered, and projected onto the top 512 vocabulary terms by document frequency.
+- **2-layer MLP** — input (512) → hidden (32 units, ReLU) → output (1 unit, sigmoid scaled to [1.0, 5.0]). Weights are Xavier-initialised and trained with full-batch SGD + MSE loss for 200 epochs.
+- **Warm-start retraining** — threshold-triggered retrains continue from the existing weights rather than re-initialising, so each incremental update builds on prior learning. Force retrain (`R`) performs a cold start with a fresh vocabulary.
+- **Persistence** — the trained model (vocabulary map, IDF weights, all network tensors) is saved to `ranker.bin` after every retrain and loaded automatically on startup, so no retraining is needed between sessions.
+
+### Configuration
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `recommend_threshold` | `3.5` | Minimum predicted score for the Recommended filter |
+| `retrain_interval` | `5` | New ratings required before an automatic retrain |
+
+---
+
+## Future Goals
 
 ### Extended Project Management
 - Nest projects in a hierarchy (sub-projects / collections)
