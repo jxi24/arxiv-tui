@@ -210,8 +210,14 @@ void ArxivApp::SetupUI() {
             }
         }
 
-        return vbox({
+        Element header = hbox({
             text("Articles") | (focused_pane == 1 ? inverted : bold) | color(TextColors::primary),
+            core.IsTraining()
+                ? text("  [Training…]") | color(TextColors::secondary)
+                : emptyElement(),
+        });
+        return vbox({
+            header,
             separator() | color(TextColors::border),
             vbox(menu_items) | vscroll_indicator | frame
         }) | borderStyled(ROUNDED, TextColors::border) | bgcolor(TextColors::base);
@@ -816,7 +822,10 @@ void ArxivApp::SetupUI() {
         while (refresh_ui_continue) {
             using namespace std::chrono_literals;
             std::this_thread::sleep_for(0.05s);
-            screen.Post([&] { UpdateTitleScrollPositions(); });
+            screen.Post([&] {
+                UpdateTitleScrollPositions();
+                core.TryRefetchIfNeeded();
+            });
             screen.Post(Event::Custom);
         }
     });

@@ -5,6 +5,9 @@
 #include <string>
 #include <vector>
 #include <functional>
+#include <atomic>
+#include <mutex>
+#include <thread>
 
 #include "Arxiv/Config.hh"
 #include "Arxiv/DatabaseManager.hh"
@@ -20,6 +23,7 @@ public:
     explicit AppCore(const Config &config,
                     std::unique_ptr<DatabaseManager> db,
                     std::unique_ptr<Fetcher> fetcher);
+    ~AppCore();
     
     enum class SearchMode {
         title,
@@ -39,7 +43,11 @@ public:
     void RateArticle(const std::string& article_link, int rating);
     int GetArticleRating(const std::string& article_link) const;
     float GetPredictedScore(const Article& article) const;
-    bool IsRankerTrained() const { return m_ranker.IsTrained(); }
+    bool IsRankerTrained() const;
+    bool IsTraining() const { return m_training.load(); }
+    // Called from the UI refresh loop to re-fetch articles after background
+    // training completes. Must be called on the main thread.
+    void TryRefetchIfNeeded();
     void SetRecommendThreshold(float threshold);
     float GetRecommendThreshold() const { return m_recommend_threshold; }
     
@@ -89,6 +97,10 @@ private:
     std::unique_ptr<DatabaseManager> m_db;
     std::unique_ptr<Fetcher> m_fetcher;
     Ranker m_ranker;
+    mutable std::mutex m_ranker_mutex;
+    std::thread m_train_thread;
+    std::atomic<bool> m_training{false};
+    std::atomic<bool> m_needs_refetch{false};
     float m_recommend_threshold{3.5f};
     std::string m_ranker_path{"ranker.bin"};
     

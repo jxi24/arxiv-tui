@@ -21,16 +21,22 @@ AppCore::AppCore(const Config& config,
     }
     RefreshFilterOptions();
     FetchArticles();
-    // Try to restore a previously saved model first
+    // Try to restore a previously saved model; fall back to training if absent
     if (!m_ranker.Load(m_ranker_path)) {
-        // No saved model — fit vocabulary and train from ratings in the DB
         auto all_articles = m_db->GetRecent(-1);
-        m_ranker.FitVocabulary(all_articles);
         auto rated = m_db->GetRatedArticles();
         if (!rated.empty()) {
+            m_ranker.FitVocabulary(all_articles);
             m_ranker.Train(rated);
             m_ranker.Save(m_ranker_path);
         }
+    }
+}
+
+AppCore::~AppCore() {
+    // Ensure the background training thread has finished before destruction.
+    if (m_train_thread.joinable()) {
+        m_train_thread.join();
     }
 }
 
@@ -264,18 +270,45 @@ void AppCore::RateArticle(const std::string &article_link, int rating) {
     m_db->SetRating(article_link, rating);
     spdlog::info("[AppCore]: Rated article {} with {}", article_link, rating);
 
-    // Retrain the ranker with the updated ratings
-    auto all_articles = m_db->GetRecent(-1);
-    m_ranker.FitVocabulary(all_articles);
-    auto rated = m_db->GetRatedArticles();
-    m_ranker.Train(rated);
-    m_ranker.Save(m_ranker_path);
+    // Join any previously completed training thread before spawning a new one.
+    if (m_train_thread.joinable()) {
+        m_train_thread.join();
+    }
 
-    // Refresh the current view if on the Recommended filter
-    if (m_filter_index == 5) {
-        FetchArticles();
-    } else {
+    // Snapshot the training data on the main thread before handing off.
+    auto all_articles = m_db->GetRecent(-1);
+    auto rated        = m_db->GetRatedArticles();
+
+    m_training = true;
+    m_train_thread = std::thread([this,
+                                   all_articles = std::move(all_articles),
+                                   rated        = std::move(rated)]() mutable {
+        Ranker new_ranker;
+        new_ranker.FitVocabulary(all_articles);
+        new_ranker.Train(rated);
+        new_ranker.Save(m_ranker_path);
+
+        {
+            std::lock_guard<std::mutex> lock(m_ranker_mutex);
+            m_ranker = std::move(new_ranker);
+        }
+        m_training      = false;
+        m_needs_refetch = true;
+        // NotifyArticleUpdate posts Event::Custom to the FTXUI screen,
+        // which is thread-safe. The main thread will call TryRefetchIfNeeded
+        // on the next refresh tick.
         NotifyArticleUpdate();
+    });
+}
+
+bool AppCore::IsRankerTrained() const {
+    std::lock_guard<std::mutex> lock(m_ranker_mutex);
+    return m_ranker.IsTrained();
+}
+
+void AppCore::TryRefetchIfNeeded() {
+    if (m_needs_refetch.exchange(false)) {
+        FetchArticles();
     }
 }
 
@@ -284,6 +317,7 @@ int AppCore::GetArticleRating(const std::string &article_link) const {
 }
 
 float AppCore::GetPredictedScore(const Article &article) const {
+    std::lock_guard<std::mutex> lock(m_ranker_mutex);
     return m_ranker.Predict(article);
 }
 
