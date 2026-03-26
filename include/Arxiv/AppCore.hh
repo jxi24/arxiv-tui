@@ -90,6 +90,7 @@ private:
     std::unique_ptr<Fetcher> m_fetcher;
     Ranker m_ranker;
     float m_recommend_threshold{3.5f};
+    std::string m_ranker_path{"ranker.bin"};
     
     std::vector<Article> m_current_articles;
     std::vector<std::string> m_current_titles;

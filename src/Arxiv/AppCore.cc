@@ -21,12 +21,16 @@ AppCore::AppCore(const Config& config,
     }
     RefreshFilterOptions();
     FetchArticles();
-    // Fit vocabulary on the full corpus and train if ratings exist
-    auto all_articles = m_db->GetRecent(-1);
-    m_ranker.FitVocabulary(all_articles);
-    auto rated = m_db->GetRatedArticles();
-    if (!rated.empty()) {
-        m_ranker.Train(rated);
+    // Try to restore a previously saved model first
+    if (!m_ranker.Load(m_ranker_path)) {
+        // No saved model — fit vocabulary and train from ratings in the DB
+        auto all_articles = m_db->GetRecent(-1);
+        m_ranker.FitVocabulary(all_articles);
+        auto rated = m_db->GetRatedArticles();
+        if (!rated.empty()) {
+            m_ranker.Train(rated);
+            m_ranker.Save(m_ranker_path);
+        }
     }
 }
 
@@ -265,6 +269,7 @@ void AppCore::RateArticle(const std::string &article_link, int rating) {
     m_ranker.FitVocabulary(all_articles);
     auto rated = m_db->GetRatedArticles();
     m_ranker.Train(rated);
+    m_ranker.Save(m_ranker_path);
 
     // Refresh the current view if on the Recommended filter
     if (m_filter_index == 5) {

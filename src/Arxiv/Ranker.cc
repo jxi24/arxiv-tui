@@ -3,6 +3,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
+#include <fstream>
 #include <random>
 #include <sstream>
 #include <unordered_set>
@@ -282,6 +284,138 @@ float Ranker::Predict(const Article &article) const {
     std::vector<float> h;
     float raw = Forward(x, h);
     return ScaleOutput(raw);
+}
+
+// ---------------------------------------------------------------------------
+// Persistence helpers
+// ---------------------------------------------------------------------------
+// Binary format:
+//   [4 bytes] magic "RANK"
+//   [4 bytes] int32 version (currently 1)
+//   [4 bytes] int32 vocab_size
+//   for each vocab entry:
+//     [4 bytes] int32 term_len
+//     [term_len bytes] term chars
+//     [4 bytes] int32 column_index
+//   [MAX_FEATURES * 4 bytes] IDF weights
+//   [HIDDEN_SIZE * MAX_FEATURES * 4 bytes] W1
+//   [HIDDEN_SIZE * 4 bytes] b1
+//   [HIDDEN_SIZE * 4 bytes] W2
+//   [4 bytes] b2
+//   [4 bytes] int32 trained flag (0 or 1)
+
+static void write_i32(std::ofstream &f, int32_t v) {
+    f.write(reinterpret_cast<const char*>(&v), sizeof(v));
+}
+static void write_f32(std::ofstream &f, float v) {
+    f.write(reinterpret_cast<const char*>(&v), sizeof(v));
+}
+static bool read_i32(std::ifstream &f, int32_t &v) {
+    return static_cast<bool>(f.read(reinterpret_cast<char*>(&v), sizeof(v)));
+}
+static bool read_f32(std::ifstream &f, float &v) {
+    return static_cast<bool>(f.read(reinterpret_cast<char*>(&v), sizeof(v)));
+}
+
+bool Ranker::Save(const std::string &path) const {
+    std::ofstream f(path, std::ios::binary | std::ios::trunc);
+    if (!f) {
+        spdlog::error("[Ranker]: Cannot open '{}' for writing", path);
+        return false;
+    }
+
+    // Magic + version
+    f.write("RANK", 4);
+    write_i32(f, 1);
+
+    // Vocabulary
+    write_i32(f, static_cast<int32_t>(m_vocab.size()));
+    for (const auto &[term, idx] : m_vocab) {
+        write_i32(f, static_cast<int32_t>(term.size()));
+        f.write(term.data(), static_cast<std::streamsize>(term.size()));
+        write_i32(f, static_cast<int32_t>(idx));
+    }
+
+    // IDF, weights, biases
+    for (float v : m_idf)  write_f32(f, v);
+    for (float v : m_W1)   write_f32(f, v);
+    for (float v : m_b1)   write_f32(f, v);
+    for (float v : m_W2)   write_f32(f, v);
+    write_f32(f, m_b2);
+    write_i32(f, m_trained ? 1 : 0);
+
+    if (!f) {
+        spdlog::error("[Ranker]: Write error while saving to '{}'", path);
+        return false;
+    }
+    spdlog::info("[Ranker]: Model saved to '{}'", path);
+    return true;
+}
+
+bool Ranker::Load(const std::string &path) {
+    std::ifstream f(path, std::ios::binary);
+    if (!f) {
+        spdlog::debug("[Ranker]: No saved model at '{}'", path);
+        return false;
+    }
+
+    // Magic
+    char magic[4]{};
+    if (!f.read(magic, 4) || std::strncmp(magic, "RANK", 4) != 0) {
+        spdlog::error("[Ranker]: Invalid magic in '{}'", path);
+        return false;
+    }
+
+    // Version
+    int32_t version = 0;
+    if (!read_i32(f, version) || version != 1) {
+        spdlog::error("[Ranker]: Unsupported model version {} in '{}'", version, path);
+        return false;
+    }
+
+    // Vocabulary
+    int32_t vocab_size = 0;
+    if (!read_i32(f, vocab_size)) return false;
+    std::unordered_map<std::string, int> vocab;
+    vocab.reserve(static_cast<size_t>(vocab_size));
+    for (int32_t i = 0; i < vocab_size; ++i) {
+        int32_t term_len = 0;
+        if (!read_i32(f, term_len) || term_len <= 0 || term_len > 256) return false;
+        std::string term(static_cast<size_t>(term_len), '\0');
+        if (!f.read(term.data(), term_len)) return false;
+        int32_t idx = 0;
+        if (!read_i32(f, idx)) return false;
+        vocab[term] = static_cast<int>(idx);
+    }
+
+    // IDF
+    std::vector<float> idf(static_cast<size_t>(MAX_FEATURES));
+    for (auto &v : idf) if (!read_f32(f, v)) return false;
+
+    // Weights
+    std::vector<float> W1(static_cast<size_t>(HIDDEN_SIZE * MAX_FEATURES));
+    std::vector<float> b1(static_cast<size_t>(HIDDEN_SIZE));
+    std::vector<float> W2(static_cast<size_t>(HIDDEN_SIZE));
+    float b2 = 0.0f;
+    for (auto &v : W1) if (!read_f32(f, v)) return false;
+    for (auto &v : b1) if (!read_f32(f, v)) return false;
+    for (auto &v : W2) if (!read_f32(f, v)) return false;
+    if (!read_f32(f, b2)) return false;
+
+    int32_t trained_flag = 0;
+    if (!read_i32(f, trained_flag)) return false;
+
+    // Commit loaded state only after all reads succeeded
+    m_vocab   = std::move(vocab);
+    m_idf     = std::move(idf);
+    m_W1      = std::move(W1);
+    m_b1      = std::move(b1);
+    m_W2      = std::move(W2);
+    m_b2      = b2;
+    m_trained = (trained_flag != 0);
+
+    spdlog::info("[Ranker]: Model loaded from '{}'", path);
+    return true;
 }
 
 } // namespace Arxiv

@@ -36,6 +36,14 @@ public:
 
     bool IsTrained() const { return m_trained; }
 
+    // Persist the trained model (vocabulary + weights) to a binary file.
+    // Returns true on success.
+    bool Save(const std::string &path) const;
+
+    // Load a previously saved model from a binary file.
+    // Returns true on success; leaves the object unchanged on failure.
+    bool Load(const std::string &path);
+
 private:
     // Vocabulary: term → column index in the feature vector
     std::unordered_map<std::string, int> m_vocab;
