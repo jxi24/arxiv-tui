@@ -12,6 +12,7 @@ AppCore::AppCore(const Config& config,
     , m_topics(config.get_topics())
     , m_db(std::move(db))
     , m_fetcher(std::move(fetcher))
+    , m_retrain_interval(config.get_retrain_interval())
     , m_recommend_threshold(config.get_recommend_threshold()) {
 
     spdlog::info("ArxivAppCore Initialized");
@@ -270,33 +271,64 @@ void AppCore::RateArticle(const std::string &article_link, int rating) {
     m_db->SetRating(article_link, rating);
     spdlog::info("[AppCore]: Rated article {} with {}", article_link, rating);
 
-    // Join any previously completed training thread before spawning a new one.
+    ++m_ratings_since_train;
+    spdlog::debug("[AppCore]: {} new rating(s) pending (threshold: {})",
+                  m_ratings_since_train, m_retrain_interval);
+
+    if (m_ratings_since_train >= m_retrain_interval) {
+        m_ratings_since_train = 0;
+        SpawnTrainingThread(/*warm_start=*/true);
+    } else {
+        // Not at threshold yet — just refresh the UI so the rating display
+        // updates without triggering training.
+        NotifyArticleUpdate();
+    }
+}
+
+void AppCore::ForceRetrain() {
+    spdlog::info("[AppCore]: Full retrain requested");
+    m_ratings_since_train = 0;
+    SpawnTrainingThread(/*warm_start=*/false);
+}
+
+void AppCore::SpawnTrainingThread(bool warm_start) {
+    // Join any previously completed thread before spawning a new one.
     if (m_train_thread.joinable()) {
         m_train_thread.join();
     }
 
-    // Snapshot the training data on the main thread before handing off.
+    // Snapshot training data on the main thread.
     auto all_articles = m_db->GetRecent(-1);
     auto rated        = m_db->GetRatedArticles();
 
+    // For warm-start, copy the current ranker (vocab + weights) to the thread.
+    // For cold-start, a default-constructed Ranker will be used.
+    Ranker seed_ranker;
+    if (warm_start) {
+        std::lock_guard<std::mutex> lock(m_ranker_mutex);
+        seed_ranker = m_ranker;
+    }
+
     m_training = true;
-    m_train_thread = std::thread([this,
+    m_train_thread = std::thread([this, warm_start,
                                    all_articles = std::move(all_articles),
-                                   rated        = std::move(rated)]() mutable {
-        Ranker new_ranker;
-        new_ranker.FitVocabulary(all_articles);
-        new_ranker.Train(rated);
-        new_ranker.Save(m_ranker_path);
+                                   rated        = std::move(rated),
+                                   seed_ranker  = std::move(seed_ranker)]() mutable {
+        if (!warm_start) {
+            // Cold start: build fresh vocabulary then train from scratch.
+            seed_ranker = Ranker{};
+            seed_ranker.FitVocabulary(all_articles);
+        }
+        // warm_start=true keeps the existing vocab; only SGD continues.
+        seed_ranker.Train(rated, warm_start);
+        seed_ranker.Save(m_ranker_path);
 
         {
             std::lock_guard<std::mutex> lock(m_ranker_mutex);
-            m_ranker = std::move(new_ranker);
+            m_ranker = std::move(seed_ranker);
         }
         m_training      = false;
         m_needs_refetch = true;
-        // NotifyArticleUpdate posts Event::Custom to the FTXUI screen,
-        // which is thread-safe. The main thread will call TryRefetchIfNeeded
-        // on the next refresh tick.
         NotifyArticleUpdate();
     });
 }

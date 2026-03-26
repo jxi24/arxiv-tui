@@ -190,15 +190,19 @@ float Ranker::NormaliseTarget(float rating) {
 // ---------------------------------------------------------------------------
 // Train — SGD on the rated articles
 // ---------------------------------------------------------------------------
-void Ranker::Train(const std::vector<std::pair<Article, int>> &rated) {
+void Ranker::Train(const std::vector<std::pair<Article, int>> &rated, bool warm_start) {
     if (static_cast<int>(rated.size()) < MIN_TRAIN) {
         spdlog::info("[Ranker]: Not enough rated articles to train ({} < {})",
                      rated.size(), MIN_TRAIN);
         return;
     }
 
-    // Re-initialise weights for a clean training run
-    InitWeights();
+    if (!warm_start) {
+        // Cold start: re-initialise weights before training.
+        InitWeights();
+    } else {
+        spdlog::info("[Ranker]: Warm-start — continuing from existing weights");
+    }
 
     // Pre-vectorise all training samples
     std::vector<std::vector<float>> X;

@@ -45,9 +45,13 @@ public:
     float GetPredictedScore(const Article& article) const;
     bool IsRankerTrained() const;
     bool IsTraining() const { return m_training.load(); }
+    int  PendingRatings() const { return m_ratings_since_train; }
     // Called from the UI refresh loop to re-fetch articles after background
     // training completes. Must be called on the main thread.
     void TryRefetchIfNeeded();
+    // Force a full cold-start retrain (new vocabulary, reset weights) regardless
+    // of the pending-ratings counter.
+    void ForceRetrain();
     void SetRecommendThreshold(float threshold);
     float GetRecommendThreshold() const { return m_recommend_threshold; }
     
@@ -101,8 +105,15 @@ private:
     std::thread m_train_thread;
     std::atomic<bool> m_training{false};
     std::atomic<bool> m_needs_refetch{false};
+    int  m_ratings_since_train{0};
+    int  m_retrain_interval{5};
     float m_recommend_threshold{3.5f};
     std::string m_ranker_path{"ranker.bin"};
+
+    // Snapshot training data and spawn a background thread.
+    // warm_start=true: keep existing vocab and weights as starting point.
+    // warm_start=false: refit vocabulary and reset weights (full retrain).
+    void SpawnTrainingThread(bool warm_start);
     
     std::vector<Article> m_current_articles;
     std::vector<std::string> m_current_titles;

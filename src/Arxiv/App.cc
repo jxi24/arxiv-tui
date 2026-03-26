@@ -210,11 +210,14 @@ void ArxivApp::SetupUI() {
             }
         }
 
+        int pending = core.PendingRatings();
         Element header = hbox({
             text("Articles") | (focused_pane == 1 ? inverted : bold) | color(TextColors::primary),
             core.IsTraining()
                 ? text("  [Training…]") | color(TextColors::secondary)
-                : emptyElement(),
+                : (pending > 0
+                    ? text("  [" + std::to_string(pending) + " rating(s) pending]") | color(TextColors::subtext)
+                    : emptyElement()),
         });
         return vbox({
             header,
@@ -714,6 +717,12 @@ void ArxivApp::SetupUI() {
                 pending_rating = 0;
                 return true;
             }
+            return true;
+        }
+
+        // Force full retrain
+        if (key_bindings.matches(event, KeyBindings::Action::ForceRetrain)) {
+            core.ForceRetrain();
             return true;
         }
 

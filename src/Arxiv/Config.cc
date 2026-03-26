@@ -14,6 +14,7 @@ void Config::load_from_file(const std::string& config_file) {
         article_settings_.download_dir = "downloads";
         article_settings_.topics = {"hep-ph", "hep-ex", "hep-lat", "hep-th"};
         recommend_threshold_ = 3.5f;
+        retrain_interval_    = 5;
         
         // Default key mappings
         key_mappings_ = {
@@ -42,6 +43,11 @@ void Config::load_from_file(const std::string& config_file) {
     // Load recommendation threshold
     if (config["recommend_threshold"]) {
         recommend_threshold_ = config["recommend_threshold"].as<float>();
+    }
+
+    // Load retrain interval
+    if (config["retrain_interval"]) {
+        retrain_interval_ = config["retrain_interval"].as<int>();
     }
 
     // Load key mappings
@@ -76,6 +82,7 @@ void Config::save_to_file(const std::string& config_file) const {
     config["key_mappings"] = key_mappings;
 
     config["recommend_threshold"] = recommend_threshold_;
+    config["retrain_interval"]    = retrain_interval_;
 
     std::ofstream fout(config_file);
     fout << config;

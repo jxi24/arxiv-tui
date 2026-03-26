@@ -24,7 +24,8 @@ public:
         ShowHelp,
         SetDateRange,
         Search,
-        RateArticle
+        RateArticle,
+        ForceRetrain
     };
 
     KeyBindings() = default;

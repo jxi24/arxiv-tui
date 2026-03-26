@@ -28,7 +28,10 @@ public:
     void FitVocabulary(const std::vector<Article> &articles);
 
     // Train the MLP on the set of rated articles (ratings 1-5).
-    void Train(const std::vector<std::pair<Article, int>> &rated);
+    // warm_start=true: continue from the current weights (vocabulary must not
+    // have changed).  warm_start=false (default): re-initialise weights first.
+    void Train(const std::vector<std::pair<Article, int>> &rated,
+               bool warm_start = false);
 
     // Predict a score in [1.0, 5.0] for an unrated article.
     // Returns 0.0 if the model has not been trained yet.
