@@ -133,8 +133,15 @@ std::vector<std::string> &AppCore::GetCurrentTitles() {
 }
 
 void AppCore::AddProject(const std::string& project_name) {
-    if(!project_name.empty()) {
-        m_db->AddProject(project_name);
+    // Trim leading/trailing whitespace; reject if result is empty.
+    std::string trimmed = project_name;
+    trimmed.erase(0, trimmed.find_first_not_of(" \t\n\r"));
+    auto last = trimmed.find_last_not_of(" \t\n\r");
+    if (last == std::string::npos) trimmed.clear();
+    else trimmed.erase(last + 1);
+
+    if (!trimmed.empty()) {
+        m_db->AddProject(trimmed);
         RefreshFilterOptions();
         if(m_project_update_callback) {
             m_project_update_callback();
@@ -179,6 +186,13 @@ std::vector<std::string> &AppCore::GetFilterOptions() {
 }
 
 void AppCore::SetFilterIndex(int index) {
+    // Clamp to the valid range so callers cannot reach an unhandled branch.
+    if (!m_filter_options.empty()) {
+        int max_idx = static_cast<int>(m_filter_options.size()) - 1;
+        index = std::max(0, std::min(index, max_idx));
+    } else {
+        index = 0;
+    }
     if(index != m_filter_index) {
         m_filter_index = index;
         FetchArticles();

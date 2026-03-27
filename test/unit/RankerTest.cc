@@ -3,6 +3,8 @@
 
 #include <Arxiv/Ranker.hh>
 #include <fixtures/test_data.hh>
+#include <cmath>
+#include <fstream>
 
 using namespace Arxiv;
 using namespace arxiv_tui::test::fixtures;
@@ -142,4 +144,131 @@ TEST_CASE("Ranker learns preference signal", "[ranker]") {
 
     // The model should predict a higher score for the quantum/physics article
     REQUIRE(pos_score > neg_score);
+}
+
+// ---------------------------------------------------------------------------
+// Ranker — boundary conditions
+// TDD: these tests were written before implementing the guarded behaviour.
+// ---------------------------------------------------------------------------
+TEST_CASE("Ranker boundary conditions", "[ranker]") {
+    SECTION("Predict before FitVocabulary returns 0 without crashing") {
+        Ranker r;
+        REQUIRE_NOTHROW(r.Predict(sample_articles[0]));
+        REQUIRE(r.Predict(sample_articles[0]) == 0.0f);
+    }
+
+    SECTION("Train with exactly MIN_TRAIN samples succeeds") {
+        std::vector<Article> corpus;
+        std::vector<std::pair<Article, int>> rated;
+        auto base = sample_articles[0];
+        for (int i = 0; i < Ranker::MIN_TRAIN; ++i) {
+            Article a = base;
+            a.link = "https://arxiv.org/abs/min." + std::to_string(i);
+            a.title = "Min train article " + std::to_string(i);
+            corpus.push_back(a);
+            rated.emplace_back(a, (i % 5) + 1);
+        }
+        Ranker r;
+        r.FitVocabulary(corpus);
+        r.Train(rated);
+        REQUIRE(r.IsTrained());
+    }
+
+    SECTION("Train with MIN_TRAIN - 1 samples leaves model untrained") {
+        std::vector<Article> corpus;
+        std::vector<std::pair<Article, int>> rated;
+        auto base = sample_articles[0];
+        for (int i = 0; i < Ranker::MIN_TRAIN - 1; ++i) {
+            Article a = base;
+            a.link = "https://arxiv.org/abs/below." + std::to_string(i);
+            corpus.push_back(a);
+            rated.emplace_back(a, (i % 5) + 1);
+        }
+        Ranker r;
+        r.FitVocabulary(corpus);
+        r.Train(rated);
+        REQUIRE_FALSE(r.IsTrained());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Ranker — persistence (Save / Load)
+// ---------------------------------------------------------------------------
+
+// Helper: build a trained ranker with 5 rated articles
+static Ranker make_trained_ranker() {
+    auto base = sample_articles[0];
+    std::vector<Article> corpus;
+    std::vector<std::pair<Article, int>> rated;
+    for (int i = 0; i < 5; ++i) {
+        Article a = base;
+        a.link    = "https://arxiv.org/abs/pers." + std::to_string(i);
+        a.title   = "Persistence test article " + std::to_string(i);
+        a.abstract = "Abstract about topic " + std::to_string(i);
+        corpus.push_back(a);
+        rated.emplace_back(a, (i % 5) + 1);
+    }
+    Ranker r;
+    r.FitVocabulary(corpus);
+    r.Train(rated);
+    return r;
+}
+
+TEST_CASE("Ranker persistence", "[ranker]") {
+    SECTION("Save/Load round-trip preserves trained state and predictions") {
+        Ranker trained = make_trained_ranker();
+        REQUIRE(trained.IsTrained());
+
+        const std::string path = "/tmp/arxiv_tui_test_ranker.bin";
+        REQUIRE(trained.Save(path));
+
+        Ranker loaded;
+        REQUIRE(loaded.Load(path));
+        REQUIRE(loaded.IsTrained());
+
+        // Predictions must match within floating-point tolerance
+        Article probe = sample_articles[0];
+        probe.link    = "https://arxiv.org/abs/pers.0";
+        probe.title   = "Persistence test article 0";
+        float original = trained.Predict(probe);
+        float reloaded = loaded.Predict(probe);
+        REQUIRE(std::abs(original - reloaded) < 0.001f);
+    }
+
+    SECTION("Load from nonexistent path returns false; model is unchanged") {
+        Ranker r;
+        REQUIRE_FALSE(r.Load("/no/such/file/ranker.bin"));
+        REQUIRE_FALSE(r.IsTrained());
+    }
+
+    SECTION("Load from a file with bad magic returns false") {
+        const std::string path = "/tmp/arxiv_tui_test_bad_magic.bin";
+        {
+            std::ofstream f(path, std::ios::binary);
+            f.write("JUNK", 4);  // wrong magic
+        }
+        Ranker r;
+        REQUIRE_FALSE(r.Load(path));
+        REQUIRE_FALSE(r.IsTrained());
+    }
+
+    SECTION("Load from a truncated file returns false; model is unchanged") {
+        // Write valid magic + version but nothing else
+        const std::string path = "/tmp/arxiv_tui_test_truncated.bin";
+        {
+            std::ofstream f(path, std::ios::binary);
+            f.write("RANK", 4);
+            int32_t version = 1;
+            f.write(reinterpret_cast<const char*>(&version), 4);
+            // Stop here — vocab_size is missing
+        }
+        Ranker r;
+        REQUIRE_FALSE(r.Load(path));
+        REQUIRE_FALSE(r.IsTrained());
+    }
+
+    SECTION("Save to unwritable path returns false") {
+        Ranker trained = make_trained_ranker();
+        REQUIRE_FALSE(trained.Save("/no/such/directory/ranker.bin"));
+    }
 }

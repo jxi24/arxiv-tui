@@ -456,6 +456,108 @@ TEST_CASE("AppCore project import", "[app][projects]") {
     }
 }
 
+// ---------------------------------------------------------------------------
+// AppCore edge cases
+// TDD: these tests were written first and confirmed failing before the fixes.
+// ---------------------------------------------------------------------------
+TEST_CASE("AppCore edge cases: SetFilterIndex bounds", "[app][edge]") {
+    Config config("test/fixtures/test_config.yml");
+    auto db = std::make_unique<DatabaseManagerMock>();
+    auto fetcher = std::make_unique<FetcherMock>();
+    auto* db_ptr = db.get();
+
+    db_ptr->setArticles(sample_articles);
+    db_ptr->setBookmarkedArticles({});
+    db_ptr->setProjects({});
+
+    Arxiv::AppCore core(config, std::move(db), std::move(fetcher));
+
+    SECTION("SetFilterIndex with negative index clamps to 0") {
+        // Out-of-range index must never reach the project branch of FetchArticles
+        FORBID_CALL(*db_ptr, GetArticlesForProject(ANY(std::string)));
+        core.SetFilterIndex(-1);
+        REQUIRE(core.GetFilterIndex() == 0);
+    }
+
+    SECTION("SetFilterIndex beyond last valid index clamps to last valid index") {
+        FORBID_CALL(*db_ptr, GetArticlesForProject(ANY(std::string)));
+        int max_idx = static_cast<int>(core.GetFilterOptions().size()) - 1;
+        core.SetFilterIndex(max_idx + 100);
+        REQUIRE(core.GetFilterIndex() == max_idx);
+    }
+}
+
+TEST_CASE("AppCore edge cases: AddProject validation", "[app][edge]") {
+    Config config("test/fixtures/test_config.yml");
+    auto db = std::make_unique<DatabaseManagerMock>();
+    auto fetcher = std::make_unique<FetcherMock>();
+    auto* db_ptr = db.get();
+
+    db_ptr->setArticles(sample_articles);
+    db_ptr->setBookmarkedArticles({});
+    db_ptr->setProjects({});
+
+    Arxiv::AppCore core(config, std::move(db), std::move(fetcher));
+
+    SECTION("AddProject with whitespace-only name is rejected") {
+        FORBID_CALL(*db_ptr, AddProject(ANY(std::string)));
+        core.AddProject("   ");
+        core.AddProject("\t");
+        core.AddProject("\n");
+    }
+
+    SECTION("AddProject with empty string is rejected") {
+        FORBID_CALL(*db_ptr, AddProject(ANY(std::string)));
+        core.AddProject("");
+    }
+
+    SECTION("AddProject with leading/trailing whitespace trims the name") {
+        ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{"My Project"});
+        ALLOW_CALL(*db_ptr, GetProjectParent(ANY(std::string))).RETURN(std::string{});
+        REQUIRE_CALL(*db_ptr, AddProject(std::string("My Project")));
+        core.AddProject("  My Project  ");
+    }
+}
+
+TEST_CASE("AppCore edge cases: ToggleBookmark guard", "[app][edge]") {
+    Config config("test/fixtures/test_config.yml");
+    auto db = std::make_unique<DatabaseManagerMock>();
+    auto fetcher = std::make_unique<FetcherMock>();
+    auto* db_ptr = db.get();
+
+    db_ptr->setArticles(sample_articles);
+    db_ptr->setBookmarkedArticles({});
+    db_ptr->setProjects({});
+
+    Arxiv::AppCore core(config, std::move(db), std::move(fetcher));
+
+    SECTION("ToggleBookmark on article not in current list is a no-op") {
+        FORBID_CALL(*db_ptr, ToggleBookmark(ANY(std::string), ANY(bool)));
+        core.ToggleBookmark("https://arxiv.org/abs/nonexistent");
+    }
+}
+
+TEST_CASE("AppCore edge cases: GetProjectNameForFilter", "[app][edge]") {
+    Config config("test/fixtures/test_config.yml");
+    auto db = std::make_unique<DatabaseManagerMock>();
+    auto fetcher = std::make_unique<FetcherMock>();
+
+    auto* db_ptr = db.get();
+    db_ptr->setArticles(sample_articles);
+    db_ptr->setBookmarkedArticles({});
+    db_ptr->setProjects({});
+
+    Arxiv::AppCore core(config, std::move(db), std::move(fetcher));
+
+    SECTION("GetProjectNameForFilter with very large index returns empty") {
+        REQUIRE(core.GetProjectNameForFilter(99999).empty());
+    }
+
+    SECTION("GetProjectNameForFilter with negative index returns empty") {
+        REQUIRE(core.GetProjectNameForFilter(-1).empty());
+    }
+}
+
 // Note: Most of the ArxivApp's functionality is UI-based and involves
 // private components that can't be directly tested in unit tests.
 // The actual functionality should be tested through integration tests
