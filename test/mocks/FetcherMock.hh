@@ -24,6 +24,7 @@ public:
     MAKE_MOCK0(FetchToday, std::vector<Arxiv::Article>(), override);
     MAKE_MOCK2(DownloadPaper, bool(const std::string&, const std::string&), override);
     MAKE_MOCK1(GetPaperAbstract, std::string(const std::string&), override);
+    MAKE_MOCK1(FetchBibTeX, std::string(const std::string&), override);
 
     // Helper methods for testing
     void setFetchResponse(const std::vector<Arxiv::Article>& articles) {
@@ -48,6 +49,20 @@ public:
         m_expectations.push_back(
             NAMED_ALLOW_CALL(*this, GetPaperAbstract(trompeloeil::_))
                 .RETURN(abstract));
+    }
+
+    /// Set the BibTeX response for a specific paper_id, or for any ID when
+    /// paper_id is empty.
+    void setBibTeXResponse(const std::string& paper_id, const std::string& bibtex) {
+        if (paper_id.empty()) {
+            m_expectations.push_back(
+                NAMED_ALLOW_CALL(*this, FetchBibTeX(trompeloeil::_))
+                    .RETURN(bibtex));
+        } else {
+            m_expectations.push_back(
+                NAMED_ALLOW_CALL(*this, FetchBibTeX(paper_id))
+                    .RETURN(bibtex));
+        }
     }
 
 private:

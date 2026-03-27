@@ -75,6 +75,11 @@ public:
     bool ExportProjectJSON(const std::string& project_name, const std::string& output_path) const;
     bool ImportProjectJSON(const std::string& input_path);
 
+    // BibTeX export
+    bool ExportArticleBibTeX(const Article& article, const std::string& output_path) const;
+    bool ExportArticlesBibTeX(const std::vector<Article>& articles, const std::string& output_path) const;
+    bool ExportProjectBibTeX(const std::string& project_name, const std::string& output_path) const;
+
     // Returns the actual project name for a filter index >= 6 (accounting for indented sub-projects)
     std::string GetProjectNameForFilter(int index) const;
     

@@ -28,7 +28,8 @@ public:
         ForceRetrain,
         EditNote,
         ExportProject,
-        ImportProject
+        ImportProject,
+        ExportBibTeX
     };
 
     KeyBindings() = default;

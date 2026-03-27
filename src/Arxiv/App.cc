@@ -530,16 +530,16 @@ void ArxivApp::SetupUI() {
     export_dialog = Renderer([&] {
         if (dialog_depth != 8) return emptyElement();
 
-        static const char* formats[] = {"Markdown (.md)", "Plain Text (.txt)", "JSON (.json)"};
+        static const char* formats[] = {"Markdown (.md)", "Plain Text (.txt)", "JSON (.json)", "BibTeX (.bib)"};
         Elements items;
-        for (int i = 0; i < 3; ++i) {
+        for (int i = 0; i < 4; ++i) {
             auto item = text(std::string(i == export_format_index ? "> " : "  ") + formats[i]);
             items.push_back(i == export_format_index
                 ? item | bold | color(TextColors::primary)
                 : item | color(TextColors::text));
         }
 
-        static const char* exts[] = {"md", "txt", "json"};
+        static const char* exts[] = {"md", "txt", "json", "bib"};
         std::string filename = export_project_name + "." + exts[export_format_index];
 
         return vbox({
@@ -864,7 +864,7 @@ void ArxivApp::SetupUI() {
         // Handle export dialog
         if (dialog_depth == 8) {
             if (event == Event::Return) {
-                static const char* exts[] = {"md", "txt", "json"};
+                static const char* exts[] = {"md", "txt", "json", "bib"};
                 std::string path = export_project_name + "." + exts[export_format_index];
                 bool ok = false;
                 if (export_format_index == 0) {
@@ -873,9 +873,12 @@ void ArxivApp::SetupUI() {
                 } else if (export_format_index == 1) {
                     ok = core.ExportProjectText(export_project_name, path);
                     if (m_recorder) m_recorder->RecordExportProjectText(export_project_name, path);
-                } else {
+                } else if (export_format_index == 2) {
                     ok = core.ExportProjectJSON(export_project_name, path);
                     if (m_recorder) m_recorder->RecordExportProjectJSON(export_project_name, path);
+                } else {
+                    ok = core.ExportProjectBibTeX(export_project_name, path);
+                    if (m_recorder) m_recorder->RecordExportProjectBibTeX(export_project_name, path);
                 }
                 dialog_depth = 0;
                 if (!ok) {
@@ -885,7 +888,7 @@ void ArxivApp::SetupUI() {
                 return true;
             }
             if (key_bindings.matches(event, KeyBindings::Action::Next)) {
-                export_format_index = std::min(export_format_index + 1, 2);
+                export_format_index = std::min(export_format_index + 1, 3);
                 return true;
             }
             if (key_bindings.matches(event, KeyBindings::Action::Previous)) {
@@ -938,6 +941,18 @@ void ArxivApp::SetupUI() {
                     note_edit_text = core.GetProjectNote(note_project_name, note_article_link);
                     dialog_depth = 7;
                 }
+            }
+            return true;
+        }
+
+        // Export BibTeX for current article (or current filtered view)
+        if (key_bindings.matches(event, KeyBindings::Action::ExportBibTeX)) {
+            auto articles = core.GetCurrentArticles();
+            if (!articles.empty()) {
+                const auto& art = articles[static_cast<size_t>(core.GetArticleIndex())];
+                std::string path = art.id() + ".bib";
+                core.ExportArticleBibTeX(art, path);
+                if (m_recorder) m_recorder->RecordExportArticleBibTeX(art.link, path);
             }
             return true;
         }

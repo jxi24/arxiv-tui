@@ -587,4 +587,110 @@ bool AppCore::ImportProjectJSON(const std::string& input_path) {
     return true;
 }
 
-} // namespace Arxiv 
+// ---------------------------------------------------------------------------
+// BibTeX helpers
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// Extract the last name from the first author in a comma-separated list.
+/// e.g. "John Doe, Jane Smith" → "Doe"
+static std::string first_author_last_name(const std::string& authors) {
+    // Take the portion before the first comma (= first author)
+    std::string first = authors.substr(0, authors.find(','));
+    // Last word is the last name
+    std::size_t space = first.rfind(' ');
+    if (space == std::string::npos) return first;
+    return first.substr(space + 1);
+}
+
+/// Build a fallback BibTeX entry from Article metadata.
+static std::string build_fallback_bibtex(const Arxiv::Article& article) {
+    // Extract arXiv ID from link (last path component)
+    std::string arxiv_id = article.id();
+
+    // Year from date
+    auto tt = std::chrono::system_clock::to_time_t(article.date);
+    std::tm tm = {};
+    localtime_r(&tt, &tm);
+    char year_buf[8];
+    std::strftime(year_buf, sizeof(year_buf), "%Y", &tm);
+
+    // Citation key: LastnameYear:arxivID
+    std::string key = first_author_last_name(article.authors) + ":" + year_buf
+                      + "_" + arxiv_id;
+    // Replace non-alphanumeric (except :_.) with underscore
+    for (char& c : key) {
+        if (!std::isalnum(static_cast<unsigned char>(c)) && c != ':' && c != '_' && c != '.') {
+            c = '_';
+        }
+    }
+
+    std::string bib;
+    bib += "@article{" + key + ",\n";
+    bib += "  author        = {" + article.authors + "},\n";
+    bib += "  title         = {{" + article.title + "}},\n";
+    bib += "  eprint        = {" + arxiv_id + "},\n";
+    bib += "  archivePrefix = {arXiv},\n";
+    if (!article.category.empty()) {
+        bib += "  primaryClass  = {" + article.category + "},\n";
+    }
+    bib += "  year          = {" + std::string(year_buf) + "},\n";
+    bib += "  url           = {" + article.link + "},\n";
+    bib += "}\n";
+    return bib;
+}
+
+} // anonymous namespace
+
+// ---------------------------------------------------------------------------
+// BibTeX export — AppCore methods
+// ---------------------------------------------------------------------------
+
+/// Fetch BibTeX for one article: try InspireHEP via the fetcher; fall back
+/// to constructing from article metadata.
+static std::string get_bibtex(const Arxiv::Article& article, Arxiv::Fetcher* fetcher) {
+    std::string arxiv_id = article.id();
+    std::string bib;
+    if (!arxiv_id.empty() && fetcher) {
+        bib = fetcher->FetchBibTeX(arxiv_id);
+    }
+    if (bib.empty()) {
+        bib = build_fallback_bibtex(article);
+    }
+    return bib;
+}
+
+bool AppCore::ExportArticleBibTeX(const Article& article,
+                                  const std::string& output_path) const {
+    std::ofstream file(output_path);
+    if (!file.is_open()) return false;
+    file << get_bibtex(article, m_fetcher.get()) << "\n";
+    spdlog::info("[AppCore]: Exported article '{}' BibTeX to {}", article.title, output_path);
+    return true;
+}
+
+bool AppCore::ExportArticlesBibTeX(const std::vector<Article>& articles,
+                                   const std::string& output_path) const {
+    std::ofstream file(output_path);
+    if (!file.is_open()) return false;
+    for (const auto& a : articles) {
+        file << get_bibtex(a, m_fetcher.get()) << "\n";
+    }
+    spdlog::info("[AppCore]: Exported {} article(s) BibTeX to {}", articles.size(), output_path);
+    return true;
+}
+
+bool AppCore::ExportProjectBibTeX(const std::string& project_name,
+                                  const std::string& output_path) const {
+    auto articles = m_db->GetArticlesForProject(project_name);
+    std::ofstream file(output_path);
+    if (!file.is_open()) return false;
+    for (const auto& a : articles) {
+        file << get_bibtex(a, m_fetcher.get()) << "\n";
+    }
+    spdlog::info("[AppCore]: Exported project '{}' BibTeX to {}", project_name, output_path);
+    return true;
+}
+
+} // namespace Arxiv

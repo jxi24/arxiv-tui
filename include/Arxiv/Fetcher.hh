@@ -21,6 +21,9 @@ class Fetcher {
     virtual std::vector<Article> FetchToday();
     virtual bool DownloadPaper(const std::string &paper_id, const std::string &output_path);
     virtual std::string GetPaperAbstract(const std::string &paper_id);
+    /// Fetch BibTeX for an arXiv paper. Tries InspireHEP first; returns an
+    /// empty string if the lookup fails (caller should generate fallback BibTeX).
+    virtual std::string FetchBibTeX(const std::string &paper_id);
 
   private:
     static constexpr bool testing = false;

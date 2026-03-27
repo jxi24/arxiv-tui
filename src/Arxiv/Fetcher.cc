@@ -5,6 +5,7 @@
 #include "spdlog/spdlog.h"
 #include "fmt/ranges.h"
 #include "pugixml.hpp"
+#include <nlohmann/json.hpp>
 #include <sstream>
 #include <fstream>
 
@@ -327,4 +328,42 @@ std::string Fetcher::ReplaceLatexAccents(const std::string& text) const {
     }
 
     return result;
+}
+
+std::string Fetcher::FetchBibTeX(const std::string& paper_id) {
+    // --- 1. Try InspireHEP ---
+    // Query the literature search API for the arXiv eprint.
+    const std::string inspire_search =
+        "https://inspirehep.net/api/literature?q=eprint+" + paper_id
+        + "&fields=texkeys&size=1";
+    try {
+        auto search_resp = cpr::Get(
+            cpr::Url{inspire_search},
+            cpr::Timeout{5000});
+
+        if (search_resp.status_code == 200) {
+            auto js = nlohmann::json::parse(search_resp.text);
+            auto& hits = js.at("hits").at("hits");
+            if (!hits.empty()) {
+                // The hit object carries a links.bibtex URL
+                std::string bibtex_url =
+                    hits[0].at("links").at("bibtex").get<std::string>();
+
+                auto bib_resp = cpr::Get(
+                    cpr::Url{bibtex_url},
+                    cpr::Timeout{5000});
+                if (bib_resp.status_code == 200 && !bib_resp.text.empty()) {
+                    spdlog::info("[Fetcher]: Got InspireHEP BibTeX for {}", paper_id);
+                    return bib_resp.text;
+                }
+            }
+        }
+    } catch (const std::exception& e) {
+        spdlog::warn("[Fetcher]: InspireHEP lookup failed for {}: {}", paper_id, e.what());
+    }
+
+    // --- 2. arXiv fallback ---
+    // Return empty; AppCore will construct BibTeX from its Article struct.
+    spdlog::debug("[Fetcher]: Returning empty BibTeX for {} (no InspireHEP hit)", paper_id);
+    return {};
 }

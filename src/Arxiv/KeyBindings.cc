@@ -39,7 +39,8 @@ void KeyBindings::init_defaults() {
         {Action::ForceRetrain, "R"},
         {Action::EditNote, "N"},
         {Action::ExportProject, "e"},
-        {Action::ImportProject, "I"}
+        {Action::ImportProject, "I"},
+        {Action::ExportBibTeX, "c"}
     };
 }
 
@@ -68,6 +69,7 @@ std::string KeyBindings::get_action_name(Action action) {
         case Action::EditNote: return "Edit Note";
         case Action::ExportProject: return "Export Project";
         case Action::ImportProject: return "Import Project";
+        case Action::ExportBibTeX:  return "Export BibTeX";
         default: return "Unknown";
     }
 }

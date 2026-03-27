@@ -50,6 +50,9 @@ public:
     void RecordExportProjectText(const std::string& project, const std::string& path);
     void RecordExportProjectJSON(const std::string& project, const std::string& path);
     void RecordImportProjectJSON(const std::string& path);
+    void RecordExportArticleBibTeX(const std::string& article_link, const std::string& path);
+    void RecordExportArticlesBibTeX(const std::string& path);
+    void RecordExportProjectBibTeX(const std::string& project, const std::string& path);
 
     // --- Accessors ---
 

@@ -157,6 +157,21 @@ void ReplayRecorder::RecordImportProjectJSON(const std::string& path) {
     Record(j.dump());
 }
 
+void ReplayRecorder::RecordExportArticleBibTeX(const std::string& article_link, const std::string& path) {
+    json j = {{"ts", NowMs()}, {"action", "export_article_bibtex"}, {"article_link", article_link}, {"path", path}};
+    Record(j.dump());
+}
+
+void ReplayRecorder::RecordExportArticlesBibTeX(const std::string& path) {
+    json j = {{"ts", NowMs()}, {"action", "export_articles_bibtex"}, {"path", path}};
+    Record(j.dump());
+}
+
+void ReplayRecorder::RecordExportProjectBibTeX(const std::string& project, const std::string& path) {
+    json j = {{"ts", NowMs()}, {"action", "export_project_bibtex"}, {"project", project}, {"path", path}};
+    Record(j.dump());
+}
+
 // ---------------------------------------------------------------------------
 // ReplayPlayer
 // ---------------------------------------------------------------------------
@@ -217,6 +232,8 @@ bool ReplayPlayer::DispatchAction(const std::string& json_line, AppCore& core, s
         core.ExportProjectJSON(j.value("project", ""), j.value("path", ""));
     } else if (action == "import_project_json") {
         core.ImportProjectJSON(j.value("path", ""));
+    } else if (action == "export_project_bibtex") {
+        core.ExportProjectBibTeX(j.value("project", ""), j.value("path", ""));
     } else {
         // Unknown action — skip
         return false; // caller treats this as skipped, not error
