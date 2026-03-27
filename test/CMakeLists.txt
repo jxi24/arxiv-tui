@@ -25,6 +25,7 @@ add_executable(unit_tests
     unit/FetcherTest.cc
     unit/AppTest.cc
     unit/RankerTest.cc
+    unit/ReplayTest.cc
 )
 
 # Link against Catch2 and our library

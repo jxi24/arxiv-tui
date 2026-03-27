@@ -13,6 +13,7 @@
 
 #include "Arxiv/AppCore.hh"
 #include "Arxiv/KeyBindings.hh"
+#include "Arxiv/Replay.hh"
 
 using ftxui::Component;
 using ftxui::Color;
@@ -21,7 +22,7 @@ namespace Arxiv {
 
 class ArxivApp {
 public:
-    explicit ArxivApp(const Config &config);
+    explicit ArxivApp(const Config &config, ReplayRecorder* recorder = nullptr);
     void Run() { screen.Loop(event_handler); }
     ~ArxivApp() {
         refresh_ui_continue = false;
@@ -32,9 +33,10 @@ private:
     // Core application logic
     AppCore core;
     KeyBindings key_bindings;
-    
+
     // UI handling
     ftxui::ScreenInteractive screen;
+    ReplayRecorder* m_recorder = nullptr; // not owned — initialized in ctor body order
     int focused_pane = 0;
     int dialog_depth = 0;
     std::string new_project_name;

@@ -19,13 +19,14 @@ const Color secondary = Color::RGB(244, 184, 228);  // #f4b8e4
 const Color error = Color::RGB(231, 130, 132);      // #e78284
 }
 
-ArxivApp::ArxivApp(const Config& config)
+ArxivApp::ArxivApp(const Config& config, ReplayRecorder* recorder)
     : core(config,
            std::make_unique<DatabaseManager>("articles.db"),
            std::make_unique<Fetcher>(config.get_topics(), config.get_download_dir()))
     , key_bindings(config.get_key_mappings())
     , screen(ScreenInteractive::Fullscreen()) {
-    
+    m_recorder = recorder;
+
     spdlog::info("ArXiv Application Initialized");
     SetupUI();
 }
@@ -65,12 +66,16 @@ void ArxivApp::SetupUI() {
     filter_menu = Menu(&core.GetFilterOptions(), &core.GetFilterIndex())
         | CatchEvent([&](Event event) {
             if(key_bindings.matches(event, KeyBindings::Action::Next)) {
-                core.SetFilterIndex(std::min(core.GetFilterIndex() + 1, 
-                    static_cast<int>(core.GetFilterOptions().size()) - 1));
+                int idx = std::min(core.GetFilterIndex() + 1,
+                    static_cast<int>(core.GetFilterOptions().size()) - 1);
+                core.SetFilterIndex(idx);
+                if (m_recorder) m_recorder->RecordSetFilterIndex(idx);
                 return true;
             }
             if(key_bindings.matches(event, KeyBindings::Action::Previous)) {
-                core.SetFilterIndex(std::max(core.GetFilterIndex() - 1, 0));
+                int idx = std::max(core.GetFilterIndex() - 1, 0);
+                core.SetFilterIndex(idx);
+                if (m_recorder) m_recorder->RecordSetFilterIndex(idx);
                 return true;
             }
             if(key_bindings.matches(event, KeyBindings::Action::MoveRight)) {
@@ -88,7 +93,9 @@ void ArxivApp::SetupUI() {
             }
             if(key_bindings.matches(event, KeyBindings::Action::DeleteProject)) {
                 if(core.GetFilterIndex() >= 6) {
-                    core.RemoveProject(core.GetProjectNameForFilter(core.GetFilterIndex()));
+                    std::string proj = core.GetProjectNameForFilter(core.GetFilterIndex());
+                    core.RemoveProject(proj);
+                    if (m_recorder) m_recorder->RecordRemoveProject(proj);
                 }
                 return true;
             }
@@ -100,20 +107,26 @@ void ArxivApp::SetupUI() {
         | frame
         | CatchEvent([&](Event event) {
             if(key_bindings.matches(event, KeyBindings::Action::Next)) {
-                core.SetArticleIndex(std::min(core.GetArticleIndex() + 1, 
-                    static_cast<int>(core.GetCurrentArticles().size()) - 1));
+                int idx = std::min(core.GetArticleIndex() + 1,
+                    static_cast<int>(core.GetCurrentArticles().size()) - 1);
+                core.SetArticleIndex(idx);
+                if (m_recorder) m_recorder->RecordSetArticleIndex(idx);
                 title_start_position = 0;
                 return true;
             }
             if(key_bindings.matches(event, KeyBindings::Action::Previous)) {
-                core.SetArticleIndex(std::max(core.GetArticleIndex() - 1, 0));
+                int idx = std::max(core.GetArticleIndex() - 1, 0);
+                core.SetArticleIndex(idx);
+                if (m_recorder) m_recorder->RecordSetArticleIndex(idx);
                 title_start_position = 0;
                 return true;
             }
             if(key_bindings.matches(event, KeyBindings::Action::Bookmark)) {
                 auto articles = core.GetCurrentArticles();
                 if(!articles.empty()) {
-                    core.ToggleBookmark(articles[static_cast<size_t>(core.GetArticleIndex())].link);
+                    const std::string& link = articles[static_cast<size_t>(core.GetArticleIndex())].link;
+                    core.ToggleBookmark(link);
+                    if (m_recorder) m_recorder->RecordToggleBookmark(link);
                 }
                 return true;
             }
@@ -144,6 +157,7 @@ void ArxivApp::SetupUI() {
                 // Download the article pdf to an articles folder
                 auto article = core.GetCurrentArticles()[static_cast<size_t>(core.GetArticleIndex())];
                 spdlog::debug("[App]: Downloading article ({}) to articles folder", article.id());
+                if (m_recorder) m_recorder->RecordDownloadArticle(article.id());
                 bool success = core.DownloadArticle(article.id());
                 if(!success) {
                     dialog_depth = 3;
@@ -673,6 +687,7 @@ void ArxivApp::SetupUI() {
             if (event == Event::Return) {
                 if (!start_date.empty() && !end_date.empty()) {
                     core.SetDateRange(start_date, end_date);
+                    if (m_recorder) m_recorder->RecordSetDateRange(start_date, end_date);
                 }
                 dialog_depth = 0;
                 start_date.clear();
@@ -727,10 +742,15 @@ void ArxivApp::SetupUI() {
         if (dialog_depth == 5) {
             if (event == Event::Return) {
                 if (!search_query.empty()) {
-                    core.SetSearchQuery(search_query, search_field == AppCore::SearchMode::title,
-                                      search_field == AppCore::SearchMode::authors,
-                                      search_field == AppCore::SearchMode::abstract);
+                    bool st = (search_field == AppCore::SearchMode::title);
+                    bool sa = (search_field == AppCore::SearchMode::authors);
+                    bool sab = (search_field == AppCore::SearchMode::abstract);
+                    core.SetSearchQuery(search_query, st, sa, sab);
                     core.SetFilterIndex(4);
+                    if (m_recorder) {
+                        m_recorder->RecordSetSearchQuery(search_query, st, sa, sab);
+                        m_recorder->RecordSetFilterIndex(4);
+                    }
                 }
                 dialog_depth = 0;
                 search_query.clear();
@@ -785,9 +805,9 @@ void ArxivApp::SetupUI() {
                 if (pending_rating >= 1 && pending_rating <= 5) {
                     auto articles = core.GetCurrentArticles();
                     if (!articles.empty()) {
-                        core.RateArticle(
-                            articles[static_cast<size_t>(core.GetArticleIndex())].link,
-                            pending_rating);
+                        const std::string& link = articles[static_cast<size_t>(core.GetArticleIndex())].link;
+                        core.RateArticle(link, pending_rating);
+                        if (m_recorder) m_recorder->RecordRateArticle(link, pending_rating);
                     }
                 }
                 dialog_depth = 0;
@@ -822,6 +842,7 @@ void ArxivApp::SetupUI() {
         if (dialog_depth == 7) {
             if (event == Event::Return) {
                 core.SetProjectNote(note_project_name, note_article_link, note_edit_text);
+                if (m_recorder) m_recorder->RecordSetProjectNote(note_project_name, note_article_link, note_edit_text);
                 dialog_depth = 0;
                 return true;
             }
@@ -846,9 +867,16 @@ void ArxivApp::SetupUI() {
                 static const char* exts[] = {"md", "txt", "json"};
                 std::string path = export_project_name + "." + exts[export_format_index];
                 bool ok = false;
-                if (export_format_index == 0) ok = core.ExportProjectMarkdown(export_project_name, path);
-                else if (export_format_index == 1) ok = core.ExportProjectText(export_project_name, path);
-                else ok = core.ExportProjectJSON(export_project_name, path);
+                if (export_format_index == 0) {
+                    ok = core.ExportProjectMarkdown(export_project_name, path);
+                    if (m_recorder) m_recorder->RecordExportProjectMarkdown(export_project_name, path);
+                } else if (export_format_index == 1) {
+                    ok = core.ExportProjectText(export_project_name, path);
+                    if (m_recorder) m_recorder->RecordExportProjectText(export_project_name, path);
+                } else {
+                    ok = core.ExportProjectJSON(export_project_name, path);
+                    if (m_recorder) m_recorder->RecordExportProjectJSON(export_project_name, path);
+                }
                 dialog_depth = 0;
                 if (!ok) {
                     dialog_depth = 3;
@@ -874,6 +902,7 @@ void ArxivApp::SetupUI() {
         // Handle import dialog
         if (dialog_depth == 9) {
             if (event == Event::Return) {
+                if (m_recorder) m_recorder->RecordImportProjectJSON(import_path);
                 bool ok = core.ImportProjectJSON(import_path);
                 dialog_depth = 0;
                 if (!ok) {
@@ -933,6 +962,7 @@ void ArxivApp::SetupUI() {
         // Force full retrain
         if (key_bindings.matches(event, KeyBindings::Action::ForceRetrain)) {
             core.ForceRetrain();
+            if (m_recorder) m_recorder->RecordForceRetrain();
             return true;
         }
 
@@ -978,8 +1008,10 @@ void ArxivApp::SetupUI() {
             if (event == Event::Return) {
                 if (!new_project_name.empty()) {
                     core.AddProject(new_project_name);
+                    if (m_recorder) m_recorder->RecordAddProject(new_project_name);
                     if (!parent_for_new_project.empty()) {
                         core.SetProjectParent(new_project_name, parent_for_new_project);
+                        if (m_recorder) m_recorder->RecordSetProjectParent(new_project_name, parent_for_new_project);
                     }
                 }
                 dialog_depth = 0;
@@ -1003,8 +1035,10 @@ void ArxivApp::SetupUI() {
                     for(const auto& [project, selected] : checkbox_states) {
                         if(selected) {
                             core.LinkArticleToProject(article.link, project);
+                            if (m_recorder) m_recorder->RecordLinkArticleToProject(article.link, project);
                         } else {
                             core.UnlinkArticleFromProject(article.link, project);
+                            if (m_recorder) m_recorder->RecordUnlinkArticleFromProject(article.link, project);
                         }
                     }
                 }

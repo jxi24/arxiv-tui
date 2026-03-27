@@ -6,6 +6,8 @@ add_library(libarxiv-tui
     Config.cc
     KeyBindings.cc
     Ranker.cc
+    Replay.cc
+    CrashHandler.cc
 )
 target_link_libraries(libarxiv-tui PRIVATE arxiv_tui_options arxiv_tui_warnings
                                     PUBLIC spdlog::spdlog std::filesystem
