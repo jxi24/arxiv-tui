@@ -12,7 +12,12 @@ namespace test {
 class FetcherMock : public Arxiv::Fetcher {
 public:
     // Constructor
-    FetcherMock() : Arxiv::Fetcher({}) {}
+    FetcherMock() : Arxiv::Fetcher({}) {
+        // Default: Fetch returns empty list unless overridden
+        m_expectations.push_back(
+            NAMED_ALLOW_CALL(*this, Fetch())
+                .RETURN(std::vector<Arxiv::Article>{}));
+    }
 
     // Mock methods using trompeloeil
     MAKE_MOCK0(Fetch, std::vector<Arxiv::Article>(), override);
@@ -22,25 +27,32 @@ public:
 
     // Helper methods for testing
     void setFetchResponse(const std::vector<Arxiv::Article>& articles) {
-        ALLOW_CALL(*this, Fetch())
-            .RETURN(articles);
+        m_expectations.push_back(
+            NAMED_ALLOW_CALL(*this, Fetch())
+                .RETURN(articles));
     }
 
     void setFetchTodayResponse(const std::vector<Arxiv::Article>& articles) {
-        ALLOW_CALL(*this, FetchToday())
-            .RETURN(articles);
+        m_expectations.push_back(
+            NAMED_ALLOW_CALL(*this, FetchToday())
+                .RETURN(articles));
     }
 
     void setDownloadPaperResponse(bool success) {
-        ALLOW_CALL(*this, DownloadPaper(trompeloeil::_, trompeloeil::_))
-            .RETURN(success);
+        m_expectations.push_back(
+            NAMED_ALLOW_CALL(*this, DownloadPaper(trompeloeil::_, trompeloeil::_))
+                .RETURN(success));
     }
 
     void setGetPaperAbstractResponse(const std::string& abstract) {
-        ALLOW_CALL(*this, GetPaperAbstract(trompeloeil::_))
-            .RETURN(abstract);
+        m_expectations.push_back(
+            NAMED_ALLOW_CALL(*this, GetPaperAbstract(trompeloeil::_))
+                .RETURN(abstract));
     }
+
+private:
+    std::vector<std::unique_ptr<trompeloeil::expectation>> m_expectations;
 };
 
 } // namespace test
-} // namespace arxiv_tui 
+} // namespace arxiv_tui

@@ -1,7 +1,12 @@
 #include "Arxiv/AppCore.hh"
 #include "spdlog/spdlog.h"
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <chrono>
+#include <ctime>
+#include <fstream>
+#include <map>
 
 namespace Arxiv {
 
@@ -90,7 +95,7 @@ void AppCore::FetchArticles() {
             m_current_articles = today_articles;
         }
     } else {  // Project (index >= 6)
-        std::string project_name = m_filter_options[static_cast<size_t>(m_filter_index)];
+        std::string project_name = GetProjectNameForFilter(m_filter_index);
         m_current_articles = GetArticlesForProject(project_name);
     }
     
@@ -230,8 +235,32 @@ void AppCore::RefreshTitles() {
 
 void AppCore::RefreshFilterOptions() {
     m_filter_options = {"All Articles", "Bookmarks", "Today", "Range", "Search", "Recommended"};
-    for(const auto& project : GetProjects()) {
-        m_filter_options.push_back(project);
+    m_filter_project_names.clear();
+
+    // Build hierarchy from projects table
+    auto all_projects = m_db->GetProjects();
+
+    std::vector<std::string> top_level;
+    std::map<std::string, std::vector<std::string>> children;
+    for (const auto& name : all_projects) {
+        std::string parent = m_db->GetProjectParent(name);
+        if (parent.empty()) {
+            top_level.push_back(name);
+        } else {
+            children[parent].push_back(name);
+        }
+    }
+
+    for (const auto& proj : top_level) {
+        m_filter_options.push_back(proj);
+        m_filter_project_names.push_back(proj);
+        auto it = children.find(proj);
+        if (it != children.end()) {
+            for (const auto& child : it->second) {
+                m_filter_options.push_back("  " + child);  // indented display
+                m_filter_project_names.push_back(child);    // actual name
+            }
+        }
     }
 }
 
@@ -368,6 +397,180 @@ void AppCore::NotifyArticleUpdate() {
 
 std::vector<std::string> AppCore::GetProjectsForArticle(const std::string& article_link) const {
     return m_db->GetProjectsForArticle(article_link);
+}
+
+void AppCore::SetProjectParent(const std::string& project_name, const std::string& parent) {
+    m_db->SetProjectParent(project_name, parent);
+    RefreshFilterOptions();
+    if (m_project_update_callback) m_project_update_callback();
+    NotifyArticleUpdate();
+}
+
+void AppCore::SetProjectNote(const std::string& project_name, const std::string& article_link,
+                             const std::string& note) {
+    m_db->SetProjectNote(project_name, article_link, note);
+    NotifyArticleUpdate();
+}
+
+std::string AppCore::GetProjectNote(const std::string& project_name,
+                                    const std::string& article_link) const {
+    return m_db->GetProjectNote(project_name, article_link);
+}
+
+std::string AppCore::GetProjectNameForFilter(int index) const {
+    int proj_index = index - 6;
+    if (proj_index >= 0 && static_cast<size_t>(proj_index) < m_filter_project_names.size()) {
+        return m_filter_project_names[static_cast<size_t>(proj_index)];
+    }
+    // Fallback: use raw filter option string
+    if (static_cast<size_t>(index) < m_filter_options.size()) {
+        std::string name = m_filter_options[static_cast<size_t>(index)];
+        // Strip leading spaces (indented children)
+        size_t start = name.find_first_not_of(' ');
+        return start == std::string::npos ? name : name.substr(start);
+    }
+    return "";
+}
+
+// ─── Export helpers ───────────────────────────────────────────────────────────
+
+static std::string format_date_str(const std::chrono::system_clock::time_point& tp) {
+    auto tt = std::chrono::system_clock::to_time_t(tp);
+    std::tm tm = {};
+    localtime_r(&tt, &tm);
+    char buf[32];
+    std::strftime(buf, sizeof(buf), "%Y-%m-%d", &tm);
+    return buf;
+}
+
+bool AppCore::ExportProjectMarkdown(const std::string& project_name,
+                                    const std::string& output_path) const {
+    auto articles = m_db->GetArticlesForProject(project_name);
+    std::ofstream file(output_path);
+    if (!file.is_open()) return false;
+
+    file << "# " << project_name << "\n\n";
+    file << articles.size() << " article(s)\n\n---\n\n";
+
+    for (const auto& article : articles) {
+        std::string note = m_db->GetProjectNote(project_name, article.link);
+        file << "## " << article.title << "\n\n";
+        file << "**Authors:** " << article.authors << "  \n";
+        file << "**Date:** " << format_date_str(article.date) << "  \n";
+        file << "**Link:** " << article.link << "  \n\n";
+        file << article.abstract << "\n\n";
+        if (!note.empty()) {
+            file << "> **Note:** " << note << "\n\n";
+        }
+        file << "---\n\n";
+    }
+    spdlog::info("[AppCore]: Exported project '{}' to Markdown: {}", project_name, output_path);
+    return true;
+}
+
+bool AppCore::ExportProjectText(const std::string& project_name,
+                                const std::string& output_path) const {
+    auto articles = m_db->GetArticlesForProject(project_name);
+    std::ofstream file(output_path);
+    if (!file.is_open()) return false;
+
+    file << project_name << "\n" << std::string(project_name.size(), '=') << "\n\n";
+    file << articles.size() << " article(s)\n\n";
+
+    for (size_t i = 0; i < articles.size(); ++i) {
+        const auto& article = articles[i];
+        std::string note = m_db->GetProjectNote(project_name, article.link);
+        file << "[" << (i + 1) << "] " << article.title << "\n";
+        file << "    Authors: " << article.authors << "\n";
+        file << "    Date: " << format_date_str(article.date) << "\n";
+        file << "    Link: " << article.link << "\n";
+        if (!note.empty()) file << "    Note: " << note << "\n";
+        file << "\n";
+    }
+    spdlog::info("[AppCore]: Exported project '{}' to plain text: {}", project_name, output_path);
+    return true;
+}
+
+bool AppCore::ExportProjectJSON(const std::string& project_name,
+                                const std::string& output_path) const {
+    auto articles = m_db->GetArticlesForProject(project_name);
+    std::ofstream file(output_path);
+    if (!file.is_open()) return false;
+
+    nlohmann::json j;
+    j["name"] = project_name;
+    j["articles"] = nlohmann::json::array();
+
+    for (const auto& a : articles) {
+        auto ts = std::chrono::duration_cast<std::chrono::seconds>(
+            a.date.time_since_epoch()).count();
+        nlohmann::json entry;
+        entry["link"]     = a.link;
+        entry["title"]    = a.title;
+        entry["authors"]  = a.authors;
+        entry["abstract"] = a.abstract;
+        entry["date"]     = ts;
+        entry["note"]     = m_db->GetProjectNote(project_name, a.link);
+        j["articles"].push_back(std::move(entry));
+    }
+
+    file << j.dump(2) << "\n";
+    spdlog::info("[AppCore]: Exported project '{}' to JSON: {}", project_name, output_path);
+    return true;
+}
+
+bool AppCore::ImportProjectJSON(const std::string& input_path) {
+    std::ifstream file(input_path);
+    if (!file.is_open()) {
+        spdlog::error("[AppCore]: Cannot open import file: {}", input_path);
+        return false;
+    }
+
+    nlohmann::json j;
+    try {
+        file >> j;
+    } catch (const nlohmann::json::parse_error& e) {
+        spdlog::error("[AppCore]: JSON parse error: {}", e.what());
+        return false;
+    }
+
+    if (!j.contains("name") || !j["name"].is_string()) {
+        spdlog::error("[AppCore]: Import JSON missing 'name' field");
+        return false;
+    }
+
+    std::string project_name = j["name"].get<std::string>();
+    m_db->AddProject(project_name);
+
+    if (j.contains("articles") && j["articles"].is_array()) {
+        for (const auto& entry : j["articles"]) {
+            std::string link = entry.value("link", "");
+            if (link.empty()) continue;
+
+            Article article;
+            article.link      = link;
+            article.title     = entry.value("title", "");
+            article.authors   = entry.value("authors", "");
+            article.abstract  = entry.value("abstract", "");
+            article.bookmarked = false;
+            int64_t ts = entry.value("date", int64_t{0});
+            article.date = std::chrono::system_clock::from_time_t(static_cast<time_t>(ts));
+
+            m_db->AddArticle(article);
+            m_db->LinkArticleToProject(link, project_name);
+
+            std::string note = entry.value("note", "");
+            if (!note.empty()) {
+                m_db->SetProjectNote(project_name, link, note);
+            }
+        }
+    }
+
+    RefreshFilterOptions();
+    if (m_project_update_callback) m_project_update_callback();
+    NotifyArticleUpdate();
+    spdlog::info("[AppCore]: Imported project '{}' from JSON: {}", project_name, input_path);
+    return true;
 }
 
 } // namespace Arxiv 

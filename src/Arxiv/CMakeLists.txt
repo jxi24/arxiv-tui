@@ -11,7 +11,7 @@ target_link_libraries(libarxiv-tui PRIVATE arxiv_tui_options arxiv_tui_warnings
                                     PUBLIC spdlog::spdlog std::filesystem
                                            cpr::cpr ftxui::screen ftxui::dom
                                            ftxui::component SQLite::SQLite3 pugixml::pugixml
-                                           yaml-cpp::yaml-cpp)
+                                           yaml-cpp::yaml-cpp nlohmann_json::nlohmann_json)
 
 add_executable(arxiv-tui
     main.cc

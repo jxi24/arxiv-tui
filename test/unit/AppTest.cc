@@ -6,6 +6,7 @@
 #include <fixtures/test_data.hh>
 #include <mocks/DatabaseManagerMock.hh>
 #include <mocks/FetcherMock.hh>
+#include <fstream>
 
 using namespace Arxiv;
 using namespace arxiv_tui::test;
@@ -18,21 +19,18 @@ TEST_CASE("AppCore initialization", "[app]") {
         auto db = std::make_unique<DatabaseManagerMock>();
         auto fetcher = std::make_unique<FetcherMock>();
         auto* db_ptr = db.get();
-        
-        // Set up mock responses
-        REQUIRE_CALL(*db_ptr, GetRecent(-1))
+
+        // GetRecent(-1) is called twice by the constructor:
+        // once in FetchArticles() and once in the ranker-load fallback.
+        // Use ALLOW_CALL to permit any number of calls.
+        ALLOW_CALL(*db_ptr, GetRecent(ANY(int)))
             .RETURN(sample_articles);
-        REQUIRE_CALL(*db_ptr, ListBookmarked())
-            .RETURN(std::vector<Arxiv::Article>{});
-        REQUIRE_CALL(*db_ptr, GetProjects())
-            .RETURN(std::vector<std::string>{});
-        
+
         Arxiv::AppCore core(config, std::move(db), std::move(fetcher));
-        
+
         auto articles = core.GetCurrentArticles();
-        auto titles = core.GetCurrentTitles();
         auto filter_options = core.GetFilterOptions();
-        
+
         REQUIRE(!filter_options.empty());
         REQUIRE(filter_options[0] == "All Articles");
         REQUIRE(filter_options[1] == "Bookmarks");
@@ -215,7 +213,7 @@ TEST_CASE("AppCore rating and recommendation", "[app][ranking]") {
         // Set up expectation: SetRating will be called
         REQUIRE_CALL(*db_ptr, SetRating(link, 4));
         // After rating, GetRatedArticles is called again for retraining
-        std::vector<std::pair<Arxiv::Article, int>> rated = {{articles[0], 4}};
+        Arxiv::DatabaseManager::RatedArticleList rated = {{articles[0], 4}};
         ALLOW_CALL(*db_ptr, GetRatedArticles()).RETURN(rated);
         ALLOW_CALL(*db_ptr, GetRecent(-1)).RETURN(sample_articles);
 
@@ -262,6 +260,199 @@ TEST_CASE("AppCore rating and recommendation", "[app][ranking]") {
         // No ratings provided, so ranker is untrained
         REQUIRE_FALSE(core.IsRankerTrained());
         REQUIRE(core.GetPredictedScore(articles[0]) == 0.0f);
+    }
+}
+
+TEST_CASE("AppCore sub-project hierarchy", "[app][projects]") {
+    Config config("test/fixtures/test_config.yml");
+    auto db = std::make_unique<DatabaseManagerMock>();
+    auto fetcher = std::make_unique<FetcherMock>();
+    auto* db_ptr = db.get();
+
+    db_ptr->setArticles(sample_articles);
+    db_ptr->setBookmarkedArticles({});
+
+    SECTION("Sub-project appears indented in filter options") {
+        // parent "Physics" with child "Quantum"
+        db_ptr->setProjects({"Physics", "Quantum"});
+        ALLOW_CALL(*db_ptr, GetProjectParent(std::string("Physics")))
+            .RETURN(std::string{});
+        ALLOW_CALL(*db_ptr, GetProjectParent(std::string("Quantum")))
+            .RETURN(std::string("Physics"));
+
+        Arxiv::AppCore core(config, std::move(db), std::move(fetcher));
+
+        auto options = core.GetFilterOptions();
+        // "Physics" should appear somewhere after the 5 built-in filters
+        auto phys_it = std::find(options.begin(), options.end(), "Physics");
+        REQUIRE(phys_it != options.end());
+        // "  Quantum" (indented) should follow
+        auto quantum_it = std::find(options.begin(), options.end(), "  Quantum");
+        REQUIRE(quantum_it != options.end());
+        // Quantum must come after Physics
+        REQUIRE(std::distance(options.begin(), phys_it) <
+                std::distance(options.begin(), quantum_it));
+    }
+
+    SECTION("GetProjectNameForFilter strips indentation") {
+        db_ptr->setProjects({"Physics", "Quantum"});
+        ALLOW_CALL(*db_ptr, GetProjectParent(std::string("Physics")))
+            .RETURN(std::string{});
+        ALLOW_CALL(*db_ptr, GetProjectParent(std::string("Quantum")))
+            .RETURN(std::string("Physics"));
+
+        Arxiv::AppCore core(config, std::move(db), std::move(fetcher));
+
+        auto options = core.GetFilterOptions();
+        // Find the index of "  Quantum"
+        auto it = std::find(options.begin(), options.end(), "  Quantum");
+        REQUIRE(it != options.end());
+        int idx = static_cast<int>(std::distance(options.begin(), it));
+        REQUIRE(core.GetProjectNameForFilter(idx) == "Quantum");
+    }
+
+    SECTION("SetProjectParent delegates to database") {
+        db_ptr->setProjects({"Physics", "Quantum"});
+
+        REQUIRE_CALL(*db_ptr, SetProjectParent(std::string("Quantum"), std::string("Physics")));
+        NAMED_ALLOW_CALL(*db_ptr, GetProjectParent(ANY(std::string)))
+            .RETURN(std::string{});
+
+        Arxiv::AppCore core(config, std::move(db), std::move(fetcher));
+        core.SetProjectParent("Quantum", "Physics");
+    }
+}
+
+TEST_CASE("AppCore project notes", "[app][projects]") {
+    Config config("test/fixtures/test_config.yml");
+    auto db = std::make_unique<DatabaseManagerMock>();
+    auto fetcher = std::make_unique<FetcherMock>();
+    auto* db_ptr = db.get();
+
+    db_ptr->setArticles(sample_articles);
+    db_ptr->setBookmarkedArticles({});
+    db_ptr->setProjects({"MyProject"});
+
+    Arxiv::AppCore core(config, std::move(db), std::move(fetcher));
+
+    SECTION("SetProjectNote delegates to database") {
+        const std::string link = sample_articles[0].link;
+        REQUIRE_CALL(*db_ptr, SetProjectNote(
+            std::string("MyProject"), link, std::string("my note")));
+
+        core.SetProjectNote("MyProject", link, "my note");
+    }
+
+    SECTION("GetProjectNote delegates to database") {
+        const std::string link = sample_articles[0].link;
+        ALLOW_CALL(*db_ptr, GetProjectNote(
+            std::string("MyProject"), link))
+            .RETURN(std::string("stored note"));
+
+        REQUIRE(core.GetProjectNote("MyProject", link) == "stored note");
+    }
+}
+
+TEST_CASE("AppCore project export", "[app][projects]") {
+    Config config("test/fixtures/test_config.yml");
+    auto db = std::make_unique<DatabaseManagerMock>();
+    auto fetcher = std::make_unique<FetcherMock>();
+    auto* db_ptr = db.get();
+
+    db_ptr->setArticles(sample_articles);
+    db_ptr->setBookmarkedArticles({});
+    db_ptr->setProjects({"ExportTest"});
+    db_ptr->setProjectArticles("ExportTest", {sample_articles[0]});
+
+    Arxiv::AppCore core(config, std::move(db), std::move(fetcher));
+
+    SECTION("ExportProjectMarkdown creates a file") {
+        const std::string path = "/tmp/test_export.md";
+        bool ok = core.ExportProjectMarkdown("ExportTest", path);
+        REQUIRE(ok);
+        std::ifstream f(path);
+        REQUIRE(f.good());
+        std::string content((std::istreambuf_iterator<char>(f)),
+                             std::istreambuf_iterator<char>());
+        REQUIRE_THAT(content, ContainsSubstring("ExportTest"));
+        REQUIRE_THAT(content, ContainsSubstring(sample_articles[0].title));
+    }
+
+    SECTION("ExportProjectText creates a file") {
+        const std::string path = "/tmp/test_export.txt";
+        bool ok = core.ExportProjectText("ExportTest", path);
+        REQUIRE(ok);
+        std::ifstream f(path);
+        REQUIRE(f.good());
+        std::string content((std::istreambuf_iterator<char>(f)),
+                             std::istreambuf_iterator<char>());
+        REQUIRE_THAT(content, ContainsSubstring(sample_articles[0].title));
+    }
+
+    SECTION("ExportProjectJSON creates valid JSON") {
+        const std::string path = "/tmp/test_export.json";
+        bool ok = core.ExportProjectJSON("ExportTest", path);
+        REQUIRE(ok);
+        std::ifstream f(path);
+        REQUIRE(f.good());
+        std::string content((std::istreambuf_iterator<char>(f)),
+                             std::istreambuf_iterator<char>());
+        REQUIRE_THAT(content, ContainsSubstring("\"name\""));
+        REQUIRE_THAT(content, ContainsSubstring("ExportTest"));
+        REQUIRE_THAT(content, ContainsSubstring("\"articles\""));
+    }
+
+    SECTION("ExportProjectMarkdown returns false for bad path") {
+        bool ok = core.ExportProjectMarkdown("ExportTest", "/nonexistent/dir/out.md");
+        REQUIRE_FALSE(ok);
+    }
+}
+
+TEST_CASE("AppCore project import", "[app][projects]") {
+    Config config("test/fixtures/test_config.yml");
+    auto db = std::make_unique<DatabaseManagerMock>();
+    auto fetcher = std::make_unique<FetcherMock>();
+    auto* db_ptr = db.get();
+
+    db_ptr->setArticles(sample_articles);
+    db_ptr->setBookmarkedArticles({});
+    db_ptr->setProjects({"ExportTest"});
+    db_ptr->setProjectArticles("ExportTest", {sample_articles[0]});
+
+    Arxiv::AppCore core_export(config, std::move(db), std::move(fetcher));
+
+    // Export first, then import
+    const std::string path = "/tmp/test_import_round_trip.json";
+    REQUIRE(core_export.ExportProjectJSON("ExportTest", path));
+
+    // Create a fresh AppCore for import
+    auto db2 = std::make_unique<DatabaseManagerMock>();
+    auto fetcher2 = std::make_unique<FetcherMock>();
+    auto* db2_ptr = db2.get();
+
+    db2_ptr->setArticles({});
+    db2_ptr->setBookmarkedArticles({});
+    db2_ptr->setProjects({});
+
+    Arxiv::AppCore core_import(config, std::move(db2), std::move(fetcher2));
+
+    SECTION("ImportProjectJSON round-trip succeeds") {
+        bool ok = core_import.ImportProjectJSON(path);
+        REQUIRE(ok);
+    }
+
+    SECTION("ImportProjectJSON returns false for missing file") {
+        bool ok = core_import.ImportProjectJSON("/nonexistent/file.json");
+        REQUIRE_FALSE(ok);
+    }
+
+    SECTION("ImportProjectJSON returns false for invalid JSON") {
+        const std::string bad_path = "/tmp/test_bad.json";
+        std::ofstream f(bad_path);
+        f << "{ this is not valid json }";
+        f.close();
+        bool ok = core_import.ImportProjectJSON(bad_path);
+        REQUIRE_FALSE(ok);
     }
 }
 

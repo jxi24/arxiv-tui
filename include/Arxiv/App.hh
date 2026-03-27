@@ -38,6 +38,7 @@ private:
     int focused_pane = 0;
     int dialog_depth = 0;
     std::string new_project_name;
+    std::string parent_for_new_project;
     bool show_detail = false;
     bool show_help = false;
     std::set<std::string> selected_projects;
@@ -72,6 +73,21 @@ private:
     // Rating dialog (dialog_depth == 6)
     int pending_rating = 0;  // 1-5 chosen by user
     Component rating_dialog;
+
+    // Notes dialog (dialog_depth == 7)
+    std::string note_edit_text;
+    std::string note_project_name;   // project context when editing
+    std::string note_article_link;   // article being annotated
+    Component note_dialog;
+
+    // Export dialog (dialog_depth == 8)
+    int export_format_index = 0;     // 0=Markdown 1=Text 2=JSON
+    std::string export_project_name;
+    Component export_dialog;
+
+    // Import dialog (dialog_depth == 9)
+    std::string import_path;
+    Component import_dialog;
 
     // Article pane scrolling
     int visible_rows = 0;  // Number of rows visible in the article pane

@@ -11,6 +11,8 @@ class Article;
 
 class DatabaseManager {
   public:
+    // Type alias to avoid comma issues when used in trompeloeil MAKE_MOCK macros
+    using RatedArticleList = std::vector<std::pair<Article, int>>;
     explicit DatabaseManager(const std::string &path);
     virtual ~DatabaseManager();
 
@@ -27,15 +29,21 @@ class DatabaseManager {
     // Rating management
     virtual void SetRating(const std::string &link, int rating);
     virtual int GetRating(const std::string &link);
-    virtual std::vector<std::pair<Article, int>> GetRatedArticles();
+    virtual RatedArticleList GetRatedArticles();
 
     // Project management
     virtual void AddProject(const std::string &project_name);
     virtual void RemoveProject(const std::string &project_name);
     virtual std::vector<std::string> GetProjects();
+    virtual std::string GetProjectParent(const std::string &project_name);
+    virtual void SetProjectParent(const std::string &project_name, const std::string &parent);
     virtual void LinkArticleToProject(const std::string &article_link, const std::string &project_name);
     virtual void UnlinkArticleFromProject(const std::string &article_link, const std::string &project_name);
     virtual std::vector<std::string> GetProjectsForArticle(const std::string &article_link);
+
+    // Project notes
+    virtual void SetProjectNote(const std::string &project_name, const std::string &article_link, const std::string &note);
+    virtual std::string GetProjectNote(const std::string &project_name, const std::string &article_link);
 
   private:
     sqlite3 *db;

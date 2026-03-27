@@ -8,13 +8,6 @@ using namespace Arxiv;
 using namespace arxiv_tui::test::fixtures;
 
 // ---------------------------------------------------------------------------
-// Helper: build a rated dataset from sample_articles
-// ---------------------------------------------------------------------------
-static std::vector<std::pair<Article, int>> make_rated(int rating_a, int rating_b) {
-    return {{sample_articles[0], rating_a}, {sample_articles[1], rating_b}};
-}
-
-// ---------------------------------------------------------------------------
 // Ranker — vocabulary / vectorisation
 // ---------------------------------------------------------------------------
 TEST_CASE("Ranker vocabulary fitting", "[ranker]") {

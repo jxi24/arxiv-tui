@@ -80,11 +80,15 @@ void ArxivApp::SetupUI() {
             if(key_bindings.matches(event, KeyBindings::Action::CreateProject)) {
                 dialog_depth = 1;
                 new_project_name.clear();
+                // If a project is currently selected, new project becomes its child
+                parent_for_new_project = (core.GetFilterIndex() >= 6)
+                    ? core.GetProjectNameForFilter(core.GetFilterIndex())
+                    : "";
                 return true;
             }
             if(key_bindings.matches(event, KeyBindings::Action::DeleteProject)) {
-                if(core.GetFilterIndex() > 5) {
-                    core.RemoveProject(core.GetFilterOptions()[static_cast<size_t>(core.GetFilterIndex())]);
+                if(core.GetFilterIndex() >= 6) {
+                    core.RemoveProject(core.GetProjectNameForFilter(core.GetFilterIndex()));
                 }
                 return true;
             }
@@ -193,7 +197,7 @@ void ArxivApp::SetupUI() {
             if (show_scores) {
                 float score = core.GetPredictedScore(article);
                 char buf[16];
-                std::snprintf(buf, sizeof(buf), " [%.1f★]", score);
+                std::snprintf(buf, sizeof(buf), " [%.1f★]", static_cast<double>(score));
                 score_badge = buf;
             }
 
@@ -252,13 +256,28 @@ void ArxivApp::SetupUI() {
             }
         }
         
-        return vbox({
+        Elements detail_elements = {
             text("Title: " + article.title) | bold | color(TextColors::primary),
             paragraph("Authors: " + authors_display) | color(TextColors::text),
             text("Link: " + article.link) | color(TextColors::secondary),
             separator() | color(TextColors::border),
             paragraph("Abstract: \n" + article.abstract) | color(TextColors::text),
-        }) | borderStyled(ROUNDED, TextColors::border) | bgcolor(TextColors::base);
+        };
+
+        // Show project note if currently viewing a project
+        if (core.GetFilterIndex() >= 6) {
+            std::string proj = core.GetProjectNameForFilter(core.GetFilterIndex());
+            std::string note = core.GetProjectNote(proj, article.link);
+            if (!note.empty()) {
+                detail_elements.push_back(separator() | color(TextColors::border));
+                detail_elements.push_back(
+                    paragraph("Note: " + note) | color(TextColors::secondary));
+            }
+        }
+
+        return vbox(detail_elements)
+            | borderStyled(ROUNDED, TextColors::border)
+            | bgcolor(TextColors::base);
     });
 
     main_container = Container::Tab({
@@ -478,6 +497,61 @@ void ArxivApp::SetupUI() {
         }) | borderStyled(ROUNDED, TextColors::border) | bgcolor(TextColors::surface) | clear_under | center;
     });
 
+    // Notes editor dialog (dialog_depth == 7)
+    note_dialog = Renderer([&] {
+        if (dialog_depth != 7) return emptyElement();
+
+        return vbox({
+            text("Edit Note") | bold | color(TextColors::primary),
+            separator() | color(TextColors::border),
+            paragraph(note_article_link) | color(TextColors::subtext),
+            separator() | color(TextColors::border),
+            text("Note: " + note_edit_text) | color(TextColors::text),
+            separator() | color(TextColors::border),
+            text("Type to edit, Enter to save, Esc to cancel") | color(TextColors::subtext),
+        }) | borderStyled(ROUNDED, TextColors::border) | bgcolor(TextColors::surface) | clear_under | center;
+    });
+
+    // Export dialog (dialog_depth == 8)
+    export_dialog = Renderer([&] {
+        if (dialog_depth != 8) return emptyElement();
+
+        static const char* formats[] = {"Markdown (.md)", "Plain Text (.txt)", "JSON (.json)"};
+        Elements items;
+        for (int i = 0; i < 3; ++i) {
+            auto item = text(std::string(i == export_format_index ? "> " : "  ") + formats[i]);
+            items.push_back(i == export_format_index
+                ? item | bold | color(TextColors::primary)
+                : item | color(TextColors::text));
+        }
+
+        static const char* exts[] = {"md", "txt", "json"};
+        std::string filename = export_project_name + "." + exts[export_format_index];
+
+        return vbox({
+            text("Export Project: " + export_project_name) | bold | color(TextColors::primary),
+            separator() | color(TextColors::border),
+            vbox(items),
+            separator() | color(TextColors::border),
+            text("Output: " + filename) | color(TextColors::subtext),
+            separator() | color(TextColors::border),
+            text("j/k to select format, Enter to export, Esc to cancel") | color(TextColors::subtext),
+        }) | borderStyled(ROUNDED, TextColors::border) | bgcolor(TextColors::surface) | clear_under | center;
+    });
+
+    // Import dialog (dialog_depth == 9)
+    import_dialog = Renderer([&] {
+        if (dialog_depth != 9) return emptyElement();
+
+        return vbox({
+            text("Import Project from JSON") | bold | color(TextColors::primary),
+            separator() | color(TextColors::border),
+            text("File path: " + import_path) | color(TextColors::text),
+            separator() | color(TextColors::border),
+            text("Type path, Enter to import, Esc to cancel") | color(TextColors::subtext),
+        }) | borderStyled(ROUNDED, TextColors::border) | bgcolor(TextColors::surface) | clear_under | center;
+    });
+
     main_renderer = Renderer(main_container, [&] {
         int filter_width = FilterPaneWidth();
         int remaining_width = Terminal::Size().dimx - filter_width - border_size; 
@@ -495,15 +569,24 @@ void ArxivApp::SetupUI() {
         Element document = hbox(std::move(panes)) | bgcolor(TextColors::base);
 
         if (dialog_depth == 1) {
-            auto new_project_dialog = vbox({
+            Elements new_proj_elements = {
                 text("New Project") | bold | color(TextColors::primary),
                 separator() | color(TextColors::border),
-                text("Enter project name: " + new_project_name) | color(TextColors::text),
-                separator() | color(TextColors::border),
-                hbox({
-                    text("Press Enter to create, Esc to cancel") | color(TextColors::subtext),
-                }) | center,
-            }) | borderStyled(ROUNDED, TextColors::border) | bgcolor(TextColors::surface) | clear_under | center;
+                text("Name: " + new_project_name) | color(TextColors::text),
+            };
+            if (!parent_for_new_project.empty()) {
+                new_proj_elements.push_back(
+                    text("Parent: " + parent_for_new_project) | color(TextColors::subtext));
+            }
+            new_proj_elements.push_back(separator() | color(TextColors::border));
+            new_proj_elements.push_back(
+                text("Press Enter to create, Esc to cancel") | color(TextColors::subtext) | center);
+
+            auto new_project_dialog = vbox(new_proj_elements)
+                | borderStyled(ROUNDED, TextColors::border)
+                | bgcolor(TextColors::surface)
+                | clear_under
+                | center;
 
             document = dbox({
                 document,
@@ -539,6 +622,21 @@ void ArxivApp::SetupUI() {
             document = dbox({
                 document,
                 rating_dialog->Render(),
+            });
+        } else if (dialog_depth == 7) {
+            document = dbox({
+                document,
+                note_dialog->Render(),
+            });
+        } else if (dialog_depth == 8) {
+            document = dbox({
+                document,
+                export_dialog->Render(),
+            });
+        } else if (dialog_depth == 9) {
+            document = dbox({
+                document,
+                import_dialog->Render(),
             });
         }
 
@@ -720,6 +818,118 @@ void ArxivApp::SetupUI() {
             return true;
         }
 
+        // Handle notes dialog
+        if (dialog_depth == 7) {
+            if (event == Event::Return) {
+                core.SetProjectNote(note_project_name, note_article_link, note_edit_text);
+                dialog_depth = 0;
+                return true;
+            }
+            if (event == Event::Backspace) {
+                if (!note_edit_text.empty()) note_edit_text.pop_back();
+                return true;
+            }
+            if (event == Event::Escape) {
+                dialog_depth = 0;
+                return true;
+            }
+            if (event.is_character()) {
+                note_edit_text += event.character();
+                return true;
+            }
+            return true;
+        }
+
+        // Handle export dialog
+        if (dialog_depth == 8) {
+            if (event == Event::Return) {
+                static const char* exts[] = {"md", "txt", "json"};
+                std::string path = export_project_name + "." + exts[export_format_index];
+                bool ok = false;
+                if (export_format_index == 0) ok = core.ExportProjectMarkdown(export_project_name, path);
+                else if (export_format_index == 1) ok = core.ExportProjectText(export_project_name, path);
+                else ok = core.ExportProjectJSON(export_project_name, path);
+                dialog_depth = 0;
+                if (!ok) {
+                    dialog_depth = 3;
+                    err_msg = "Export failed: " + path;
+                }
+                return true;
+            }
+            if (key_bindings.matches(event, KeyBindings::Action::Next)) {
+                export_format_index = std::min(export_format_index + 1, 2);
+                return true;
+            }
+            if (key_bindings.matches(event, KeyBindings::Action::Previous)) {
+                export_format_index = std::max(export_format_index - 1, 0);
+                return true;
+            }
+            if (event == Event::Escape) {
+                dialog_depth = 0;
+                return true;
+            }
+            return true;
+        }
+
+        // Handle import dialog
+        if (dialog_depth == 9) {
+            if (event == Event::Return) {
+                bool ok = core.ImportProjectJSON(import_path);
+                dialog_depth = 0;
+                if (!ok) {
+                    dialog_depth = 3;
+                    err_msg = "Import failed: " + import_path;
+                }
+                import_path.clear();
+                return true;
+            }
+            if (event == Event::Backspace) {
+                if (!import_path.empty()) import_path.pop_back();
+                return true;
+            }
+            if (event == Event::Escape) {
+                dialog_depth = 0;
+                import_path.clear();
+                return true;
+            }
+            if (event.is_character()) {
+                import_path += event.character();
+                return true;
+            }
+            return true;
+        }
+
+        // Open notes editor (only when viewing a project and an article is selected)
+        if (key_bindings.matches(event, KeyBindings::Action::EditNote)) {
+            if (core.GetFilterIndex() >= 6) {
+                auto articles = core.GetCurrentArticles();
+                if (!articles.empty()) {
+                    note_project_name = core.GetProjectNameForFilter(core.GetFilterIndex());
+                    note_article_link = articles[static_cast<size_t>(core.GetArticleIndex())].link;
+                    note_edit_text = core.GetProjectNote(note_project_name, note_article_link);
+                    dialog_depth = 7;
+                }
+            }
+            return true;
+        }
+
+        // Open export dialog (only when viewing a project)
+        if (key_bindings.matches(event, KeyBindings::Action::ExportProject)) {
+            if (core.GetFilterIndex() >= 6) {
+                export_project_name = core.GetProjectNameForFilter(core.GetFilterIndex());
+                export_format_index = 0;
+                dialog_depth = 8;
+            }
+            return true;
+        }
+
+        // Open import dialog
+        if (key_bindings.matches(event, KeyBindings::Action::ImportProject)) {
+            import_path.clear();
+            dialog_depth = 9;
+            return true;
+        }
+
         // Force full retrain
         if (key_bindings.matches(event, KeyBindings::Action::ForceRetrain)) {
             core.ForceRetrain();
@@ -768,6 +978,9 @@ void ArxivApp::SetupUI() {
             if (event == Event::Return) {
                 if (!new_project_name.empty()) {
                     core.AddProject(new_project_name);
+                    if (!parent_for_new_project.empty()) {
+                        core.SetProjectParent(new_project_name, parent_for_new_project);
+                    }
                 }
                 dialog_depth = 0;
                 return true;

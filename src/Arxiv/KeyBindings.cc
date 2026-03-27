@@ -36,7 +36,10 @@ void KeyBindings::init_defaults() {
         {Action::SetDateRange, "r"},
         {Action::Search, "/"},
         {Action::RateArticle, "n"},
-        {Action::ForceRetrain, "R"}
+        {Action::ForceRetrain, "R"},
+        {Action::EditNote, "N"},
+        {Action::ExportProject, "e"},
+        {Action::ImportProject, "I"}
     };
 }
 
@@ -62,6 +65,9 @@ std::string KeyBindings::get_action_name(Action action) {
         case Action::Search: return "Search";
         case Action::RateArticle: return "Rate Article";
         case Action::ForceRetrain: return "Force Retrain";
+        case Action::EditNote: return "Edit Note";
+        case Action::ExportProject: return "Export Project";
+        case Action::ImportProject: return "Import Project";
         default: return "Unknown";
     }
 }

@@ -58,11 +58,25 @@ public:
     // Project management
     void AddProject(const std::string& project_name);
     void RemoveProject(const std::string& project_name);
+    void SetProjectParent(const std::string& project_name, const std::string& parent);
     void LinkArticleToProject(const std::string& article_link, const std::string& project_name);
     void UnlinkArticleFromProject(const std::string& article_link, const std::string& project_name);
     std::vector<std::string> GetProjects() const;
     std::vector<Article> GetArticlesForProject(const std::string& project_name) const;
     std::vector<std::string> GetProjectsForArticle(const std::string& article_link) const;
+
+    // Project notes
+    void SetProjectNote(const std::string& project_name, const std::string& article_link, const std::string& note);
+    std::string GetProjectNote(const std::string& project_name, const std::string& article_link) const;
+
+    // Export/import
+    bool ExportProjectMarkdown(const std::string& project_name, const std::string& output_path) const;
+    bool ExportProjectText(const std::string& project_name, const std::string& output_path) const;
+    bool ExportProjectJSON(const std::string& project_name, const std::string& output_path) const;
+    bool ImportProjectJSON(const std::string& input_path);
+
+    // Returns the actual project name for a filter index >= 6 (accounting for indented sub-projects)
+    std::string GetProjectNameForFilter(int index) const;
     
     // Filter management
     std::vector<std::string> GetFilterOptions() const;
@@ -118,6 +132,8 @@ private:
     std::vector<Article> m_current_articles;
     std::vector<std::string> m_current_titles;
     std::vector<std::string> m_filter_options;
+    // Actual project names parallel to filter_options[6+] (display may be indented for sub-projects)
+    std::vector<std::string> m_filter_project_names;
     
     int m_filter_index{0};
     int m_article_index{0};

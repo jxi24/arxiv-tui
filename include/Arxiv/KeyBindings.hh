@@ -25,7 +25,10 @@ public:
         SetDateRange,
         Search,
         RateArticle,
-        ForceRetrain
+        ForceRetrain,
+        EditNote,
+        ExportProject,
+        ImportProject
     };
 
     KeyBindings() = default;

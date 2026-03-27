@@ -45,6 +45,22 @@ DatabaseManager::DatabaseManager(const std::string &path) {
                article_link TEXT PRIMARY KEY,
                rating INTEGER NOT NULL,
                FOREIGN KEY(article_link) REFERENCES articles(link)))");
+
+    // Create project notes table
+    ExecuteSQL(R"(CREATE TABLE IF NOT EXISTS project_notes (
+               project_name TEXT,
+               article_link TEXT,
+               note TEXT,
+               PRIMARY KEY (project_name, article_link),
+               FOREIGN KEY(project_name) REFERENCES projects(name),
+               FOREIGN KEY(article_link) REFERENCES articles(link)))");
+
+    // Add parent column to projects table (migration for existing DBs)
+    try {
+        ExecuteSQL("ALTER TABLE projects ADD COLUMN parent TEXT DEFAULT ''");
+    } catch (const std::exception&) {
+        // Column already exists — ignore
+    }
     spdlog::info("[Database]: Initialized");
 }
 
@@ -152,11 +168,16 @@ void DatabaseManager::AddProject(const std::string &project_name) {
 }
 
 void DatabaseManager::RemoveProject(const std::string &project_name) {
-    std::string sql1 = fmt::format("DELETE FROM projects WHERE name = '{}'", project_name);
-    std::string sql2 = fmt::format("DELETE FROM project_articles WHERE project_name = '{}'", project_name);
+    std::string esc = EscapeString(project_name);
+    std::string sql1 = fmt::format("DELETE FROM projects WHERE name = '{}'", esc);
+    std::string sql2 = fmt::format("DELETE FROM project_articles WHERE project_name = '{}'", esc);
+    std::string sql3 = fmt::format("DELETE FROM project_notes WHERE project_name = '{}'", esc);
+    std::string sql4 = fmt::format("UPDATE projects SET parent = '' WHERE parent = '{}'", esc);
     ExecuteSQL("BEGIN TRANSACTION");
     ExecuteSQL(sql1);
     ExecuteSQL(sql2);
+    ExecuteSQL(sql3);
+    ExecuteSQL(sql4);
     ExecuteSQL("COMMIT");
 }
 
@@ -335,8 +356,8 @@ int DatabaseManager::GetRating(const std::string &link) {
     return rating;
 }
 
-std::vector<std::pair<Arxiv::Article, int>> DatabaseManager::GetRatedArticles() {
-    std::vector<std::pair<Article, int>> result;
+DatabaseManager::RatedArticleList DatabaseManager::GetRatedArticles() {
+    RatedArticleList result;
     sqlite3_stmt *stmt;
     std::string sql = R"(SELECT a.link, a.title, a.authors, a.abstract, a.date, a.bookmarked,
                                 r.rating
@@ -352,6 +373,51 @@ std::vector<std::pair<Arxiv::Article, int>> DatabaseManager::GetRatedArticles() 
     }
     spdlog::debug("[Database]: Found {} rated articles", result.size());
     return result;
+}
+
+std::string DatabaseManager::GetProjectParent(const std::string &project_name) {
+    sqlite3_stmt *stmt;
+    std::string sql = fmt::format(
+        "SELECT COALESCE(parent, '') FROM projects WHERE name = '{}'",
+        EscapeString(project_name));
+    std::string parent;
+    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) == SQLITE_OK) {
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            parent = ExtractColumn(stmt, 0);
+        }
+        sqlite3_finalize(stmt);
+    }
+    return parent;
+}
+
+void DatabaseManager::SetProjectParent(const std::string &project_name, const std::string &parent) {
+    std::string sql = fmt::format("UPDATE projects SET parent = '{}' WHERE name = '{}'",
+                                  EscapeString(parent), EscapeString(project_name));
+    ExecuteSQL(sql);
+}
+
+void DatabaseManager::SetProjectNote(const std::string &project_name, const std::string &article_link,
+                                     const std::string &note) {
+    spdlog::debug("[Database]: Setting note for article {} in project {}", article_link, project_name);
+    std::string sql = fmt::format(
+        "INSERT OR REPLACE INTO project_notes (project_name, article_link, note) VALUES ('{}', '{}', '{}')",
+        EscapeString(project_name), EscapeString(article_link), EscapeString(note));
+    ExecuteSQL(sql);
+}
+
+std::string DatabaseManager::GetProjectNote(const std::string &project_name, const std::string &article_link) {
+    sqlite3_stmt *stmt;
+    std::string sql = fmt::format(
+        "SELECT note FROM project_notes WHERE project_name = '{}' AND article_link = '{}'",
+        EscapeString(project_name), EscapeString(article_link));
+    std::string note;
+    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) == SQLITE_OK) {
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            note = ExtractColumn(stmt, 0);
+        }
+        sqlite3_finalize(stmt);
+    }
+    return note;
 }
 
 std::vector<Arxiv::Article> DatabaseManager::SearchArticles(const std::string &query, bool search_title, 
