@@ -8,15 +8,15 @@ using namespace ftxui;
 using namespace Arxiv;
 
 namespace TextColors {
-// Color scheme (Catppuccin Frappe)
-const Color base = Color::RGB(48, 52, 70);          // #232634
-const Color surface = Color::RGB(65, 69, 89);       // #303446
-const Color text = Color::RGB(198, 208, 245);       // #c6d0f5
-const Color subtext = Color::RGB(165, 173, 206);    // #a5adce
-const Color primary = Color::RGB(133, 193, 220);    // #8caaee
-const Color border = Color::RGB(153, 209, 219);     // #99d1db
-const Color secondary = Color::RGB(244, 184, 228);  // #f4b8e4
-const Color error = Color::RGB(231, 130, 132);      // #e78284
+// Catppuccin Frappe — exact hex values from the official palette
+const Color base    = Color::RGB( 48,  52,  70);  // #303446  Base
+const Color surface = Color::RGB( 65,  69,  89);  // #414559  Surface0
+const Color text    = Color::RGB(198, 208, 245);  // #c6d0f5  Text
+const Color subtext = Color::RGB(165, 173, 206);  // #a5adce  Subtext0
+const Color primary = Color::RGB(140, 170, 238);  // #8caaee  Blue
+const Color border  = Color::RGB(153, 209, 219);  // #99d1db  Sky
+const Color secondary = Color::RGB(244, 184, 228);// #f4b8e4  Pink
+const Color error   = Color::RGB(231, 130, 132);  // #e78284  Red
 }
 
 ArxivApp::ArxivApp(const Config& config, ReplayRecorder* recorder)
@@ -37,7 +37,7 @@ void ArxivApp::UpdateTitleScrollPositions() {
     auto article = core.GetCurrentArticles()[static_cast<size_t>(core.GetArticleIndex())];
     
     auto elapsed = std::chrono::duration<float>(now - last_update).count();
-    spdlog::info("[App]: time elapsed = {}", elapsed);
+    spdlog::trace("[App]: time elapsed = {}", elapsed);
         
     // Update scroll position based on elapsed time
     title_start_position += scroll_speed * elapsed;
@@ -169,23 +169,29 @@ void ArxivApp::SetupUI() {
         });
 
     filter_pane = Renderer(filter_menu, [&] {
+        auto header = focused_pane == 0
+            ? text(" Filters ") | bold | color(TextColors::base) | bgcolor(TextColors::primary)
+            : text(" Filters ") | bold | color(TextColors::primary);
         return vbox({
-            text("Filters") | (focused_pane == 0 ? inverted : bold) | color(TextColors::primary),
+            header,
             separator() | color(TextColors::border),
             filter_menu->Render() | vscroll_indicator | frame | color(TextColors::text)
-        }) | borderStyled(ROUNDED, TextColors::border) | bgcolor(TextColors::base);
+        }) | borderStyled(ROUNDED, TextColors::border);
     });
 
     article_pane = Renderer(article_list, [&] {
         auto articles = core.GetCurrentArticles();
         if(articles.empty()) {
+            auto header = focused_pane == 1
+                ? text(" Articles ") | bold | color(TextColors::base) | bgcolor(TextColors::primary)
+                : text(" Articles ") | bold | color(TextColors::primary);
             return vbox({
-                text("Articles") | (focused_pane == 1 ? inverted : bold) | color(TextColors::primary),
+                header,
                 separator() | color(TextColors::border),
                 text("No articles available") | center | color(TextColors::subtext),
                 separator() | color(TextColors::border),
                 text("Try changing filters.") | center | color(TextColors::subtext),
-            }) | borderStyled(ROUNDED, TextColors::border) | bgcolor(TextColors::base);
+            }) | borderStyled(ROUNDED, TextColors::border);
         }
 
         // Calculate visible rows based on terminal size
@@ -221,7 +227,11 @@ void ArxivApp::SetupUI() {
                     title = title.substr(start_pos) + "    " + title.substr(0, start_pos);
                 }
                 title = "> " + title + score_badge;
-                menu_items.push_back(text(title) | bold | color(TextColors::primary));
+                if (focused_pane == 1) {
+                    menu_items.push_back(text(title) | bold | color(TextColors::primary));
+                } else {
+                    menu_items.push_back(text(title) | color(TextColors::subtext));
+                }
             } else {
                 title = "  " + title + score_badge;
                 menu_items.push_back(text(title) | color(TextColors::text));
@@ -229,8 +239,11 @@ void ArxivApp::SetupUI() {
         }
 
         int pending = core.PendingRatings();
+        auto header_text = focused_pane == 1
+            ? text(" Articles ") | bold | color(TextColors::base) | bgcolor(TextColors::primary)
+            : text(" Articles ") | bold | color(TextColors::primary);
         Element header = hbox({
-            text("Articles") | (focused_pane == 1 ? inverted : bold) | color(TextColors::primary),
+            header_text,
             core.IsTraining()
                 ? text("  [Training…]") | color(TextColors::secondary)
                 : (pending > 0
@@ -241,15 +254,14 @@ void ArxivApp::SetupUI() {
             header,
             separator() | color(TextColors::border),
             vbox(menu_items) | vscroll_indicator | frame
-        }) | borderStyled(ROUNDED, TextColors::border) | bgcolor(TextColors::base);
+        }) | borderStyled(ROUNDED, TextColors::border);
     });
 
     detail_view = Renderer([&] {
         auto articles = core.GetCurrentArticles();
         if(articles.empty() || core.GetArticleIndex() >= static_cast<int>(articles.size())) {
-            return window(text("Detail View") | color(TextColors::primary), 
-                         text("No details available.") | center | color(TextColors::subtext))
-                         | bgcolor(TextColors::base);
+            return window(text("Detail View") | color(TextColors::primary),
+                         text("No details available.") | center | color(TextColors::subtext));
         }
         
         const auto& article = articles[static_cast<size_t>(core.GetArticleIndex())];
@@ -290,8 +302,7 @@ void ArxivApp::SetupUI() {
         }
 
         return vbox(detail_elements)
-            | borderStyled(ROUNDED, TextColors::border)
-            | bgcolor(TextColors::base);
+            | borderStyled(ROUNDED, TextColors::border);
     });
 
     main_container = Container::Tab({
