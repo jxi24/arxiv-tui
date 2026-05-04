@@ -1,6 +1,7 @@
 #ifndef ARXIV_APP_CORE
 #define ARXIV_APP_CORE
 
+#include <condition_variable>
 #include <memory>
 #include <string>
 #include <vector>
@@ -128,6 +129,12 @@ public:
     std::vector<std::string> GetFollowedAuthors() const;
     std::vector<Article> GetArticlesForFollowedAuthors() const;
 
+    // Background auto-refresh
+    void StartAutoRefresh();
+    void StopAutoRefresh();
+    bool IsAutoRefreshing() const;
+    int  GetAutoRefreshMinutes() const;
+
     // Keyword management (cold-start ranking)
     void ReloadKeywords();
     bool SaveKeywords(const std::vector<std::string>& keywords);
@@ -174,6 +181,13 @@ private:
     bool has_search_query = false;
     std::string search_query;
     SearchMode search_mode = SearchMode::title;
+
+    // Background auto-refresh
+    std::thread              m_refresh_thread;
+    std::atomic<bool>        m_refresh_running{false};
+    std::condition_variable  m_refresh_cv;
+    std::mutex               m_refresh_mutex;
+    int                      m_auto_refresh_minutes{0};
 
     // Keyword cold-start
     std::vector<std::string> m_keywords;

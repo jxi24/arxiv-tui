@@ -33,6 +33,7 @@ public:
     float get_recommend_threshold() const { return recommend_threshold_; }
     int   get_retrain_interval()    const { return retrain_interval_; }
     const std::string& get_keywords_file()   const { return keywords_file_; }
+    int  get_auto_refresh_minutes()          const { return auto_refresh_minutes_; }
 
     // Setters
     void set_download_dir(const std::string& dir) { article_settings_.download_dir = dir; }
@@ -41,6 +42,7 @@ public:
     void set_recommend_threshold(float t) { recommend_threshold_ = t; }
     void set_retrain_interval(int n)      { retrain_interval_ = n; }
     void set_keywords_file(const std::string& path) { keywords_file_ = path; }
+    void set_auto_refresh_minutes(int m)  { auto_refresh_minutes_ = m; }
 
     // Save/Load configuration
     void save_to_file(const std::string& config_file) const;
@@ -52,6 +54,7 @@ private:
     float       recommend_threshold_{3.5f};
     int         retrain_interval_{5};
     std::string keywords_file_;
+    int         auto_refresh_minutes_{0};
 };
 
 } // namespace arxiv_tui 

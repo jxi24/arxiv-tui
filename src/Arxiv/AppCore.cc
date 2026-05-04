@@ -19,7 +19,8 @@ AppCore::AppCore(const Config& config,
     , m_db(std::move(db))
     , m_fetcher(std::move(fetcher))
     , m_retrain_interval(config.get_retrain_interval())
-    , m_recommend_threshold(config.get_recommend_threshold()) {
+    , m_recommend_threshold(config.get_recommend_threshold())
+    , m_auto_refresh_minutes(config.get_auto_refresh_minutes()) {
 
     spdlog::info("ArxivAppCore Initialized");
     auto articles = m_fetcher->Fetch();
@@ -41,6 +42,7 @@ AppCore::AppCore(const Config& config,
 }
 
 AppCore::~AppCore() {
+    StopAutoRefresh();
     // Ensure the background training thread has finished before destruction.
     if (m_train_thread.joinable()) {
         m_train_thread.join();
@@ -859,6 +861,39 @@ bool AppCore::SaveKeywords(const std::vector<std::string>& keywords) {
 
 std::vector<std::string> AppCore::GetKeywords() const {
     return m_keywords;
+}
+
+void AppCore::StartAutoRefresh() {
+    if (m_refresh_running.load()) return;
+    m_refresh_running.store(true);
+    m_refresh_thread = std::thread([this] {
+        while (m_refresh_running.load()) {
+            std::unique_lock<std::mutex> lock(m_refresh_mutex);
+            int minutes = m_auto_refresh_minutes > 0 ? m_auto_refresh_minutes : 60;
+            m_refresh_cv.wait_for(lock, std::chrono::minutes(minutes),
+                                  [this] { return !m_refresh_running.load(); });
+            if (m_refresh_running.load()) {
+                FetchArticles();
+            }
+        }
+    });
+}
+
+void AppCore::StopAutoRefresh() {
+    if (!m_refresh_running.load()) return;
+    m_refresh_running.store(false);
+    m_refresh_cv.notify_all();
+    if (m_refresh_thread.joinable()) {
+        m_refresh_thread.join();
+    }
+}
+
+bool AppCore::IsAutoRefreshing() const {
+    return m_refresh_running.load();
+}
+
+int AppCore::GetAutoRefreshMinutes() const {
+    return m_auto_refresh_minutes;
 }
 
 } // namespace Arxiv
