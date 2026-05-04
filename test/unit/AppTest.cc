@@ -62,15 +62,15 @@ TEST_CASE("AppCore article management", "[app]") {
         db_ptr->setBookmarkedArticles(bookmarked_articles);
         db_ptr->setArticles(today_articles);
         
-        core.SetFilterIndex(0); // All Articles
+        core.SetFilterIndex(Arxiv::AppCore::FilterView::All);
         auto all_articles = core.GetCurrentArticles();
         REQUIRE(all_articles.size() == sample_articles.size());
-        
-        core.SetFilterIndex(1); // Bookmarks
+
+        core.SetFilterIndex(Arxiv::AppCore::FilterView::Bookmarks);
         auto filtered_bookmarked = core.GetCurrentArticles();
         REQUIRE(filtered_bookmarked.size() == bookmarked_articles.size());
-        
-        core.SetFilterIndex(2); // Today
+
+        core.SetFilterIndex(Arxiv::AppCore::FilterView::Today);
         auto filtered_today = core.GetCurrentArticles();
         REQUIRE(filtered_today.size() == today_articles.size());
     }

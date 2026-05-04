@@ -31,6 +31,17 @@ public:
         authors,
         abstract
     };
+
+    enum class FilterView {
+        All            = 0,
+        Bookmarks      = 1,
+        Today          = 2,
+        Range          = 3,
+        Search         = 4,
+        Recommended    = 5,
+        FollowedAuthors = 6,
+        Project        = 7,  // sentinel: any index >= 7 is a project
+    };
     
     // Article management
     void FetchArticles();
@@ -96,8 +107,10 @@ public:
     std::vector<std::string> GetFilterOptions() const;
     std::vector<std::string> &GetFilterOptions();
     void SetFilterIndex(int index);
+    void SetFilterIndex(FilterView view);
     int GetFilterIndex() const;
     int &GetFilterIndex();
+    FilterView GetFilterView() const;
     
     // State management
     void SetArticleIndex(int index);

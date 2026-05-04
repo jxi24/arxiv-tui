@@ -51,57 +51,60 @@ AppCore::~AppCore() {
 
 void AppCore::FetchArticles() {
     m_current_articles.clear();
-    
-    if (m_filter_index == 0) {  // All Articles
+
+    switch (GetFilterView()) {
+    case FilterView::All:
         m_current_articles = m_db->GetRecent(-1);
-    } else if (m_filter_index == 1) {  // Bookmarks
+        break;
+    case FilterView::Bookmarks:
         m_current_articles = m_db->ListBookmarked();
-    } else if (m_filter_index == 2) {  // Today
+        break;
+    case FilterView::Today:
         m_current_articles = m_db->GetRecent(1);
-    } else if (m_filter_index == 3) {  // Range
+        break;
+    case FilterView::Range:
         if (has_date_range) {
             m_current_articles = m_db->GetArticlesForDateRange(start_date, end_date);
         } else {
             m_current_articles = m_db->GetRecent(-1);
         }
-    } else if (m_filter_index == 4) {  // Search
+        break;
+    case FilterView::Search:
         if (has_search_query) {
-            bool search_title = (search_mode == SearchMode::title);
-            bool search_authors = (search_mode == SearchMode::authors);
+            bool search_title    = (search_mode == SearchMode::title);
+            bool search_authors  = (search_mode == SearchMode::authors);
             bool search_abstract = (search_mode == SearchMode::abstract);
             m_current_articles = m_db->SearchArticles(search_query, search_title,
-                                                    search_authors, search_abstract);
+                                                      search_authors, search_abstract);
         } else {
             m_current_articles = m_db->GetRecent(-1);
         }
-    } else if (m_filter_index == 5) {  // Recommended
+        break;
+    case FilterView::Recommended: {
         auto today_articles = m_db->GetRecent(1);
         if (m_ranker.IsTrained()) {
-            // Score each article and keep those above the threshold
             std::vector<std::pair<float, Article>> scored;
             scored.reserve(today_articles.size());
             for (const auto &a : today_articles) {
                 float score = m_ranker.Predict(a);
-                if (score >= m_recommend_threshold) {
+                if (score >= m_recommend_threshold)
                     scored.emplace_back(score, a);
-                }
             }
-            // Sort by predicted score descending
             std::sort(scored.begin(), scored.end(),
                       [](const auto &lhs, const auto &rhs) { return lhs.first > rhs.first; });
-            m_current_articles.clear();
-            for (auto &[score, article] : scored) {
+            for (auto &[score, article] : scored)
                 m_current_articles.push_back(std::move(article));
-            }
         } else {
-            // Ranker not trained yet — show today's articles unranked
             m_current_articles = today_articles;
         }
-    } else if (m_filter_index == 6) {  // Followed Authors
+        break;
+    }
+    case FilterView::FollowedAuthors:
         m_current_articles = GetArticlesForFollowedAuthors();
-    } else {  // Project (index >= 7)
-        std::string project_name = GetProjectNameForFilter(m_filter_index);
-        m_current_articles = GetArticlesForProject(project_name);
+        break;
+    case FilterView::Project:
+        m_current_articles = GetArticlesForProject(GetProjectNameForFilter(m_filter_index));
+        break;
     }
     
     RefreshTitles();
@@ -210,6 +213,16 @@ int AppCore::GetFilterIndex() const {
 
 int &AppCore::GetFilterIndex() {
     return m_filter_index;
+}
+
+AppCore::FilterView AppCore::GetFilterView() const {
+    if (m_filter_index >= static_cast<int>(FilterView::Project))
+        return FilterView::Project;
+    return static_cast<FilterView>(m_filter_index);
+}
+
+void AppCore::SetFilterIndex(FilterView view) {
+    SetFilterIndex(static_cast<int>(view));
 }
 
 void AppCore::SetArticleIndex(int index) {
@@ -403,7 +416,7 @@ float AppCore::GetPredictedScore(const Article &article) const {
 
 void AppCore::SetRecommendThreshold(float threshold) {
     m_recommend_threshold = threshold;
-    if (m_filter_index == 5) {
+    if (GetFilterView() == FilterView::Recommended) {
         FetchArticles();
     }
 }
