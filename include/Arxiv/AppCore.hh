@@ -180,7 +180,7 @@ private:
     // Actual project names parallel to filter_options[6+] (display may be indented for sub-projects)
     std::vector<std::string> m_filter_project_names;
     
-    int m_filter_index{0};
+    int m_filter_index{static_cast<int>(FilterView::NewArticles)};
     int m_article_index{0};
     
     ArticleUpdateCallback m_article_update_callback;

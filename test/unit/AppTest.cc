@@ -185,9 +185,11 @@ TEST_CASE("AppCore state management", "[app]") {
     }
     
     SECTION("Should handle filter index changes") {
-        int initial_index = core.GetFilterIndex();
-        core.SetFilterIndex(initial_index + 1);
-        REQUIRE(core.GetFilterIndex() == initial_index + 1);
+        // Switch from default (NewArticles) to All, then back.
+        core.SetFilterIndex(Arxiv::AppCore::FilterView::All);
+        REQUIRE(core.GetFilterIndex() == static_cast<int>(Arxiv::AppCore::FilterView::All));
+        core.SetFilterIndex(Arxiv::AppCore::FilterView::NewArticles);
+        REQUIRE(core.GetFilterIndex() == static_cast<int>(Arxiv::AppCore::FilterView::NewArticles));
     }
 }
 

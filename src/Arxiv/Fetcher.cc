@@ -331,15 +331,18 @@ std::string Fetcher::ReplaceLatexAccents(const std::string& text) const {
 }
 
 std::vector<Article> Fetcher::FetchSince(const std::string &utc_date) {
-    // Build date range: day after utc_date up to today (inclusive), UTC.
+    // Build date range: from utc_date up to today (inclusive), UTC.
+    // We start from utc_date itself (not utc_date+1) because arXiv's <published>
+    // field reflects the POSTED date (when the paper appeared publicly), which
+    // may lag the author's actual submission by one business day. Starting from
+    // utc_date ensures we don't miss papers submitted just before the cutoff
+    // but announced on utc_date or after.
     // arXiv submittedDate format: YYYYMMDDHHMI (e.g. 202605020000).
-
-    // Compute "day after utc_date" as the start of the range.
     std::tm from_tm{};
     from_tm.tm_year = std::stoi(utc_date.substr(0, 4)) - 1900;
     from_tm.tm_mon  = std::stoi(utc_date.substr(5, 2)) - 1;
-    from_tm.tm_mday = std::stoi(utc_date.substr(8, 2)) + 1;
-    timegm(&from_tm);  // normalise (handles month/year overflow)
+    from_tm.tm_mday = std::stoi(utc_date.substr(8, 2));
+    timegm(&from_tm);  // normalise
     char from_buf[16];
     std::strftime(from_buf, sizeof(from_buf), "%Y%m%d0000", &from_tm);
 

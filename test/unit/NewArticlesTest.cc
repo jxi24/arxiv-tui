@@ -253,3 +253,67 @@ TEST_CASE("FetcherMock: FetchSince is mockable and returns empty by default", "[
     auto result = mock.FetchSince("2026-05-01");
     REQUIRE(result.empty());
 }
+
+// ---------------------------------------------------------------------------
+// Default view: AppCore opens on NewArticles, not All
+// ---------------------------------------------------------------------------
+
+TEST_CASE("AppCore: default filter view is NewArticles", "[newart][appcore]") {
+    auto db_ptr  = std::make_unique<DatabaseManagerMock>();
+    auto fet_ptr = std::make_unique<FetcherMock>();
+    Arxiv::Config cfg;
+    cfg.set_topics({"cs.AI"});
+    cfg.set_download_dir("/tmp");
+    auto core = std::make_unique<Arxiv::AppCore>(cfg, std::move(db_ptr), std::move(fet_ptr));
+
+    REQUIRE(core->GetFilterView() == Arxiv::AppCore::FilterView::NewArticles);
+}
+
+TEST_CASE("AppCore: default filter index equals NewArticles integer value", "[newart][appcore]") {
+    auto db_ptr  = std::make_unique<DatabaseManagerMock>();
+    auto fet_ptr = std::make_unique<FetcherMock>();
+    Arxiv::Config cfg;
+    cfg.set_topics({"cs.AI"});
+    cfg.set_download_dir("/tmp");
+    auto core = std::make_unique<Arxiv::AppCore>(cfg, std::move(db_ptr), std::move(fet_ptr));
+
+    REQUIRE(core->GetFilterIndex() ==
+            static_cast<int>(Arxiv::AppCore::FilterView::NewArticles));
+}
+
+// ---------------------------------------------------------------------------
+// Posted date: AppCore calls FetchSince(prev_date), not FetchSince(prev_date+1)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("AppCore: FetchSince is called with the previous fetch date (posted-date semantics)",
+          "[newart][appcore]")
+{
+    auto db_ptr  = std::make_unique<DatabaseManagerMock>();
+    auto fet_ptr = std::make_unique<FetcherMock>();
+    auto* db_raw  = db_ptr.get();
+    auto* fet_raw = fet_ptr.get();
+
+    const std::string prev = "2026-05-01";
+
+    ALLOW_CALL(*db_raw, GetMetadata(std::string("last_fetch_date")))
+        .RETURN(prev);
+
+    // FetchSince must be called with exactly prev_date, not prev_date+1.
+    bool fetch_since_called = false;
+    std::string fetch_since_arg;
+    ALLOW_CALL(*fet_raw, FetchSince(trompeloeil::_))
+        .LR_SIDE_EFFECT({
+            fetch_since_called = true;
+            fetch_since_arg = _1;
+        })
+        .RETURN(std::vector<Arxiv::Article>{});
+
+    Arxiv::Config cfg;
+    cfg.set_topics({"cs.AI"});
+    cfg.set_download_dir("/tmp");
+    auto core = std::make_unique<Arxiv::AppCore>(cfg, std::move(db_ptr), std::move(fet_ptr));
+
+    REQUIRE(fetch_since_called);
+    REQUIRE(fetch_since_arg == prev);
+}
+
