@@ -30,7 +30,8 @@ public:
         ExportProject,
         ImportProject,
         ExportBibTeX,
-        EditKeywords
+        EditKeywords,
+        ExportDigest
     };
 
     KeyBindings() = default;

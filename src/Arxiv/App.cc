@@ -1065,6 +1065,18 @@ void ArxivApp::SetupUI() {
             return true;
         }
 
+        // Export daily digest to digest-YYYY-MM-DD.md
+        if (key_bindings.matches(event, KeyBindings::Action::ExportDigest)) {
+            auto now = std::chrono::system_clock::now();
+            std::time_t t = std::chrono::system_clock::to_time_t(now);
+            std::tm tm_val{};
+            localtime_r(&t, &tm_val);
+            char buf[32];
+            std::strftime(buf, sizeof(buf), "digest-%Y-%m-%d.md", &tm_val);
+            core.ExportDailyDigest(buf);
+            return true;
+        }
+
         // Open export dialog (only when viewing a project)
         if (key_bindings.matches(event, KeyBindings::Action::ExportProject)) {
             if (core.GetFilterIndex() >= 6) {

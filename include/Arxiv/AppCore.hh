@@ -80,6 +80,10 @@ public:
     bool ExportArticlesBibTeX(const std::vector<Article>& articles, const std::string& output_path) const;
     bool ExportProjectBibTeX(const std::string& project_name, const std::string& output_path) const;
 
+    // Daily-digest export
+    bool ExportDailyDigest(const std::string& output_path) const;
+    bool ExportDailyDigestYAML(const std::string& output_path) const;
+
     // Returns the actual project name for a filter index >= 6 (accounting for indented sub-projects)
     std::string GetProjectNameForFilter(int index) const;
     

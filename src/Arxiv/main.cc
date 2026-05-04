@@ -25,16 +25,41 @@ void CreateLogger(int level, int flush_time) {
 int main(int argc, char* argv[]) {
     CreateLogger(0, 1);
 
-    // Parse --replay <file> flag
+    // Parse CLI flags
     std::string replay_file;
+    std::string export_today_path;
+    std::string export_yaml_path;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--replay") == 0 && i + 1 < argc) {
-            replay_file = argv[i + 1];
-            ++i;
+            replay_file = argv[++i];
+        } else if (std::strcmp(argv[i], "--export-today") == 0 && i + 1 < argc) {
+            export_today_path = argv[++i];
+        } else if (std::strcmp(argv[i], "--export-yaml") == 0 && i + 1 < argc) {
+            export_yaml_path = argv[++i];
         }
     }
 
     Arxiv::Config config(".arxiv-tui.yml");
+
+    // Headless digest export
+    if (!export_today_path.empty() || !export_yaml_path.empty()) {
+        auto core = std::make_unique<Arxiv::AppCore>(
+            config,
+            std::make_unique<Arxiv::DatabaseManager>("articles.db"),
+            std::make_unique<Arxiv::Fetcher>(config.get_topics(), config.get_download_dir()));
+
+        if (!export_today_path.empty()) {
+            bool ok = core->ExportDailyDigest(export_today_path);
+            std::cout << (ok ? "Digest written to " + export_today_path : "Failed to write digest") << "\n";
+            if (!ok) return 1;
+        }
+        if (!export_yaml_path.empty()) {
+            bool ok = core->ExportDailyDigestYAML(export_yaml_path);
+            std::cout << (ok ? "YAML digest written to " + export_yaml_path : "Failed to write YAML digest") << "\n";
+            if (!ok) return 1;
+        }
+        return 0;
+    }
 
     if (!replay_file.empty()) {
         // Headless replay mode: no TUI, just dispatch actions to AppCore

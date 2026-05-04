@@ -694,6 +694,68 @@ bool AppCore::ExportProjectBibTeX(const std::string& project_name,
 }
 
 // ---------------------------------------------------------------------------
+// Daily-digest export
+// ---------------------------------------------------------------------------
+
+static std::string today_string() {
+    auto now   = std::chrono::system_clock::now();
+    std::time_t t = std::chrono::system_clock::to_time_t(now);
+    std::tm tm_val{};
+    localtime_r(&t, &tm_val);
+    char buf[32];
+    std::strftime(buf, sizeof(buf), "%Y-%m-%d", &tm_val);
+    return buf;
+}
+
+bool AppCore::ExportDailyDigest(const std::string& output_path) const {
+    auto articles = m_db->GetRecent(1); // last 24 hours
+    std::ofstream f(output_path);
+    if (!f.is_open()) return false;
+
+    f << "# arXiv Daily Digest — " << today_string() << "\n\n";
+    if (articles.empty()) {
+        f << "_No articles fetched today._\n";
+    } else {
+        for (const auto& a : articles) {
+            f << "## " << a.title << "\n";
+            f << "**Authors:** " << a.authors << "  \n";
+            f << "**Link:** <" << a.link << ">  \n";
+            if (!a.abstract.empty())
+                f << "\n" << a.abstract << "\n";
+            f << "\n---\n\n";
+        }
+    }
+    spdlog::info("[AppCore]: Exported daily digest ({} articles) to {}", articles.size(), output_path);
+    return true;
+}
+
+bool AppCore::ExportDailyDigestYAML(const std::string& output_path) const {
+    auto articles = m_db->GetRecent(1);
+    std::ofstream f(output_path);
+    if (!f.is_open()) return false;
+
+    f << "date: \"" << today_string() << "\"\narticles:\n";
+    for (const auto& a : articles) {
+        auto escape_yaml = [](const std::string& s) {
+            std::string out;
+            out.reserve(s.size());
+            for (char c : s) {
+                if (c == '"') out += "\\\"";
+                else out += c;
+            }
+            return out;
+        };
+        f << "  - title: \"" << escape_yaml(a.title) << "\"\n";
+        f << "    authors: \"" << escape_yaml(a.authors) << "\"\n";
+        f << "    link: \"" << escape_yaml(a.link) << "\"\n";
+        if (!a.abstract.empty())
+            f << "    abstract: \"" << escape_yaml(a.abstract) << "\"\n";
+    }
+    spdlog::info("[AppCore]: Exported daily digest YAML ({} articles) to {}", articles.size(), output_path);
+    return true;
+}
+
+// ---------------------------------------------------------------------------
 // Keyword management
 // ---------------------------------------------------------------------------
 
