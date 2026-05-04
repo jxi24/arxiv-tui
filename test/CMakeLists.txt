@@ -30,6 +30,7 @@ add_executable(unit_tests
     unit/BibTeXTest.cc
     unit/LatexTest.cc
     unit/KeywordTest.cc
+    unit/KeywordEditorTest.cc
 )
 
 # Link against Catch2 and our library

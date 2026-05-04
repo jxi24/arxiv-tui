@@ -40,7 +40,8 @@ void KeyBindings::init_defaults() {
         {Action::EditNote, "N"},
         {Action::ExportProject, "e"},
         {Action::ImportProject, "I"},
-        {Action::ExportBibTeX, "c"}
+        {Action::ExportBibTeX, "c"},
+        {Action::EditKeywords, "K"}
     };
 }
 
@@ -70,6 +71,7 @@ std::string KeyBindings::get_action_name(Action action) {
         case Action::ExportProject: return "Export Project";
         case Action::ImportProject: return "Import Project";
         case Action::ExportBibTeX:  return "Export BibTeX";
+        case Action::EditKeywords:  return "Edit Keywords";
         default: return "Unknown";
     }
 }

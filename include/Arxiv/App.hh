@@ -91,6 +91,12 @@ private:
     std::string import_path;
     Component import_dialog;
 
+    // Keyword editor dialog (dialog_depth == 10)
+    std::vector<std::string> keyword_edit_list;
+    std::string keyword_new_entry;
+    int keyword_selected_index = 0;
+    Component keyword_dialog;
+
     // Article pane scrolling
     int visible_rows = 0;  // Number of rows visible in the article pane
     int top_article_index = 0;  // Index of the article at the top of the visible area

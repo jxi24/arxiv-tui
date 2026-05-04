@@ -693,4 +693,57 @@ bool AppCore::ExportProjectBibTeX(const std::string& project_name,
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// Keyword management
+// ---------------------------------------------------------------------------
+
+void AppCore::ReloadKeywords() {
+    const std::string& path = m_config.get_keywords_file();
+    if (path.empty()) return;
+
+    std::ifstream f(path);
+    if (!f.is_open()) {
+        spdlog::debug("[AppCore]: Keywords file '{}' not found — skipping", path);
+        return;
+    }
+
+    std::vector<std::string> kws;
+    std::string line;
+    while (std::getline(f, line)) {
+        if (!line.empty())
+            kws.push_back(line);
+    }
+    m_keywords = kws;
+    {
+        std::lock_guard<std::mutex> lock(m_ranker_mutex);
+        m_ranker.FitKeywords(kws);
+    }
+    spdlog::info("[AppCore]: Loaded {} keyword(s) from '{}'", kws.size(), path);
+}
+
+bool AppCore::SaveKeywords(const std::vector<std::string>& keywords) {
+    const std::string& path = m_config.get_keywords_file();
+    if (path.empty()) return false;
+
+    std::ofstream f(path);
+    if (!f.is_open()) {
+        spdlog::error("[AppCore]: Cannot write keywords file '{}'", path);
+        return false;
+    }
+    for (const auto& kw : keywords)
+        f << kw << "\n";
+
+    m_keywords = keywords;
+    {
+        std::lock_guard<std::mutex> lock(m_ranker_mutex);
+        m_ranker.FitKeywords(keywords);
+    }
+    spdlog::info("[AppCore]: Saved {} keyword(s) to '{}'", keywords.size(), path);
+    return true;
+}
+
+std::vector<std::string> AppCore::GetKeywords() const {
+    return m_keywords;
+}
+
 } // namespace Arxiv

@@ -108,11 +108,16 @@ public:
     std::pair<std::string, std::string> GetDateRange() const { return {start_date, end_date}; }
 
     // Search methods
-    void SetSearchQuery(const std::string& query, bool search_title = true, 
+    void SetSearchQuery(const std::string& query, bool search_title = true,
                        bool search_authors = true, bool search_abstract = true);
     void ClearSearch();
     bool HasSearchQuery() const { return has_search_query; }
     std::string GetSearchQuery() const { return search_query; }
+
+    // Keyword management (cold-start ranking)
+    void ReloadKeywords();
+    bool SaveKeywords(const std::vector<std::string>& keywords);
+    std::vector<std::string> GetKeywords() const;
 
 private:
     Config m_config;
@@ -155,7 +160,10 @@ private:
     bool has_search_query = false;
     std::string search_query;
     SearchMode search_mode = SearchMode::title;
-    
+
+    // Keyword cold-start
+    std::vector<std::string> m_keywords;
+
     void RefreshTitles();
     void RefreshFilterOptions();
     void NotifyArticleUpdate();

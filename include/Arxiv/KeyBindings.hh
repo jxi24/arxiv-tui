@@ -29,7 +29,8 @@ public:
         EditNote,
         ExportProject,
         ImportProject,
-        ExportBibTeX
+        ExportBibTeX,
+        EditKeywords
     };
 
     KeyBindings() = default;
