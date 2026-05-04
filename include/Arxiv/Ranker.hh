@@ -39,6 +39,18 @@ public:
 
     bool IsTrained() const { return m_trained; }
 
+    // Keyword cold-start: store interest keywords for scoring before ML training.
+    void FitKeywords(const std::vector<std::string> &keywords);
+    bool IsFitKeywords() const { return m_fit_keywords; }
+
+    // Score an article in [1.0, 5.0] based purely on keyword hit fraction.
+    // Returns 1.0 if no keywords have been fitted.
+    float PredictKeyword(const Article &article) const;
+
+    // Blended score: if ML-trained and keywords fitted, returns a weighted mix;
+    // if only keywords fitted, returns PredictKeyword; if neither, returns 0.0.
+    float PredictBlended(const Article &article) const;
+
     // Persist the trained model (vocabulary + weights) to a binary file.
     // Returns true on success.
     bool Save(const std::string &path) const;
@@ -60,6 +72,10 @@ private:
     float              m_b2{0.0f};
 
     bool m_trained{false};
+
+    // Keyword cold-start
+    std::vector<std::string> m_keywords;
+    bool m_fit_keywords{false};
 
     // Text helpers
     static std::vector<std::string> Tokenise(const std::string &text);

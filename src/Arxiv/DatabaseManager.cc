@@ -60,6 +60,13 @@ DatabaseManager::DatabaseManager(const std::string &path) {
     } catch (const std::exception&) {
         // Column already exists — ignore
     }
+
+    // Add relevance_score column to articles table (migration for existing DBs)
+    try {
+        ExecuteSQL("ALTER TABLE articles ADD COLUMN relevance_score REAL DEFAULT 0.0");
+    } catch (const std::exception&) {
+        // Column already exists — ignore
+    }
     spdlog::info("[Database]: Initialized");
 }
 
@@ -517,4 +524,33 @@ std::vector<Arxiv::Article> DatabaseManager::SearchArticles(const std::string &q
 
     spdlog::debug("[Database]: Found {} articles matching search criteria", articles.size());
     return articles;
+}
+
+void DatabaseManager::SetRelevanceScore(const std::string &link, float score) {
+    const char* sql = "UPDATE articles SET relevance_score = ? WHERE link = ?";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        throw std::runtime_error(std::string("[Database]: prepare failed: ") + sqlite3_errmsg(db));
+    }
+    sqlite3_bind_double(stmt, 1, static_cast<double>(score));
+    sqlite3_bind_text(stmt,  2, link.c_str(), -1, SQLITE_TRANSIENT);
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    if (rc != SQLITE_DONE) {
+        throw std::runtime_error(std::string("[Database]: SetRelevanceScore failed: ") + sqlite3_errmsg(db));
+    }
+}
+
+float DatabaseManager::GetRelevanceScore(const std::string &link) {
+    sqlite3_stmt *stmt;
+    const char* sql = "SELECT relevance_score FROM articles WHERE link = ?";
+    float score = 0.0f;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, link.c_str(), -1, SQLITE_TRANSIENT);
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            score = static_cast<float>(sqlite3_column_double(stmt, 0));
+        }
+        sqlite3_finalize(stmt);
+    }
+    return score;
 }

@@ -31,6 +31,10 @@ class DatabaseManager {
     virtual int GetRating(const std::string &link);
     virtual RatedArticleList GetRatedArticles();
 
+    // Relevance score cache (keyword / ML blend)
+    virtual void  SetRelevanceScore(const std::string &link, float score);
+    virtual float GetRelevanceScore(const std::string &link);
+
     // Project management
     virtual void AddProject(const std::string &project_name);
     virtual void RemoveProject(const std::string &project_name);

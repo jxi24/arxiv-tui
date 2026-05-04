@@ -424,4 +424,53 @@ bool Ranker::Load(const std::string &path) {
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// Keyword cold-start
+// ---------------------------------------------------------------------------
+void Ranker::FitKeywords(const std::vector<std::string> &keywords) {
+    m_keywords.clear();
+    m_keywords.reserve(keywords.size());
+    for (const auto &kw : keywords) {
+        std::string lower;
+        lower.reserve(kw.size());
+        for (char c : kw)
+            lower += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (!lower.empty())
+            m_keywords.push_back(std::move(lower));
+    }
+    m_fit_keywords = !m_keywords.empty();
+    spdlog::info("[Ranker]: Fitted {} keywords for cold-start scoring", m_keywords.size());
+}
+
+float Ranker::PredictKeyword(const Article &article) const {
+    if (!m_fit_keywords) return 1.0f;
+
+    const std::string text = StripLatex(article.title + " " + article.abstract);
+    // Lower-case the article text for case-insensitive matching
+    std::string lower_text;
+    lower_text.reserve(text.size());
+    for (char c : text)
+        lower_text += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+    int hits = 0;
+    for (const auto &kw : m_keywords) {
+        if (lower_text.find(kw) != std::string::npos)
+            ++hits;
+    }
+    // Fraction of keywords found, mapped linearly to [1.0, 5.0]
+    float frac = static_cast<float>(hits) / static_cast<float>(m_keywords.size());
+    return 1.0f + frac * 4.0f;
+}
+
+float Ranker::PredictBlended(const Article &article) const {
+    if (!m_trained && !m_fit_keywords) return 0.0f;
+    if (!m_trained) return PredictKeyword(article);
+    if (!m_fit_keywords) return Predict(article);
+
+    // Blend: 60% ML, 40% keyword
+    float ml_score      = Predict(article);
+    float keyword_score = PredictKeyword(article);
+    return std::clamp(0.6f * ml_score + 0.4f * keyword_score, 1.0f, 5.0f);
+}
+
 } // namespace Arxiv

@@ -58,6 +58,11 @@ public:
             NAMED_ALLOW_CALL(*this, SetProjectNote(ANY(std::string), ANY(std::string), ANY(std::string))));
         m_expectations.push_back(
             NAMED_ALLOW_CALL(*this, SetRating(ANY(std::string), ANY(int))));
+        m_expectations.push_back(
+            NAMED_ALLOW_CALL(*this, SetRelevanceScore(ANY(std::string), ANY(float))));
+        m_expectations.push_back(
+            NAMED_ALLOW_CALL(*this, GetRelevanceScore(ANY(std::string)))
+                .RETURN(0.0f));
     }
 
     // Mock methods using trompeloeil
@@ -84,6 +89,10 @@ public:
     MAKE_MOCK2(SetRating, void(const std::string&, int), override);
     MAKE_MOCK1(GetRating, int(const std::string&), override);
     MAKE_MOCK0(GetRatedArticles, Arxiv::DatabaseManager::RatedArticleList(), override);
+
+    // Relevance score mocks
+    MAKE_MOCK2(SetRelevanceScore, void(const std::string&, float), override);
+    MAKE_MOCK1(GetRelevanceScore, float(const std::string&), override);
 
     // Helper methods to set up mock responses
     void setArticles(const std::vector<Arxiv::Article>& articles) {
