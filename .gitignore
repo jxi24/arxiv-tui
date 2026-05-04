@@ -1,0 +1,8 @@
+build/
+articles.db
+arxiv_tui.log
+downloads/
+ranker.bin
+crash_*.txt
+*.db-shm
+*.db-wal
