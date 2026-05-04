@@ -1,4 +1,5 @@
 #include "Arxiv/Ranker.hh"
+#include "Arxiv/LatexUtils.hh"
 #include "spdlog/spdlog.h"
 
 #include <algorithm>
@@ -56,7 +57,8 @@ void Ranker::InitWeights() {
 std::vector<std::string> Ranker::Tokenise(const std::string &text) {
     std::vector<std::string> tokens;
     std::string tok;
-    for (char c : text) {
+    const std::string clean = StripLatex(text);
+    for (char c : clean) {
         if (std::isalnum(static_cast<unsigned char>(c))) {
             tok += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         } else {

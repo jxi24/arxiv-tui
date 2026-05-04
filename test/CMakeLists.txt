@@ -28,6 +28,7 @@ add_executable(unit_tests
     unit/RankerTest.cc
     unit/ReplayTest.cc
     unit/BibTeXTest.cc
+    unit/LatexTest.cc
 )
 
 # Link against Catch2 and our library

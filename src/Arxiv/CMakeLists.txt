@@ -5,6 +5,7 @@ add_library(libarxiv-tui
     DatabaseManager.cc
     Config.cc
     KeyBindings.cc
+    LatexUtils.cc
     Ranker.cc
     Replay.cc
     CrashHandler.cc
