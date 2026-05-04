@@ -1,4 +1,5 @@
 #include "Arxiv/AppCore.hh"
+#include "Arxiv/FuzzyMatch.hh"
 #include "spdlog/spdlog.h"
 #include <nlohmann/json.hpp>
 
@@ -693,6 +694,23 @@ bool AppCore::ExportProjectBibTeX(const std::string& project_name,
     }
     spdlog::info("[AppCore]: Exported project '{}' BibTeX to {}", project_name, output_path);
     return true;
+}
+
+// ---------------------------------------------------------------------------
+// Fuzzy search
+// ---------------------------------------------------------------------------
+
+std::vector<Article> AppCore::FuzzySearchArticles(const std::string& query, int threshold) const {
+    auto all = m_db->GetRecent(-1);
+    std::vector<Article> results;
+    for (const auto& a : all) {
+        if (FuzzyMatch::MatchesText(query, a.title,    threshold) ||
+            FuzzyMatch::MatchesText(query, a.authors,  threshold) ||
+            FuzzyMatch::MatchesText(query, a.abstract, threshold)) {
+            results.push_back(a);
+        }
+    }
+    return results;
 }
 
 // ---------------------------------------------------------------------------

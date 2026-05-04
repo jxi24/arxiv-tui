@@ -84,6 +84,10 @@ public:
     bool ExportDailyDigest(const std::string& output_path) const;
     bool ExportDailyDigestYAML(const std::string& output_path) const;
 
+    // Fuzzy search: returns articles where title, authors, or abstract
+    // has a similarity score >= threshold (0-100) against the query.
+    std::vector<Article> FuzzySearchArticles(const std::string& query, int threshold = 80) const;
+
     // Returns the actual project name for a filter index >= 6 (accounting for indented sub-projects)
     std::string GetProjectNameForFilter(int index) const;
     
