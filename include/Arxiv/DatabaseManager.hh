@@ -50,7 +50,6 @@ class DatabaseManager {
 
     void SetupTracing();
     void ExecuteSQL(const std::string &sql);
-    std::string EscapeString(const std::string &str);
     void Query(const std::string &query);
     Article RowToArticle(sqlite3_stmt *stmt);
     const char* ExtractColumn(sqlite3_stmt *stmt, int index);
