@@ -13,15 +13,18 @@ class FetcherMock : public Arxiv::Fetcher {
 public:
     // Constructor
     FetcherMock() : Arxiv::Fetcher({}) {
-        // Default: Fetch returns empty list unless overridden
         m_expectations.push_back(
             NAMED_ALLOW_CALL(*this, Fetch())
+                .RETURN(std::vector<Arxiv::Article>{}));
+        m_expectations.push_back(
+            NAMED_ALLOW_CALL(*this, FetchSince(ANY(std::string)))
                 .RETURN(std::vector<Arxiv::Article>{}));
     }
 
     // Mock methods using trompeloeil
     MAKE_MOCK0(Fetch, std::vector<Arxiv::Article>(), override);
     MAKE_MOCK0(FetchToday, std::vector<Arxiv::Article>(), override);
+    MAKE_MOCK1(FetchSince, std::vector<Arxiv::Article>(const std::string&), override);
     MAKE_MOCK2(DownloadPaper, bool(const std::string&, const std::string&), override);
     MAKE_MOCK1(GetPaperAbstract, std::string(const std::string&), override);
     MAKE_MOCK1(FetchBibTeX, std::string(const std::string&), override);

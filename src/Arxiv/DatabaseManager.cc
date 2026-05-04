@@ -72,6 +72,11 @@ DatabaseManager::DatabaseManager(const std::string &path) {
     ExecuteSQL(R"(CREATE TABLE IF NOT EXISTS followed_authors (
                author_name TEXT PRIMARY KEY))");
 
+    // Create metadata key-value table
+    ExecuteSQL(R"(CREATE TABLE IF NOT EXISTS metadata (
+               key   TEXT PRIMARY KEY,
+               value TEXT NOT NULL DEFAULT ''))");
+
     spdlog::info("[Database]: Initialized");
 }
 
@@ -604,4 +609,52 @@ std::vector<std::string> DatabaseManager::GetFollowedAuthors() {
         sqlite3_finalize(stmt);
     }
     return authors;
+}
+
+void DatabaseManager::SetMetadata(const std::string &key, const std::string &value) {
+    const char* sql = "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        throw std::runtime_error(std::string("[Database]: prepare failed: ") + sqlite3_errmsg(db));
+    }
+    sqlite3_bind_text(stmt, 1, key.c_str(),   -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, value.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+}
+
+std::string DatabaseManager::GetMetadata(const std::string &key) {
+    sqlite3_stmt* stmt = nullptr;
+    const char* sql = "SELECT value FROM metadata WHERE key = ?";
+    std::string result;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, key.c_str(), -1, SQLITE_TRANSIENT);
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            const char* val = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+            if (val) result = val;
+        }
+        sqlite3_finalize(stmt);
+    }
+    return result;
+}
+
+std::vector<Arxiv::Article> DatabaseManager::GetArticlesSince(const std::string &utc_date) {
+    // Convert "YYYY-MM-DD" to UTC midnight Unix timestamp.
+    std::tm tm{};
+    tm.tm_year = std::stoi(utc_date.substr(0, 4)) - 1900;
+    tm.tm_mon  = std::stoi(utc_date.substr(5, 2)) - 1;
+    tm.tm_mday = std::stoi(utc_date.substr(8, 2));
+    std::time_t since_ts = timegm(&tm);
+
+    std::vector<Arxiv::Article> articles;
+    sqlite3_stmt* stmt = nullptr;
+    const char* sql = "SELECT link, title, authors, abstract, date, bookmarked "
+                      "FROM articles WHERE date >= ? ORDER BY date DESC";
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+        sqlite3_bind_int64(stmt, 1, static_cast<sqlite3_int64>(since_ts));
+        while (sqlite3_step(stmt) == SQLITE_ROW)
+            articles.push_back(RowToArticle(stmt));
+        sqlite3_finalize(stmt);
+    }
+    return articles;
 }

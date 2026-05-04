@@ -73,6 +73,14 @@ public:
         m_expectations.push_back(
             NAMED_ALLOW_CALL(*this, GetFollowedAuthors())
                 .RETURN(std::vector<std::string>{}));
+        m_expectations.push_back(
+            NAMED_ALLOW_CALL(*this, SetMetadata(ANY(std::string), ANY(std::string))));
+        m_expectations.push_back(
+            NAMED_ALLOW_CALL(*this, GetMetadata(ANY(std::string)))
+                .RETURN(std::string{}));
+        m_expectations.push_back(
+            NAMED_ALLOW_CALL(*this, GetArticlesSince(ANY(std::string)))
+                .RETURN(std::vector<Arxiv::Article>{}));
     }
 
     // Mock methods using trompeloeil
@@ -109,6 +117,11 @@ public:
     MAKE_MOCK1(UnfollowAuthor, void(const std::string&), override);
     MAKE_MOCK1(IsFollowingAuthor, bool(const std::string&), override);
     MAKE_MOCK0(GetFollowedAuthors, std::vector<std::string>(), override);
+
+    // Metadata mocks
+    MAKE_MOCK2(SetMetadata, void(const std::string&, const std::string&), override);
+    MAKE_MOCK1(GetMetadata, std::string(const std::string&), override);
+    MAKE_MOCK1(GetArticlesSince, std::vector<Arxiv::Article>(const std::string&), override);
 
     // Helper methods to set up mock responses
     void setArticles(const std::vector<Arxiv::Article>& articles) {

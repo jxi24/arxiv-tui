@@ -33,14 +33,15 @@ public:
     };
 
     enum class FilterView {
-        All            = 0,
-        Bookmarks      = 1,
-        Today          = 2,
-        Range          = 3,
-        Search         = 4,
-        Recommended    = 5,
+        All             = 0,
+        Bookmarks       = 1,
+        Today           = 2,
+        Range           = 3,
+        Search          = 4,
+        Recommended     = 5,
         FollowedAuthors = 6,
-        Project        = 7,  // sentinel: any index >= 7 is a project
+        NewArticles     = 7,
+        Project         = 8,  // sentinel: any index >= 8 is a project
     };
     
     // Article management
@@ -204,6 +205,10 @@ private:
 
     // Keyword cold-start
     std::vector<std::string> m_keywords;
+
+    // New-articles tracking: UTC date ("YYYY-MM-DD") that seeds the NewArticles view.
+    // Set from the previous session's last_fetch_date on construction.
+    std::string m_new_articles_since_date;
 
     void RefreshTitles();
     void RefreshFilterOptions();

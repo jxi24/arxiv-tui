@@ -19,6 +19,9 @@ class Fetcher {
     virtual ~Fetcher() = default;
     virtual std::vector<Article> Fetch();
     virtual std::vector<Article> FetchToday();
+    /// Fetch all articles submitted since utc_date ("YYYY-MM-DD", inclusive
+    /// of the day after utc_date) using the arXiv search API.
+    virtual std::vector<Article> FetchSince(const std::string &utc_date);
     virtual bool DownloadPaper(const std::string &paper_id, const std::string &output_path);
     virtual std::string GetPaperAbstract(const std::string &paper_id);
     /// Fetch BibTeX for an arXiv paper. Tries InspireHEP first; returns an
@@ -31,7 +34,9 @@ class Fetcher {
 
     std::optional<std::string> FetchFeeds();
     std::vector<Article> ParseFeed(const std::string &content);
+    std::vector<Article> ParseAtomFeed(const std::string &content);
     std::optional<time_point> ParseDate(const std::string &date) const;
+    std::optional<time_point> ParseAtomDate(const std::string &date) const;
     std::string ConstructPaperUrl(const std::string &paper_id, const std::string &format) const;
     std::string ReplaceLatexAccents(const std::string& text) const;
     std::string StyleLatex(const std::string& text) const;

@@ -330,6 +330,151 @@ std::string Fetcher::ReplaceLatexAccents(const std::string& text) const {
     return result;
 }
 
+std::vector<Article> Fetcher::FetchSince(const std::string &utc_date) {
+    // Build date range: day after utc_date up to today (inclusive), UTC.
+    // arXiv submittedDate format: YYYYMMDDHHMI (e.g. 202605020000).
+
+    // Compute "day after utc_date" as the start of the range.
+    std::tm from_tm{};
+    from_tm.tm_year = std::stoi(utc_date.substr(0, 4)) - 1900;
+    from_tm.tm_mon  = std::stoi(utc_date.substr(5, 2)) - 1;
+    from_tm.tm_mday = std::stoi(utc_date.substr(8, 2)) + 1;
+    timegm(&from_tm);  // normalise (handles month/year overflow)
+    char from_buf[16];
+    std::strftime(from_buf, sizeof(from_buf), "%Y%m%d0000", &from_tm);
+
+    // Today UTC as the end of the range.
+    auto now = std::chrono::system_clock::now();
+    std::time_t now_t = std::chrono::system_clock::to_time_t(now);
+    std::tm to_tm{};
+    gmtime_r(&now_t, &to_tm);
+    char to_buf[16];
+    std::strftime(to_buf, sizeof(to_buf), "%Y%m%d2359", &to_tm);
+
+    if (std::string(from_buf) > std::string(to_buf)) {
+        // utc_date is today or in the future — nothing missed.
+        return {};
+    }
+
+    // Build topic query: (cat:hep-ph OR cat:hep-ex)
+    std::string topic_query;
+    for (size_t i = 0; i < m_topics.size(); ++i) {
+        if (i > 0) topic_query += "+OR+";
+        topic_query += "cat:" + m_topics[i];
+    }
+    if (m_topics.size() > 1)
+        topic_query = "(" + topic_query + ")";
+
+    const std::string date_filter =
+        "+AND+submittedDate:[" + std::string(from_buf) + "+TO+" + std::string(to_buf) + "]";
+
+    std::vector<Article> all_articles;
+    int start = 0;
+    const int max_results = 200;
+
+    while (true) {
+        auto url = fmt::format(
+            "https://export.arxiv.org/api/query"
+            "?search_query={}{}&start={}&max_results={}"
+            "&sortBy=submittedDate&sortOrder=descending",
+            topic_query, date_filter, start, max_results);
+
+        spdlog::info("[Fetcher]: FetchSince GET {}", url);
+        cpr::Response resp;
+        try {
+            resp = cpr::Get(cpr::Url{url}, cpr::Timeout{15000});
+        } catch (const std::exception &e) {
+            spdlog::error("[Fetcher]: FetchSince network error: {}", e.what());
+            break;
+        }
+
+        if (resp.status_code != 200) {
+            spdlog::warn("[Fetcher]: FetchSince HTTP {}", resp.status_code);
+            break;
+        }
+
+        auto batch = ParseAtomFeed(resp.text);
+        if (batch.empty()) break;
+        all_articles.insert(all_articles.end(), batch.begin(), batch.end());
+        if (static_cast<int>(batch.size()) < max_results) break;
+        start += max_results;
+    }
+
+    spdlog::info("[Fetcher]: FetchSince got {} articles since {}", all_articles.size(), utc_date);
+    return all_articles;
+}
+
+std::vector<Article> Fetcher::ParseAtomFeed(const std::string &xml_content) {
+    std::vector<Article> articles;
+    pugi::xml_document doc;
+
+    auto result = doc.load_string(xml_content.c_str());
+    if (!result) {
+        spdlog::error("[Fetcher]: Atom XML parse error: {}", result.description());
+        return articles;
+    }
+
+    // Root element is <feed xmlns="http://www.w3.org/2005/Atom">.
+    // pugixml treats element names as raw strings (no namespace processing),
+    // so elements in the default Atom namespace appear with their local names.
+    auto feed = doc.child("feed");
+    if (!feed) {
+        spdlog::error("[Fetcher]: ParseAtomFeed: no <feed> root");
+        return articles;
+    }
+
+    for (auto entry : feed.children("entry")) {
+        Article article;
+
+        // <id> holds the canonical URL, e.g. http://arxiv.org/abs/2605.12345v1
+        article.link = entry.child_value("id");
+
+        article.title    = StyleLatex(ReplaceLatexAccents(entry.child_value("title")));
+        article.abstract = StyleLatex(ReplaceLatexAccents(entry.child_value("summary")));
+
+        // Authors: one or more <author><name>…</name></author>
+        std::string authors_str;
+        for (auto author : entry.children("author")) {
+            if (!authors_str.empty()) authors_str += ", ";
+            authors_str += author.child_value("name");
+        }
+        article.authors = StyleLatex(ReplaceLatexAccents(authors_str));
+
+        // Date from <published>
+        article.date = ParseAtomDate(entry.child_value("published"))
+                           .value_or(std::chrono::system_clock::now());
+
+        // Primary category: <arxiv:primary_category term="hep-ph" …/>
+        // pugixml sees the element name as "arxiv:primary_category".
+        auto prim_cat = entry.child("arxiv:primary_category");
+        if (prim_cat) {
+            article.category = prim_cat.attribute("term").value();
+        } else {
+            auto cat = entry.child("category");
+            if (cat) article.category = cat.attribute("term").value();
+        }
+
+        articles.push_back(std::move(article));
+    }
+
+    return articles;
+}
+
+std::optional<Arxiv::time_point> Fetcher::ParseAtomDate(const std::string &date) const {
+    // Format: "2026-05-04T00:00:00-04:00" or "2026-05-04T00:00:00Z"
+    // We only need the date portion for day-level granularity.
+    if (date.size() < 10) return std::nullopt;
+    std::tm tm{};
+    try {
+        tm.tm_year = std::stoi(date.substr(0, 4)) - 1900;
+        tm.tm_mon  = std::stoi(date.substr(5, 2)) - 1;
+        tm.tm_mday = std::stoi(date.substr(8, 2));
+    } catch (...) {
+        return std::nullopt;
+    }
+    return std::chrono::system_clock::from_time_t(timegm(&tm));
+}
+
 std::string Fetcher::FetchBibTeX(const std::string& paper_id) {
     // --- 1. Try InspireHEP ---
     // Query the literature search API for the arXiv eprint.

@@ -35,6 +35,7 @@ add_executable(unit_tests
     unit/AuthorSubscriptionTest.cc
     unit/FuzzySearchTest.cc
     unit/BackgroundRefreshTest.cc
+    unit/NewArticlesTest.cc
 )
 
 # Link against Catch2 and our library

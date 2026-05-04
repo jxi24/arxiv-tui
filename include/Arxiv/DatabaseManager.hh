@@ -55,6 +55,13 @@ class DatabaseManager {
     virtual void SetProjectNote(const std::string &project_name, const std::string &article_link, const std::string &note);
     virtual std::string GetProjectNote(const std::string &project_name, const std::string &article_link);
 
+    // Application metadata (persistent key-value store)
+    virtual void SetMetadata(const std::string &key, const std::string &value);
+    virtual std::string GetMetadata(const std::string &key);
+
+    // Articles submitted on or after the given UTC date ("YYYY-MM-DD")
+    virtual std::vector<Article> GetArticlesSince(const std::string &utc_date);
+
   private:
     sqlite3 *db;
 

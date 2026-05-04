@@ -11,6 +11,16 @@
 
 namespace Arxiv {
 
+static std::string today_utc_string() {
+    auto now = std::chrono::system_clock::now();
+    std::time_t t = std::chrono::system_clock::to_time_t(now);
+    std::tm tm_val{};
+    gmtime_r(&t, &tm_val);
+    char buf[32];
+    std::strftime(buf, sizeof(buf), "%Y-%m-%d", &tm_val);
+    return buf;
+}
+
 AppCore::AppCore(const Config& config,
                  std::unique_ptr<DatabaseManager> db,
                  std::unique_ptr<Fetcher> fetcher)
@@ -23,10 +33,28 @@ AppCore::AppCore(const Config& config,
     , m_auto_refresh_minutes(config.get_auto_refresh_minutes()) {
 
     spdlog::info("ArxivAppCore Initialized");
-    auto articles = m_fetcher->Fetch();
-    for(const auto &article : articles) {
+
+    // Determine the UTC date of the previous session and decide fetch strategy.
+    const std::string prev_date = m_db->GetMetadata("last_fetch_date");
+    const std::string today     = today_utc_string();
+
+    std::vector<Article> articles;
+    if (!prev_date.empty() && prev_date < today) {
+        // User missed one or more days — use the API to back-fill.
+        articles = m_fetcher->FetchSince(prev_date);
+    } else {
+        // First run, or same-day restart — use the normal RSS feed.
+        articles = m_fetcher->Fetch();
+    }
+    for (const auto &article : articles) {
         m_db->AddArticle(article);
     }
+
+    // Record which date was the "previous" session for the NewArticles view,
+    // then update the persisted date to today.
+    m_new_articles_since_date = prev_date;
+    m_db->SetMetadata("last_fetch_date", today);
+
     RefreshFilterOptions();
     FetchArticles();
     // Try to restore a previously saved model; fall back to training if absent
@@ -101,6 +129,23 @@ void AppCore::FetchArticles() {
     }
     case FilterView::FollowedAuthors:
         m_current_articles = GetArticlesForFollowedAuthors();
+        break;
+    case FilterView::NewArticles:
+        if (m_new_articles_since_date.empty()) {
+            // First run: show today's articles as "new".
+            m_current_articles = m_db->GetRecent(1);
+        } else {
+            // Show articles submitted strictly after the previous session's date.
+            // Advance by one day so the user doesn't re-see the previous day.
+            std::tm tm{};
+            tm.tm_year = std::stoi(m_new_articles_since_date.substr(0, 4)) - 1900;
+            tm.tm_mon  = std::stoi(m_new_articles_since_date.substr(5, 2)) - 1;
+            tm.tm_mday = std::stoi(m_new_articles_since_date.substr(8, 2)) + 1;
+            timegm(&tm); // normalise
+            char buf[11];
+            std::strftime(buf, sizeof(buf), "%Y-%m-%d", &tm);
+            m_current_articles = m_db->GetArticlesSince(buf);
+        }
         break;
     case FilterView::Project:
         m_current_articles = GetArticlesForProject(GetProjectNameForFilter(m_filter_index));
@@ -266,7 +311,7 @@ void AppCore::RefreshTitles() {
 }
 
 void AppCore::RefreshFilterOptions() {
-    m_filter_options = {"All Articles", "Bookmarks", "Today", "Range", "Search", "Recommended", "Followed Authors"};
+    m_filter_options = {"All Articles", "Bookmarks", "Today", "Range", "Search", "Recommended", "Followed Authors", "New Articles"};
     m_filter_project_names.clear();
 
     // Build hierarchy from projects table
@@ -450,7 +495,7 @@ std::string AppCore::GetProjectNote(const std::string& project_name,
 }
 
 std::string AppCore::GetProjectNameForFilter(int index) const {
-    int proj_index = index - 7;  // offset by 7: 0-5 base filters, 6 = Followed Authors
+    int proj_index = index - static_cast<int>(FilterView::Project);  // 0-based into project list
     if (proj_index >= 0 && static_cast<size_t>(proj_index) < m_filter_project_names.size()) {
         return m_filter_project_names[static_cast<size_t>(proj_index)];
     }
