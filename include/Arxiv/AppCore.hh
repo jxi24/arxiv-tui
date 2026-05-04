@@ -118,6 +118,12 @@ public:
     bool HasSearchQuery() const { return has_search_query; }
     std::string GetSearchQuery() const { return search_query; }
 
+    // Author subscriptions
+    void FollowAuthor(const std::string& author_name);
+    void UnfollowAuthor(const std::string& author_name);
+    std::vector<std::string> GetFollowedAuthors() const;
+    std::vector<Article> GetArticlesForFollowedAuthors() const;
+
     // Keyword management (cold-start ranking)
     void ReloadKeywords();
     bool SaveKeywords(const std::vector<std::string>& keywords);

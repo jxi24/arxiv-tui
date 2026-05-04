@@ -87,13 +87,13 @@ void ArxivApp::SetupUI() {
                 dialog_depth = 1;
                 new_project_name.clear();
                 // If a project is currently selected, new project becomes its child
-                parent_for_new_project = (core.GetFilterIndex() >= 6)
+                parent_for_new_project = (core.GetFilterIndex() >= 7)
                     ? core.GetProjectNameForFilter(core.GetFilterIndex())
                     : "";
                 return true;
             }
             if(key_bindings.matches(event, KeyBindings::Action::DeleteProject)) {
-                if(core.GetFilterIndex() >= 6) {
+                if(core.GetFilterIndex() >= 7) {
                     std::string proj = core.GetProjectNameForFilter(core.GetFilterIndex());
                     core.RemoveProject(proj);
                     if (m_recorder) m_recorder->RecordRemoveProject(proj);
@@ -292,7 +292,7 @@ void ArxivApp::SetupUI() {
         };
 
         // Show project note if currently viewing a project
-        if (core.GetFilterIndex() >= 6) {
+        if (core.GetFilterIndex() >= 7) {
             std::string proj = core.GetProjectNameForFilter(core.GetFilterIndex());
             std::string note = core.GetProjectNote(proj, article.link);
             if (!note.empty()) {
@@ -1032,7 +1032,7 @@ void ArxivApp::SetupUI() {
 
         // Open notes editor (only when viewing a project and an article is selected)
         if (key_bindings.matches(event, KeyBindings::Action::EditNote)) {
-            if (core.GetFilterIndex() >= 6) {
+            if (core.GetFilterIndex() >= 7) {
                 auto articles = core.GetCurrentArticles();
                 if (!articles.empty()) {
                     note_project_name = core.GetProjectNameForFilter(core.GetFilterIndex());
@@ -1079,7 +1079,7 @@ void ArxivApp::SetupUI() {
 
         // Open export dialog (only when viewing a project)
         if (key_bindings.matches(event, KeyBindings::Action::ExportProject)) {
-            if (core.GetFilterIndex() >= 6) {
+            if (core.GetFilterIndex() >= 7) {
                 export_project_name = core.GetProjectNameForFilter(core.GetFilterIndex());
                 export_format_index = 0;
                 dialog_depth = 8;

@@ -63,6 +63,16 @@ public:
         m_expectations.push_back(
             NAMED_ALLOW_CALL(*this, GetRelevanceScore(ANY(std::string)))
                 .RETURN(0.0f));
+        m_expectations.push_back(
+            NAMED_ALLOW_CALL(*this, FollowAuthor(ANY(std::string))));
+        m_expectations.push_back(
+            NAMED_ALLOW_CALL(*this, UnfollowAuthor(ANY(std::string))));
+        m_expectations.push_back(
+            NAMED_ALLOW_CALL(*this, IsFollowingAuthor(ANY(std::string)))
+                .RETURN(false));
+        m_expectations.push_back(
+            NAMED_ALLOW_CALL(*this, GetFollowedAuthors())
+                .RETURN(std::vector<std::string>{}));
     }
 
     // Mock methods using trompeloeil
@@ -93,6 +103,12 @@ public:
     // Relevance score mocks
     MAKE_MOCK2(SetRelevanceScore, void(const std::string&, float), override);
     MAKE_MOCK1(GetRelevanceScore, float(const std::string&), override);
+
+    // Author subscription mocks
+    MAKE_MOCK1(FollowAuthor,   void(const std::string&), override);
+    MAKE_MOCK1(UnfollowAuthor, void(const std::string&), override);
+    MAKE_MOCK1(IsFollowingAuthor, bool(const std::string&), override);
+    MAKE_MOCK0(GetFollowedAuthors, std::vector<std::string>(), override);
 
     // Helper methods to set up mock responses
     void setArticles(const std::vector<Arxiv::Article>& articles) {

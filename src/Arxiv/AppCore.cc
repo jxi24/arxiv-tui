@@ -94,7 +94,9 @@ void AppCore::FetchArticles() {
             // Ranker not trained yet — show today's articles unranked
             m_current_articles = today_articles;
         }
-    } else {  // Project (index >= 6)
+    } else if (m_filter_index == 6) {  // Followed Authors
+        m_current_articles = GetArticlesForFollowedAuthors();
+    } else {  // Project (index >= 7)
         std::string project_name = GetProjectNameForFilter(m_filter_index);
         m_current_articles = GetArticlesForProject(project_name);
     }
@@ -248,7 +250,7 @@ void AppCore::RefreshTitles() {
 }
 
 void AppCore::RefreshFilterOptions() {
-    m_filter_options = {"All Articles", "Bookmarks", "Today", "Range", "Search", "Recommended"};
+    m_filter_options = {"All Articles", "Bookmarks", "Today", "Range", "Search", "Recommended", "Followed Authors"};
     m_filter_project_names.clear();
 
     // Build hierarchy from projects table
@@ -432,7 +434,7 @@ std::string AppCore::GetProjectNote(const std::string& project_name,
 }
 
 std::string AppCore::GetProjectNameForFilter(int index) const {
-    int proj_index = index - 6;
+    int proj_index = index - 7;  // offset by 7: 0-5 base filters, 6 = Followed Authors
     if (proj_index >= 0 && static_cast<size_t>(proj_index) < m_filter_project_names.size()) {
         return m_filter_project_names[static_cast<size_t>(proj_index)];
     }
@@ -691,6 +693,39 @@ bool AppCore::ExportProjectBibTeX(const std::string& project_name,
     }
     spdlog::info("[AppCore]: Exported project '{}' BibTeX to {}", project_name, output_path);
     return true;
+}
+
+// ---------------------------------------------------------------------------
+// Author subscriptions
+// ---------------------------------------------------------------------------
+
+void AppCore::FollowAuthor(const std::string& author_name) {
+    m_db->FollowAuthor(author_name);
+}
+
+void AppCore::UnfollowAuthor(const std::string& author_name) {
+    m_db->UnfollowAuthor(author_name);
+}
+
+std::vector<std::string> AppCore::GetFollowedAuthors() const {
+    return m_db->GetFollowedAuthors();
+}
+
+std::vector<Article> AppCore::GetArticlesForFollowedAuthors() const {
+    auto followed = m_db->GetFollowedAuthors();
+    if (followed.empty()) return {};
+
+    auto all = m_db->GetRecent(-1);
+    std::vector<Article> result;
+    for (const auto& a : all) {
+        for (const auto& author : followed) {
+            if (a.authors.find(author) != std::string::npos) {
+                result.push_back(a);
+                break;
+            }
+        }
+    }
+    return result;
 }
 
 // ---------------------------------------------------------------------------

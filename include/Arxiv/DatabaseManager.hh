@@ -35,6 +35,12 @@ class DatabaseManager {
     virtual void  SetRelevanceScore(const std::string &link, float score);
     virtual float GetRelevanceScore(const std::string &link);
 
+    // Author subscriptions
+    virtual void FollowAuthor(const std::string &author_name);
+    virtual void UnfollowAuthor(const std::string &author_name);
+    virtual bool IsFollowingAuthor(const std::string &author_name);
+    virtual std::vector<std::string> GetFollowedAuthors();
+
     // Project management
     virtual void AddProject(const std::string &project_name);
     virtual void RemoveProject(const std::string &project_name);

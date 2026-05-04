@@ -32,6 +32,7 @@ add_executable(unit_tests
     unit/KeywordTest.cc
     unit/KeywordEditorTest.cc
     unit/DigestTest.cc
+    unit/AuthorSubscriptionTest.cc
 )
 
 # Link against Catch2 and our library

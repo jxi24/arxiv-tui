@@ -67,6 +67,11 @@ DatabaseManager::DatabaseManager(const std::string &path) {
     } catch (const std::exception&) {
         // Column already exists — ignore
     }
+
+    // Create followed_authors table
+    ExecuteSQL(R"(CREATE TABLE IF NOT EXISTS followed_authors (
+               author_name TEXT PRIMARY KEY))");
+
     spdlog::info("[Database]: Initialized");
 }
 
@@ -553,4 +558,50 @@ float DatabaseManager::GetRelevanceScore(const std::string &link) {
         sqlite3_finalize(stmt);
     }
     return score;
+}
+
+void DatabaseManager::FollowAuthor(const std::string &author_name) {
+    const char* sql = "INSERT OR IGNORE INTO followed_authors (author_name) VALUES (?)";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        throw std::runtime_error(std::string("[Database]: prepare failed: ") + sqlite3_errmsg(db));
+    }
+    sqlite3_bind_text(stmt, 1, author_name.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+}
+
+void DatabaseManager::UnfollowAuthor(const std::string &author_name) {
+    const char* sql = "DELETE FROM followed_authors WHERE author_name = ?";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        throw std::runtime_error(std::string("[Database]: prepare failed: ") + sqlite3_errmsg(db));
+    }
+    sqlite3_bind_text(stmt, 1, author_name.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+}
+
+bool DatabaseManager::IsFollowingAuthor(const std::string &author_name) {
+    sqlite3_stmt *stmt;
+    const char* sql = "SELECT 1 FROM followed_authors WHERE author_name = ?";
+    bool found = false;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, author_name.c_str(), -1, SQLITE_TRANSIENT);
+        found = (sqlite3_step(stmt) == SQLITE_ROW);
+        sqlite3_finalize(stmt);
+    }
+    return found;
+}
+
+std::vector<std::string> DatabaseManager::GetFollowedAuthors() {
+    std::vector<std::string> authors;
+    sqlite3_stmt *stmt;
+    const char* sql = "SELECT author_name FROM followed_authors";
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+        while (sqlite3_step(stmt) == SQLITE_ROW)
+            authors.push_back(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)));
+        sqlite3_finalize(stmt);
+    }
+    return authors;
 }
