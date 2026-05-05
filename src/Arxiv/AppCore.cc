@@ -32,6 +32,7 @@ AppCore::AppCore(const Config& config,
     , m_fetcher(std::move(fetcher))
     , m_retrain_interval(config.get_retrain_interval())
     , m_recommend_threshold(config.get_recommend_threshold())
+    , m_ranker_path(config.get_ranker_file())
     , m_auto_refresh_minutes(config.get_auto_refresh_minutes()) {
 
     spdlog::info("ArxivAppCore Initialized");
