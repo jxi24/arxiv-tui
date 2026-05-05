@@ -16,6 +16,9 @@ A keyboard-driven terminal user interface for browsing, managing, and downloadin
 - **Configurable key bindings** — remap every action via a YAML file
 - **Scrolling detail pane** — read full titles and abstracts without leaving the terminal
 - **Personalised ranking** — rate articles 1–5 stars; a lightweight neural network learns your preferences and surfaces today's most relevant papers in the Recommended filter
+- **Extended project management** — nest projects in a hierarchy, annotate articles with per-project notes, and export/import projects as Markdown, plain text, or JSON
+- **BibTeX export** — generate `.bib` files for individual articles, selections, or entire projects, with automatic InspireHEP lookup and metadata fallback
+- **Replay system and crash handler** — all UI actions are recorded to a JSONL replay log; on a crash, a report with backtrace and full replay is saved for debugging
 
 ---
 
@@ -77,6 +80,12 @@ cmake -B build -DARXIV_TUI_ENABLE_TESTING=ON -DARXIV_TUI_COVERAGE=ON
 cmake --build build
 ```
 
+### Replay a crash report
+
+```bash
+./build/src/Arxiv/arxiv-tui --replay crash_report.jsonl
+```
+
 ---
 
 ## Configuration
@@ -135,6 +144,10 @@ key_mappings:
 | `/` | Open search dialog |
 | `n` | Rate selected article (1–5 stars) |
 | `R` | Force a full retrain of the ranking model |
+| `c` | Export current article as BibTeX |
+| `N` | Edit article note (within a project) |
+| `e` | Open project export dialog (Markdown / plain text / BibTeX / JSON) |
+| `I` | Import a project from JSON |
 | `?` | Toggle help overlay |
 | `q` | Quit |
 
@@ -149,6 +162,7 @@ All bindings except `R` (force retrain) are remappable in `.arxiv-tui.yml`.
 | `.arxiv-tui.yml` | Configuration (created on first run) |
 | `articles.db` | SQLite database of fetched articles and ratings |
 | `ranker.bin` | Saved ranking model weights (created after first retrain) |
+| `replay.jsonl` | Action replay log for crash reporting |
 | `arxiv_tui.log` | Application log (spdlog) |
 | `downloads/` | Default PDF download directory |
 
@@ -170,7 +184,9 @@ arxiv-tui/
 │   ├── DatabaseManager.hh  # SQLite3 persistence interface
 │   ├── Fetcher.hh          # arXiv RSS fetcher / PDF downloader
 │   ├── KeyBindings.hh      # Keyboard action mapping
-│   └── Ranker.hh           # TF-IDF + MLP article ranking model
+│   ├── Ranker.hh           # TF-IDF + MLP article ranking model
+│   ├── Replay.hh           # JSONL action recorder and player
+│   └── CrashHandler.hh     # Signal-based crash handler with backtrace
 ├── src/Arxiv/              # Implementations
 └── test/                   # Catch2 unit tests + trompeloeil mocks
 ```
@@ -187,6 +203,7 @@ arxiv-tui/
 | [FTXUI](https://github.com/ArthurSonzogni/FTXUI) | main | Terminal UI framework |
 | [pugixml](https://github.com/zeux/pugixml) | 1.15.0 | XML/RSS parsing |
 | [yaml-cpp](https://github.com/jbeder/yaml-cpp) | 0.7.0 | YAML configuration |
+| [nlohmann/json](https://github.com/nlohmann/json) | 3.11.3 | JSON export/import and replay logs |
 | [SQLite3](https://sqlite.org) | system | Article persistence |
 | [Catch2](https://github.com/catchorg/Catch2) | 3.5.0 | Test framework |
 | [trompeloeil](https://github.com/rollbear/trompeloeil) | v47 | Mock objects |
@@ -224,26 +241,24 @@ The ranker is implemented in pure C++17 with no external ML dependencies:
 
 ---
 
+## Completed Milestones
+
+- **Personalised ranking** (v0.3) — TF-IDF + MLP model learns from 1–5 star ratings; Recommended filter surfaces relevant papers; warm-start retraining with persistence to `ranker.bin`
+- **Extended project management** (v0.4) — hierarchical sub-projects, per-article notes scoped to a project, export as Markdown / plain text / JSON, import from JSON
+- **BibTeX export** (v0.5) — generate `.bib` files for individual articles, selections, or entire projects; InspireHEP API lookup with metadata fallback
+- **Replay system and crash handler** (v0.5) — JSONL action recording, `--replay` headless mode, signal-based crash reports with backtrace
+
+---
+
 ## Future Goals
 
-### Extended Project Management
-- Nest projects in a hierarchy (sub-projects / collections)
-- Annotate articles with free-form notes scoped to a project
-- Export an entire project as a plain-text or Markdown reading list
-- Import/export projects as portable JSON for sharing with collaborators
-
-### BibTeX Generation
-- Generate a `.bib` file for any selected article, project, or the current filter view
-- Populate standard BibTeX fields (`@article`, `author`, `title`, `year`, `eprint`, `archivePrefix`, `primaryClass`, `url`) from the stored metadata
-- Copy a single entry to the clipboard directly from the detail pane via a key binding
-- Optionally auto-update a project's `.bib` file whenever a new article is added to it
-
-### Other Planned Improvements
 - Configurable refresh interval for automatic feed updates
 - Support for author-based subscriptions in addition to category feeds
 - Tag system for cross-project, user-defined labels
 - Read/unread tracking to highlight new papers since last session
 - Fuzzy search powered by an in-process search index
+- Copy BibTeX entry to clipboard directly from the detail pane
+- Auto-update a project's `.bib` file when a new article is added
 
 ---
 
