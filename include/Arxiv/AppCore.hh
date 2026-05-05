@@ -127,15 +127,17 @@ public:
     // Date range methods
     void SetDateRange(const std::string& start_date, const std::string& end_date);
     void ClearDateRange();
-    bool HasDateRange() const { return has_date_range; }
-    std::pair<std::string, std::string> GetDateRange() const { return {start_date, end_date}; }
+    bool HasDateRange() const { return m_date_range.active; }
+    std::pair<std::string, std::string> GetDateRange() const {
+        return {m_date_range.start, m_date_range.end};
+    }
 
     // Search methods
     void SetSearchQuery(const std::string& query, bool search_title = true,
                        bool search_authors = true, bool search_abstract = true);
     void ClearSearch();
-    bool HasSearchQuery() const { return has_search_query; }
-    std::string GetSearchQuery() const { return search_query; }
+    bool HasSearchQuery() const { return m_search.active; }
+    std::string GetSearchQuery() const { return m_search.query; }
 
     // Author subscriptions
     void FollowAuthor(const std::string& author_name);
@@ -186,15 +188,32 @@ private:
     ArticleUpdateCallback m_article_update_callback;
     ArticleUpdateCallback m_project_update_callback;
     
-    // Date range members
-    bool has_date_range = false;
-    std::string start_date;
-    std::string end_date;
-    
-    // Search members
-    bool has_search_query = false;
-    std::string search_query;
-    SearchMode search_mode = SearchMode::title;
+    // Active filter state. Bundling each (active, data...) tuple as a struct
+    // makes it impossible to set the data without also flipping `active`,
+    // and it pairs the related fields visually for readers of FetchArticles.
+    struct DateRangeFilter {
+        bool        active = false;
+        std::string start;
+        std::string end;
+
+        void set(const std::string& s, const std::string& e) {
+            start = s; end = e; active = true;
+        }
+        void clear() { active = false; start.clear(); end.clear(); }
+    };
+    struct SearchFilter {
+        bool        active = false;
+        std::string query;
+        SearchMode  mode   = SearchMode::title;
+
+        void set(const std::string& q, SearchMode m) {
+            query = q; mode = m; active = true;
+        }
+        void clear() { active = false; query.clear(); mode = SearchMode::title; }
+    };
+
+    DateRangeFilter m_date_range;
+    SearchFilter    m_search;
 
     // Background auto-refresh
     std::thread              m_refresh_thread;

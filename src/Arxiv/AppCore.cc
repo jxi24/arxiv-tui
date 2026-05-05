@@ -94,18 +94,18 @@ void AppCore::FetchArticles() {
         m_current_articles = m_db->GetRecent(1);
         break;
     case FilterView::Range:
-        if (has_date_range) {
-            m_current_articles = m_db->GetArticlesForDateRange(start_date, end_date);
+        if (m_date_range.active) {
+            m_current_articles = m_db->GetArticlesForDateRange(m_date_range.start, m_date_range.end);
         } else {
             m_current_articles = m_db->GetRecent(-1);
         }
         break;
     case FilterView::Search:
-        if (has_search_query) {
-            bool search_title    = (search_mode == SearchMode::title);
-            bool search_authors  = (search_mode == SearchMode::authors);
-            bool search_abstract = (search_mode == SearchMode::abstract);
-            m_current_articles = m_db->SearchArticles(search_query, search_title,
+        if (m_search.active) {
+            bool search_title    = (m_search.mode == SearchMode::title);
+            bool search_authors  = (m_search.mode == SearchMode::authors);
+            bool search_abstract = (m_search.mode == SearchMode::abstract);
+            m_current_articles = m_db->SearchArticles(m_search.query, search_title,
                                                       search_authors, search_abstract);
         } else {
             m_current_articles = m_db->GetRecent(-1);
@@ -345,33 +345,27 @@ void AppCore::RefreshFilterOptions() {
 }
 
 void AppCore::SetDateRange(const std::string& start, const std::string& end) {
-    start_date = start;
-    end_date = end;
-    has_date_range = true;
+    m_date_range.set(start, end);
     FetchArticles();
 }
 
 void AppCore::ClearDateRange() {
-    has_date_range = false;
-    start_date.clear();
-    end_date.clear();
+    m_date_range.clear();
     FetchArticles();
 }
 
-void AppCore::SetSearchQuery(const std::string& query, bool _search_title, 
+void AppCore::SetSearchQuery(const std::string& query, bool _search_title,
                              bool _search_authors, bool _search_abstract) {
-    search_query = query;
-    if (_search_title) search_mode = SearchMode::title;
-    else if (_search_authors) search_mode = SearchMode::authors;
-    else if (_search_abstract) search_mode = SearchMode::abstract;
-    has_search_query = true;
+    SearchMode mode = SearchMode::title;
+    if (_search_title)         mode = SearchMode::title;
+    else if (_search_authors)  mode = SearchMode::authors;
+    else if (_search_abstract) mode = SearchMode::abstract;
+    m_search.set(query, mode);
     FetchArticles();
 }
 
 void AppCore::ClearSearch() {
-    has_search_query = false;
-    search_query.clear();
-    search_mode = SearchMode::title;
+    m_search.clear();
     FetchArticles();
 }
 
