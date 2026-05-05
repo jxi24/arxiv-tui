@@ -7,7 +7,9 @@
 #include <chrono>
 #include <ctime>
 #include <fstream>
+#include <functional>
 #include <map>
+#include <string_view>
 
 namespace Arxiv {
 
@@ -520,80 +522,93 @@ static std::string format_date_str(const std::chrono::system_clock::time_point& 
     return buf;
 }
 
+// ---------------------------------------------------------------------------
+// Export helper
+//
+// All Export* methods share the same skeleton: open the output file, bail
+// out if that fails, write format-specific content, and log success. This
+// helper isolates the boilerplate so each Export* body is just "fetch data,
+// describe how to write it."
+// ---------------------------------------------------------------------------
+namespace {
+bool write_export(const std::string& path,
+                  std::string_view log_subject,
+                  const std::function<void(std::ofstream&)>& writer) {
+    std::ofstream file(path);
+    if (!file.is_open()) return false;
+    writer(file);
+    spdlog::info("[AppCore]: Exported {} to {}", log_subject, path);
+    return true;
+}
+} // namespace
+
 bool AppCore::ExportProjectMarkdown(const std::string& project_name,
                                     const std::string& output_path) const {
     auto articles = m_db->GetArticlesForProject(project_name);
-    std::ofstream file(output_path);
-    if (!file.is_open()) return false;
-
-    file << "# " << project_name << "\n\n";
-    file << articles.size() << " article(s)\n\n---\n\n";
-
-    for (const auto& article : articles) {
-        std::string note = m_db->GetProjectNote(project_name, article.link);
-        file << "## " << article.title << "\n\n";
-        file << "**Authors:** " << article.authors << "  \n";
-        file << "**Date:** " << format_date_str(article.date) << "  \n";
-        file << "**Link:** " << article.link << "  \n\n";
-        file << article.abstract << "\n\n";
-        if (!note.empty()) {
-            file << "> **Note:** " << note << "\n\n";
+    return write_export(output_path,
+                        "project '" + project_name + "' Markdown",
+                        [&](std::ofstream& file) {
+        file << "# " << project_name << "\n\n";
+        file << articles.size() << " article(s)\n\n---\n\n";
+        for (const auto& article : articles) {
+            std::string note = m_db->GetProjectNote(project_name, article.link);
+            file << "## " << article.title << "\n\n";
+            file << "**Authors:** " << article.authors << "  \n";
+            file << "**Date:** " << format_date_str(article.date) << "  \n";
+            file << "**Link:** " << article.link << "  \n\n";
+            file << article.abstract << "\n\n";
+            if (!note.empty()) {
+                file << "> **Note:** " << note << "\n\n";
+            }
+            file << "---\n\n";
         }
-        file << "---\n\n";
-    }
-    spdlog::info("[AppCore]: Exported project '{}' to Markdown: {}", project_name, output_path);
-    return true;
+    });
 }
 
 bool AppCore::ExportProjectText(const std::string& project_name,
                                 const std::string& output_path) const {
     auto articles = m_db->GetArticlesForProject(project_name);
-    std::ofstream file(output_path);
-    if (!file.is_open()) return false;
-
-    file << project_name << "\n" << std::string(project_name.size(), '=') << "\n\n";
-    file << articles.size() << " article(s)\n\n";
-
-    for (size_t i = 0; i < articles.size(); ++i) {
-        const auto& article = articles[i];
-        std::string note = m_db->GetProjectNote(project_name, article.link);
-        file << "[" << (i + 1) << "] " << article.title << "\n";
-        file << "    Authors: " << article.authors << "\n";
-        file << "    Date: " << format_date_str(article.date) << "\n";
-        file << "    Link: " << article.link << "\n";
-        if (!note.empty()) file << "    Note: " << note << "\n";
-        file << "\n";
-    }
-    spdlog::info("[AppCore]: Exported project '{}' to plain text: {}", project_name, output_path);
-    return true;
+    return write_export(output_path,
+                        "project '" + project_name + "' plain text",
+                        [&](std::ofstream& file) {
+        file << project_name << "\n" << std::string(project_name.size(), '=') << "\n\n";
+        file << articles.size() << " article(s)\n\n";
+        for (size_t i = 0; i < articles.size(); ++i) {
+            const auto& article = articles[i];
+            std::string note = m_db->GetProjectNote(project_name, article.link);
+            file << "[" << (i + 1) << "] " << article.title << "\n";
+            file << "    Authors: " << article.authors << "\n";
+            file << "    Date: " << format_date_str(article.date) << "\n";
+            file << "    Link: " << article.link << "\n";
+            if (!note.empty()) file << "    Note: " << note << "\n";
+            file << "\n";
+        }
+    });
 }
 
 bool AppCore::ExportProjectJSON(const std::string& project_name,
                                 const std::string& output_path) const {
     auto articles = m_db->GetArticlesForProject(project_name);
-    std::ofstream file(output_path);
-    if (!file.is_open()) return false;
-
-    nlohmann::json j;
-    j["name"] = project_name;
-    j["articles"] = nlohmann::json::array();
-
-    for (const auto& a : articles) {
-        auto ts = std::chrono::duration_cast<std::chrono::seconds>(
-            a.date.time_since_epoch()).count();
-        nlohmann::json entry;
-        entry["link"]     = a.link;
-        entry["title"]    = a.title;
-        entry["authors"]  = a.authors;
-        entry["abstract"] = a.abstract;
-        entry["date"]     = ts;
-        entry["note"]     = m_db->GetProjectNote(project_name, a.link);
-        j["articles"].push_back(std::move(entry));
-    }
-
-    file << j.dump(2) << "\n";
-    spdlog::info("[AppCore]: Exported project '{}' to JSON: {}", project_name, output_path);
-    return true;
+    return write_export(output_path,
+                        "project '" + project_name + "' JSON",
+                        [&](std::ofstream& file) {
+        nlohmann::json j;
+        j["name"] = project_name;
+        j["articles"] = nlohmann::json::array();
+        for (const auto& a : articles) {
+            auto ts = std::chrono::duration_cast<std::chrono::seconds>(
+                a.date.time_since_epoch()).count();
+            nlohmann::json entry;
+            entry["link"]     = a.link;
+            entry["title"]    = a.title;
+            entry["authors"]  = a.authors;
+            entry["abstract"] = a.abstract;
+            entry["date"]     = ts;
+            entry["note"]     = m_db->GetProjectNote(project_name, a.link);
+            j["articles"].push_back(std::move(entry));
+        }
+        file << j.dump(2) << "\n";
+    });
 }
 
 bool AppCore::ImportProjectJSON(const std::string& input_path) {
@@ -724,36 +739,26 @@ static std::string get_bibtex(const Arxiv::Article& article, Arxiv::Fetcher* fet
     return bib;
 }
 
-bool AppCore::ExportArticleBibTeX(const Article& article,
-                                  const std::string& output_path) const {
-    std::ofstream file(output_path);
-    if (!file.is_open()) return false;
-    file << get_bibtex(article, m_fetcher.get()) << "\n";
-    spdlog::info("[AppCore]: Exported article '{}' BibTeX to {}", article.title, output_path);
-    return true;
-}
-
 bool AppCore::ExportArticlesBibTeX(const std::vector<Article>& articles,
                                    const std::string& output_path) const {
-    std::ofstream file(output_path);
-    if (!file.is_open()) return false;
-    for (const auto& a : articles) {
-        file << get_bibtex(a, m_fetcher.get()) << "\n";
-    }
-    spdlog::info("[AppCore]: Exported {} article(s) BibTeX to {}", articles.size(), output_path);
-    return true;
+    return write_export(output_path,
+                        std::to_string(articles.size()) + " article(s) BibTeX",
+                        [&](std::ofstream& file) {
+        for (const auto& a : articles) {
+            file << get_bibtex(a, m_fetcher.get()) << "\n";
+        }
+    });
+}
+
+bool AppCore::ExportArticleBibTeX(const Article& article,
+                                  const std::string& output_path) const {
+    return ExportArticlesBibTeX({article}, output_path);
 }
 
 bool AppCore::ExportProjectBibTeX(const std::string& project_name,
                                   const std::string& output_path) const {
-    auto articles = m_db->GetArticlesForProject(project_name);
-    std::ofstream file(output_path);
-    if (!file.is_open()) return false;
-    for (const auto& a : articles) {
-        file << get_bibtex(a, m_fetcher.get()) << "\n";
-    }
-    spdlog::info("[AppCore]: Exported project '{}' BibTeX to {}", project_name, output_path);
-    return true;
+    return ExportArticlesBibTeX(m_db->GetArticlesForProject(project_name),
+                                output_path);
 }
 
 // ---------------------------------------------------------------------------
@@ -822,33 +827,30 @@ static std::string today_string() {
 
 bool AppCore::ExportDailyDigest(const std::string& output_path) const {
     auto articles = m_db->GetRecent(1); // last 24 hours
-    std::ofstream f(output_path);
-    if (!f.is_open()) return false;
-
-    f << "# arXiv Daily Digest — " << today_string() << "\n\n";
-    if (articles.empty()) {
-        f << "_No articles fetched today._\n";
-    } else {
-        for (const auto& a : articles) {
-            f << "## " << a.title << "\n";
-            f << "**Authors:** " << a.authors << "  \n";
-            f << "**Link:** <" << a.link << ">  \n";
-            if (!a.abstract.empty())
-                f << "\n" << a.abstract << "\n";
-            f << "\n---\n\n";
+    return write_export(output_path,
+                        "daily digest (" + std::to_string(articles.size()) + " articles)",
+                        [&](std::ofstream& f) {
+        f << "# arXiv Daily Digest — " << today_string() << "\n\n";
+        if (articles.empty()) {
+            f << "_No articles fetched today._\n";
+        } else {
+            for (const auto& a : articles) {
+                f << "## " << a.title << "\n";
+                f << "**Authors:** " << a.authors << "  \n";
+                f << "**Link:** <" << a.link << ">  \n";
+                if (!a.abstract.empty())
+                    f << "\n" << a.abstract << "\n";
+                f << "\n---\n\n";
+            }
         }
-    }
-    spdlog::info("[AppCore]: Exported daily digest ({} articles) to {}", articles.size(), output_path);
-    return true;
+    });
 }
 
 bool AppCore::ExportDailyDigestYAML(const std::string& output_path) const {
     auto articles = m_db->GetRecent(1);
-    std::ofstream f(output_path);
-    if (!f.is_open()) return false;
-
-    f << "date: \"" << today_string() << "\"\narticles:\n";
-    for (const auto& a : articles) {
+    return write_export(output_path,
+                        "daily digest YAML (" + std::to_string(articles.size()) + " articles)",
+                        [&](std::ofstream& f) {
         auto escape_yaml = [](const std::string& s) {
             std::string out;
             out.reserve(s.size());
@@ -858,14 +860,15 @@ bool AppCore::ExportDailyDigestYAML(const std::string& output_path) const {
             }
             return out;
         };
-        f << "  - title: \"" << escape_yaml(a.title) << "\"\n";
-        f << "    authors: \"" << escape_yaml(a.authors) << "\"\n";
-        f << "    link: \"" << escape_yaml(a.link) << "\"\n";
-        if (!a.abstract.empty())
-            f << "    abstract: \"" << escape_yaml(a.abstract) << "\"\n";
-    }
-    spdlog::info("[AppCore]: Exported daily digest YAML ({} articles) to {}", articles.size(), output_path);
-    return true;
+        f << "date: \"" << today_string() << "\"\narticles:\n";
+        for (const auto& a : articles) {
+            f << "  - title: \"" << escape_yaml(a.title) << "\"\n";
+            f << "    authors: \"" << escape_yaml(a.authors) << "\"\n";
+            f << "    link: \"" << escape_yaml(a.link) << "\"\n";
+            if (!a.abstract.empty())
+                f << "    abstract: \"" << escape_yaml(a.abstract) << "\"\n";
+        }
+    });
 }
 
 // ---------------------------------------------------------------------------
