@@ -332,12 +332,17 @@ std::string Fetcher::ReplaceLatexAccents(const std::string& text) const {
 
 std::vector<Article> Fetcher::FetchSince(const std::string &utc_date) {
     // Build date range: from utc_date up to today (inclusive), UTC.
-    // We start from utc_date itself (not utc_date+1) because arXiv's <published>
-    // field reflects the POSTED date (when the paper appeared publicly), which
-    // may lag the author's actual submission by one business day. Starting from
-    // utc_date ensures we don't miss papers submitted just before the cutoff
-    // but announced on utc_date or after.
-    // arXiv submittedDate format: YYYYMMDDHHMI (e.g. 202605020000).
+    // The arXiv <published> field is the date arXiv processed and announced v1
+    // of the paper (the posting date), per the arXiv API user manual:
+    //   "<published> contains the date in which the first version of this
+    //    article was submitted and processed."
+    // This is NOT the peer-reviewed journal publication date (that is the
+    // separate <arxiv:journal_ref> element).  Authors submit to arXiv one
+    // business day before <published>; we start the query window at utc_date
+    // itself so that papers whose <published> date equals utc_date are not
+    // silently dropped.  Duplicates already in the DB are handled by
+    // INSERT OR IGNORE in AddArticle.
+    // arXiv submittedDate query format: YYYYMMDDHHMI (e.g. 202605020000).
     std::tm from_tm{};
     from_tm.tm_year = std::stoi(utc_date.substr(0, 4)) - 1900;
     from_tm.tm_mon  = std::stoi(utc_date.substr(5, 2)) - 1;
@@ -443,7 +448,8 @@ std::vector<Article> Fetcher::ParseAtomFeed(const std::string &xml_content) {
         }
         article.authors = StyleLatex(ReplaceLatexAccents(authors_str));
 
-        // Date from <published>
+        // <published> = arXiv processing/announcement date of v1 (the posting date).
+        // Not the peer-reviewed journal date; that is <arxiv:journal_ref>.
         article.date = ParseAtomDate(entry.child_value("published"))
                            .value_or(std::chrono::system_clock::now());
 
