@@ -20,6 +20,23 @@ using ftxui::Color;
 
 namespace Arxiv {
 
+/// Identifies which (if any) modal dialog is active. Replaces a previous
+/// integer "dialog_depth" with a typed enumeration so the compiler catches
+/// stale literals and so the meaning of each branch is self-documenting.
+enum class Dialog {
+    None          = 0,
+    NewProject    = 1,
+    AssignProject = 2,
+    Error         = 3,
+    DateRange     = 4,
+    Search        = 5,
+    Rating        = 6,
+    Notes         = 7,
+    Export        = 8,
+    Import        = 9,
+    KeywordEditor = 10,
+};
+
 class ArxivApp {
 public:
     explicit ArxivApp(const Config &config, ReplayRecorder* recorder = nullptr);
@@ -38,7 +55,7 @@ private:
     ftxui::ScreenInteractive screen;
     ReplayRecorder* m_recorder = nullptr; // not owned — initialized in ctor body order
     int focused_pane = 0;
-    int dialog_depth = 0;
+    Dialog dialog_depth = Dialog::None;
     std::string new_project_name;
     std::string parent_for_new_project;
     bool show_detail = false;
@@ -72,26 +89,26 @@ private:
     int selected_search_option = 0;  // 0: query, 1: title, 2: authors, 3: abstract
     Component search_dialog;
 
-    // Rating dialog (dialog_depth == 6)
+    // Rating dialog
     int pending_rating = 0;  // 1-5 chosen by user
     Component rating_dialog;
 
-    // Notes dialog (dialog_depth == 7)
+    // Notes dialog
     std::string note_edit_text;
     std::string note_project_name;   // project context when editing
     std::string note_article_link;   // article being annotated
     Component note_dialog;
 
-    // Export dialog (dialog_depth == 8)
+    // Export dialog
     int export_format_index = 0;     // 0=Markdown 1=Text 2=JSON
     std::string export_project_name;
     Component export_dialog;
 
-    // Import dialog (dialog_depth == 9)
+    // Import dialog
     std::string import_path;
     Component import_dialog;
 
-    // Keyword editor dialog (dialog_depth == 10)
+    // Keyword editor dialog
     std::vector<std::string> keyword_edit_list;
     std::string keyword_new_entry;
     int keyword_selected_index = 0;
