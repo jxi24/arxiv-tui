@@ -184,6 +184,18 @@ void DatabaseManager::ExecuteSQL(const std::string &sql) {
     }
 }
 
+void DatabaseManager::AddArticles(const std::vector<Article> &articles) {
+    if (articles.empty()) return;
+    ExecuteSQL("BEGIN TRANSACTION");
+    try {
+        for (const auto &a : articles) AddArticle(a);
+        ExecuteSQL("COMMIT");
+    } catch (...) {
+        ExecuteSQL("ROLLBACK");
+        throw;
+    }
+}
+
 void DatabaseManager::AddArticle(const Article &article) {
     spdlog::debug("[Database]: Adding article: {}", article.link);
     auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(

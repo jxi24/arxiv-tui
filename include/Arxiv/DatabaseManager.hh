@@ -62,6 +62,11 @@ class DatabaseManager {
     // Articles submitted on or after the given UTC date ("YYYY-MM-DD")
     virtual std::vector<Article> GetArticlesSince(const std::string &utc_date);
 
+    // Bulk insert wrapped in a single SQLite transaction. Hundreds of inserts
+    // commit in milliseconds instead of seconds, which keeps the UI thread
+    // from being blocked on DB reads while the background fetch is writing.
+    virtual void AddArticles(const std::vector<Article> &articles);
+
   private:
     sqlite3 *db;
 

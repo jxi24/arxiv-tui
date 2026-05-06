@@ -18,6 +18,8 @@
 
 namespace Arxiv {
 
+class ReplayRecorder; // forward decl — included only by users that pass one
+
 class AppCore {
 public:
     // Whether the initial network fetch runs on the constructor thread (Sync,
@@ -26,11 +28,14 @@ public:
     // the production TUI so launch is instant).
     enum class FetchMode { Sync, Async };
 
-    // Constructor with dependency injection
+    // Constructor with dependency injection. `recorder` is optional and used
+    // for diagnostic instrumentation (lifecycle / fetch-progress events) so
+    // the post-mortem replay log captures *why* the UI was blocked.
     explicit AppCore(const Config &config,
                     std::unique_ptr<DatabaseManager> db,
                     std::unique_ptr<Fetcher> fetcher,
-                    FetchMode fetch_mode = FetchMode::Sync);
+                    FetchMode fetch_mode = FetchMode::Sync,
+                    ReplayRecorder* recorder = nullptr);
     ~AppCore();
 
     enum class SearchMode {
@@ -239,6 +244,7 @@ private:
     // Initial network fetch state.
     std::thread              m_initial_fetch_thread;
     std::atomic<bool>        m_fetching{false};
+    ReplayRecorder*          m_recorder = nullptr;
 
     // Keyword cold-start
     std::vector<std::string> m_keywords;

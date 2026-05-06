@@ -1,5 +1,6 @@
 #include "Arxiv/AppCore.hh"
 #include "Arxiv/FuzzyMatch.hh"
+#include "Arxiv/Replay.hh"
 #include "spdlog/spdlog.h"
 #include <nlohmann/json.hpp>
 
@@ -26,7 +27,8 @@ static std::string today_utc_string() {
 AppCore::AppCore(const Config& config,
                  std::unique_ptr<DatabaseManager> db,
                  std::unique_ptr<Fetcher> fetcher,
-                 FetchMode fetch_mode)
+                 FetchMode fetch_mode,
+                 ReplayRecorder* recorder)
     : m_config(config)
     , m_topics(config.get_topics())
     , m_db(std::move(db))
@@ -34,9 +36,11 @@ AppCore::AppCore(const Config& config,
     , m_retrain_interval(config.get_retrain_interval())
     , m_recommend_threshold(config.get_recommend_threshold())
     , m_ranker_path(config.get_ranker_file())
-    , m_auto_refresh_minutes(config.get_auto_refresh_minutes()) {
+    , m_auto_refresh_minutes(config.get_auto_refresh_minutes())
+    , m_recorder(recorder) {
 
     spdlog::info("ArxivAppCore Initialized");
+    if (m_recorder) m_recorder->RecordEvent("appcore/ctor_begin");
 
     const std::string today      = today_utc_string();
     const std::string prev_fetch = m_db->GetMetadata("last_fetch_date");
@@ -53,9 +57,14 @@ AppCore::AppCore(const Config& config,
     m_new_articles_since_date = anchor;
     m_db->SetMetadata("last_fetch_date", today);
 
+    if (m_recorder) m_recorder->RecordEvent("appcore/metadata_loaded",
+                                            "prev_fetch=" + prev_fetch + " anchor=" + anchor);
+
     // Show whatever is already in the local DB immediately.
     RefreshFilterOptions();
     FetchArticles();
+    if (m_recorder) m_recorder->RecordEvent("appcore/initial_fetcharticles_done",
+                                            "count=" + std::to_string(m_current_articles.size()));
 
     // Try to restore a previously saved model; fall back to training if absent.
     if (!m_ranker.Load(m_ranker_path)) {
@@ -67,41 +76,70 @@ AppCore::AppCore(const Config& config,
             m_ranker.Save(m_ranker_path);
         }
     }
+    if (m_recorder) m_recorder->RecordEvent("appcore/ranker_loaded",
+                                            std::string("trained=") + (m_ranker.IsTrained() ? "1" : "0"));
 
     // Network fetch. In Async mode it runs on a background thread so the TUI
     // launches immediately; IsFetching() reports its state. In Sync mode
     // (the test default) the same logic runs inline so callers see fetched
     // data as soon as the constructor returns.
-    auto do_fetch = [this, prev_fetch, today]() {
+    //
+    // The bg thread NEVER touches m_current_articles or the
+    // article-update callback directly: it only sets m_needs_refetch so the
+    // UI thread can refresh on its next tick via TryRefetchIfNeeded(). This
+    // avoids racing with UI-thread reads and avoids invoking the callback
+    // before App's SetupUI() has installed it.
+    auto do_fetch = [this, prev_fetch, today, fetch_mode]() {
+        if (m_recorder) m_recorder->RecordEvent("appcore/bg_fetch_begin",
+                                                "mode=" + std::string(fetch_mode == FetchMode::Async ? "async" : "sync"));
         std::vector<Article> articles;
         if (!prev_fetch.empty() && prev_fetch < today) {
             articles = m_fetcher->FetchSince(prev_fetch);
         } else {
             articles = m_fetcher->Fetch();
         }
-        for (const auto& article : articles) {
-            m_db->AddArticle(article);
+        if (m_recorder) m_recorder->RecordEvent("appcore/bg_fetch_returned",
+                                                "n=" + std::to_string(articles.size()));
+
+        // Wrap the bulk insert in a single transaction. Without this each
+        // AddArticle is its own commit (ms-scale fsync each); the UI-thread
+        // DB read could block for the entire window.
+        if (m_recorder) m_recorder->RecordEvent("appcore/bg_db_insert_begin");
+        m_db->AddArticles(articles);
+        if (m_recorder) m_recorder->RecordEvent("appcore/bg_db_insert_end");
+
+        if (fetch_mode == FetchMode::Sync) {
+            // Sync callers expect m_current_articles to reflect the fetch
+            // immediately after the constructor returns.
+            FetchArticles();
+        } else {
+            // UI thread will pick this up via TryRefetchIfNeeded.
+            m_needs_refetch.store(true);
         }
-        FetchArticles();
         m_fetching.store(false);
-        NotifyArticleUpdate();
+        if (m_recorder) m_recorder->RecordEvent("appcore/bg_fetch_done");
     };
 
     m_fetching.store(true);
     if (fetch_mode == FetchMode::Async) {
+        if (m_recorder) m_recorder->RecordEvent("appcore/fetch_thread_spawning");
         m_initial_fetch_thread = std::thread(std::move(do_fetch));
     } else {
         do_fetch();
     }
+    if (m_recorder) m_recorder->RecordEvent("appcore/ctor_end");
 }
 
 AppCore::~AppCore() {
+    if (m_recorder) m_recorder->RecordEvent("appcore/dtor_begin",
+                                            std::string("fetching=") + (m_fetching.load() ? "1" : "0"));
     StopAutoRefresh();
     WaitForInitialFetch();
     // Ensure the background training thread has finished before destruction.
     if (m_train_thread.joinable()) {
         m_train_thread.join();
     }
+    if (m_recorder) m_recorder->RecordEvent("appcore/dtor_end");
 }
 
 void AppCore::WaitForInitialFetch() {
@@ -111,6 +149,8 @@ void AppCore::WaitForInitialFetch() {
 }
 
 void AppCore::FetchArticles() {
+    if (m_recorder) m_recorder->RecordEvent("appcore/fetcharticles_begin",
+                                            "view=" + std::to_string(static_cast<int>(GetFilterView())));
     m_current_articles.clear();
 
     switch (GetFilterView()) {
@@ -187,6 +227,8 @@ void AppCore::FetchArticles() {
     
     RefreshTitles();
     m_article_index = 0;
+    if (m_recorder) m_recorder->RecordEvent("appcore/fetcharticles_end",
+                                            "count=" + std::to_string(m_current_articles.size()));
     NotifyArticleUpdate();
 }
 
@@ -472,8 +514,18 @@ bool AppCore::IsRankerTrained() const {
 }
 
 void AppCore::TryRefetchIfNeeded() {
+    // Don't query the DB while the background fetch is still writing —
+    // SQLite would serialise the read against every pending insert and the
+    // UI thread would block for the duration of the bulk insert.
+    if (m_fetching.load()) {
+        if (m_recorder) m_recorder->RecordEvent("appcore/try_refetch_skipped", "fetching");
+        return;
+    }
     if (m_needs_refetch.exchange(false)) {
-        FetchArticles();
+        if (m_recorder) m_recorder->RecordEvent("appcore/try_refetch_executing");
+        FetchArticles();   // FetchArticles also fires NotifyArticleUpdate
+        if (m_recorder) m_recorder->RecordEvent("appcore/try_refetch_executed",
+                                                "count=" + std::to_string(m_current_articles.size()));
     }
 }
 

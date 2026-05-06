@@ -339,6 +339,12 @@ void ReplayRecorder::RecordExportProjectBibTeX(const std::string& project, const
     Record(j.dump());
 }
 
+void ReplayRecorder::RecordEvent(const std::string& name, const std::string& detail) {
+    json j{{"ts", NowMs()}, {"action", "event"}, {"name", name}};
+    if (!detail.empty()) j["detail"] = detail;
+    Record(j.dump());
+}
+
 // ---------------------------------------------------------------------------
 // ReplayPlayer
 // ---------------------------------------------------------------------------

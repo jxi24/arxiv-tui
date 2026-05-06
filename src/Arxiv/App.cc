@@ -23,14 +23,18 @@ ArxivApp::ArxivApp(const Config& config, ReplayRecorder* recorder)
     : core(config,
            std::make_unique<DatabaseManager>("articles.db"),
            std::make_unique<Fetcher>(config.get_topics(), config.get_download_dir()),
-           AppCore::FetchMode::Async)
+           AppCore::FetchMode::Async,
+           recorder)
     , key_bindings(config.get_key_mappings())
     , screen(ScreenInteractive::Fullscreen()) {
     m_recorder = recorder;
 
     spdlog::info("ArXiv Application Initialized");
+    if (m_recorder) m_recorder->RecordEvent("app/ctor_after_appcore");
     core.ReloadKeywords();
+    if (m_recorder) m_recorder->RecordEvent("app/setup_ui_begin");
     SetupUI();
+    if (m_recorder) m_recorder->RecordEvent("app/setup_ui_end");
 }
 
 void ArxivApp::UpdateTitleScrollPositions() {
@@ -719,22 +723,30 @@ void ArxivApp::SetupUI() {
             });
         }
 
-        // Status footer: visible only while the initial network fetch is in
-        // flight. Tells the user the TUI is alive and currently downloading,
-        // without blocking startup or interaction.
+        // Fetching indicator: visible only while the initial network fetch
+        // is in flight. Overlaid via dbox + filler so it sits at the bottom
+        // right of the screen WITHOUT changing the document's outer
+        // dimensions (a vbox would push the panes up by one row each tick).
         if (core.IsFetching()) {
-            // Animate a dot pulse so it's clear the work is ongoing rather
-            // than a stuck splash screen.
+            // Animate a dot pulse so it's clear work is ongoing rather than
+            // a stuck splash screen.
             auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                           std::chrono::steady_clock::now().time_since_epoch())
                           .count();
             const char* dots[] = {"   ", ".  ", ".. ", "..."};
             const char* anim = dots[(ms / 400) % 4];
-            auto status = hbox({
-                text(" ⟳ Fetching new articles") | color(TextColors::primary) | bold,
+            auto badge = hbox({
+                text(" Fetching new articles") | color(TextColors::primary) | bold,
                 text(anim) | color(TextColors::primary),
+                text(" "),
             }) | bgcolor(TextColors::surface);
-            document = vbox({document, status});
+
+            // Pin to bottom-right by padding with fillers.
+            auto overlay = vbox({
+                filler(),
+                hbox({filler(), badge}),
+            });
+            document = dbox({document, overlay});
         }
 
         return document;
@@ -1225,10 +1237,15 @@ void ArxivApp::SetupUI() {
     });
 
     // Set up UI refresh callback
-    core.SetArticleUpdateCallback([&]() { RefreshUI(); });
+    core.SetArticleUpdateCallback([&]() {
+        if (m_recorder) m_recorder->RecordEvent("app/article_update_callback");
+        RefreshUI();
+    });
 
     // Setup animation
     refresh_ui = std::thread([&] {
+        if (m_recorder) m_recorder->RecordEvent("app/refresh_thread_started");
+        long long tick = 0;
         while (refresh_ui_continue) {
             using namespace std::chrono_literals;
             std::this_thread::sleep_for(0.05s);
@@ -1237,6 +1254,12 @@ void ArxivApp::SetupUI() {
                 core.TryRefetchIfNeeded();
             });
             screen.Post(Event::Custom);
+            // Sample a tick every ~1s so the log shows the refresh loop is
+            // alive without flooding it.
+            if (m_recorder && (tick++ % 20) == 0) {
+                m_recorder->RecordEvent("app/refresh_tick",
+                                        std::string("fetching=") + (core.IsFetching() ? "1" : "0"));
+            }
         }
     });
 }

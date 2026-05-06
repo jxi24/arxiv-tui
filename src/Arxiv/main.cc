@@ -84,7 +84,9 @@ int main(int argc, char* argv[]) {
     Arxiv::InstallCrashHandler(&recorder, ".");
 
     Arxiv::ArxivApp app(config, &recorder);
+    recorder.RecordEvent("main/run_loop_start");
     app.Run();
+    recorder.RecordEvent("main/run_loop_returned");
 
     return 0;
 }

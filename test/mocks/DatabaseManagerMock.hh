@@ -26,6 +26,8 @@ public:
                 .RETURN(std::vector<std::string>{}));
         m_expectations.push_back(
             NAMED_ALLOW_CALL(*this, AddArticle(ANY(Arxiv::Article))));
+        m_expectations.push_back(
+            NAMED_ALLOW_CALL(*this, AddArticles(ANY(std::vector<Arxiv::Article>))));
         // Default: rated articles list is empty unless overridden
         m_expectations.push_back(
             NAMED_ALLOW_CALL(*this, GetRatedArticles())
@@ -85,6 +87,7 @@ public:
 
     // Mock methods using trompeloeil
     MAKE_MOCK1(AddArticle, void(const Arxiv::Article&), override);
+    MAKE_MOCK1(AddArticles, void(const std::vector<Arxiv::Article>&), override);
     MAKE_MOCK1(GetRecent, std::vector<Arxiv::Article>(int), override);
     MAKE_MOCK0(ListBookmarked, std::vector<Arxiv::Article>(), override);
     MAKE_MOCK1(GetArticlesForProject, std::vector<Arxiv::Article>(const std::string&), override);
