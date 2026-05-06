@@ -31,7 +31,10 @@ public:
         ImportProject,
         ExportBibTeX,
         EditKeywords,
-        ExportDigest
+        ExportDigest,
+        FilterCategories,
+        ToggleSelection,
+        ExportSelectedDigest
     };
 
     KeyBindings() = default;

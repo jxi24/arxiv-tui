@@ -3,6 +3,7 @@
 
 #include <condition_variable>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 #include <functional>
@@ -170,6 +171,34 @@ public:
     bool IsFetching() const { return m_fetching.load(); }
     void WaitForInitialFetch();
 
+    // Category (arxiv tag) filter applied across every view. The set is
+    // initialised to all configured topics in the constructor — toggling a
+    // category off hides it from every list. Each setter triggers
+    // FetchArticles so the UI updates live.
+    const std::vector<std::string>& GetTopics() const { return m_topics; }
+    const std::set<std::string>& GetActiveCategories() const { return m_active_categories; }
+    bool IsCategoryActive(const std::string& cat) const {
+        return m_active_categories.count(cat) > 0;
+    }
+    void ToggleCategory(const std::string& cat);
+    void SetActiveCategories(const std::set<std::string>& cats);
+
+    // Per-session article selection. Used by ExportSelectedDigest to build
+    // a curated markdown digest + PDF bundle. Selections live in memory
+    // only — they don't persist across restarts (use bookmarks for that).
+    void ToggleSelection(const std::string& link);
+    void ClearSelections();
+    bool IsSelected(const std::string& link) const {
+        return m_selected_links.count(link) > 0;
+    }
+    std::size_t GetSelectionCount() const { return m_selected_links.size(); }
+
+    // Write a markdown digest covering every selected article to
+    //     <download_dir>/<YYYY-MM-DD>/digest.md
+    // and download each selected article's PDF into the same directory.
+    // Returns the digest directory's path on success, empty on failure.
+    std::string ExportSelectedDigest();
+
     // Keyword management (cold-start ranking)
     void ReloadKeywords();
     bool SaveKeywords(const std::vector<std::string>& keywords);
@@ -245,6 +274,15 @@ private:
     std::thread              m_initial_fetch_thread;
     std::atomic<bool>        m_fetching{false};
     ReplayRecorder*          m_recorder = nullptr;
+
+    // Active arxiv categories — empty = no filter. Initialised in the
+    // constructor to the full set of configured topics so the user starts
+    // seeing everything.
+    std::set<std::string>    m_active_categories;
+
+    // Article links the user has tagged for the next digest export.
+    // Session-scoped only.
+    std::set<std::string>    m_selected_links;
 
     // Keyword cold-start
     std::vector<std::string> m_keywords;

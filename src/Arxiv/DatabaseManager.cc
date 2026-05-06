@@ -18,8 +18,8 @@ namespace {
 
 // The article column list appears in nearly every SELECT — keep it in one
 // place so adding a column does not require touching seven query strings.
-constexpr const char* ARTICLE_COLUMNS    = "link, title, authors, abstract, date, bookmarked";
-constexpr const char* ARTICLE_COLUMNS_A  = "a.link, a.title, a.authors, a.abstract, a.date, a.bookmarked";
+constexpr const char* ARTICLE_COLUMNS    = "link, title, authors, abstract, date, bookmarked, category";
+constexpr const char* ARTICLE_COLUMNS_A  = "a.link, a.title, a.authors, a.abstract, a.date, a.bookmarked, a.category";
 
 /// RAII wrapper around a prepared sqlite3_stmt. Construction prepares the
 /// statement (throws on failure); destruction always finalizes.
@@ -150,6 +150,13 @@ DatabaseManager::DatabaseManager(const std::string &path) {
         // Column already exists — ignore
     }
 
+    // Add category column to articles table (migration for existing DBs)
+    try {
+        ExecuteSQL("ALTER TABLE articles ADD COLUMN category TEXT DEFAULT ''");
+    } catch (const std::exception&) {
+        // Column already exists — ignore
+    }
+
     // Create followed_authors table
     ExecuteSQL(R"(CREATE TABLE IF NOT EXISTS followed_authors (
                author_name TEXT PRIMARY KEY))");
@@ -202,15 +209,16 @@ void DatabaseManager::AddArticle(const Article &article) {
         article.date.time_since_epoch()).count();
 
     Stmt stmt(db,
-        "INSERT OR REPLACE INTO articles (link, title, authors, abstract, date, bookmarked) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT OR REPLACE INTO articles (link, title, authors, abstract, date, bookmarked, category) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
         "AddArticle");
     stmt.bind(1, article.link)
         .bind(2, article.title)
         .bind(3, article.authors)
         .bind(4, article.abstract)
         .bind(5, static_cast<sqlite3_int64>(timestamp))
-        .bind(6, article.bookmarked ? 1 : 0);
+        .bind(6, article.bookmarked ? 1 : 0)
+        .bind(7, article.category);
     stmt.step_done();
 }
 
@@ -323,6 +331,7 @@ Arxiv::Article DatabaseManager::RowToArticle(sqlite3_stmt *stmt) {
     article.date = std::chrono::system_clock::from_time_t(timestamp);
 
     article.bookmarked = sqlite3_column_int(stmt, 5) != 0;
+    article.category   = ExtractColumn(stmt, 6);
 
     return article;
 }
@@ -416,7 +425,8 @@ DatabaseManager::RatedArticleList DatabaseManager::GetRatedArticles() {
     Stmt stmt(db, sql.c_str(), "GetRatedArticles");
     stmt.for_each([&](sqlite3_stmt* s) {
         Article article = RowToArticle(s);
-        int rating = sqlite3_column_int(s, 6);
+        // ARTICLE_COLUMNS_A has 7 columns; rating is column 7 (index 7).
+        int rating = sqlite3_column_int(s, 7);
         result.emplace_back(std::move(article), rating);
     });
     spdlog::debug("[Database]: Found {} rated articles", result.size());

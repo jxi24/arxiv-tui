@@ -35,6 +35,7 @@ enum class Dialog {
     Export        = 8,
     Import        = 9,
     KeywordEditor = 10,
+    CategoryFilter = 11,
 };
 
 class ArxivApp {
@@ -113,6 +114,10 @@ private:
     std::string keyword_new_entry;
     int keyword_selected_index = 0;
     Component keyword_dialog;
+
+    // Category filter dialog
+    int category_selected_index = 0;
+    Component category_dialog;
 
     // Article pane scrolling
     int visible_rows = 0;  // Number of rows visible in the article pane

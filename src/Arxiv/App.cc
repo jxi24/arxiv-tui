@@ -218,6 +218,14 @@ void ArxivApp::SetupUI() {
             const auto& article = articles[i];
             std::string title = article.title;
 
+            // Selection / bookmark prefix. Selection wins so the user can
+            // see at a glance what's queued for the next digest.
+            if (core.IsSelected(article.link)) {
+                title = "[*] " + title;
+            } else if (article.bookmarked) {
+                title = "⭐ " + title;
+            }
+
             // Append predicted score badge for Recommended view
             std::string score_badge;
             if (show_scores) {
@@ -375,7 +383,14 @@ void ArxivApp::SetupUI() {
         if (!show_help) return emptyElement();
 
         auto bindings = key_bindings.get_all_bindings();
-        
+
+        // Replace blank-looking keys with explicit names so the help is
+        // readable. Currently only the space character would render as
+        // empty, but the same hook can absorb future additions.
+        for (auto& [_, key] : bindings) {
+            if (key == " ") key = "<space>";
+        }
+
         // Sort bindings by action name
         std::sort(bindings.begin(), bindings.end(),
                  [](const auto& a, const auto& b) { return a.first < b.first; });
@@ -622,6 +637,52 @@ void ArxivApp::SetupUI() {
             | center;
     });
 
+    // Category filter dialog (Dialog::CategoryFilter)
+    category_dialog = Renderer([&] {
+        if (dialog_depth != Dialog::CategoryFilter) return emptyElement();
+
+        const auto& topics = core.GetTopics();
+        Elements rows;
+        rows.push_back(text("Filter by arXiv Category") | bold | color(TextColors::primary));
+        rows.push_back(separator() | color(TextColors::border));
+        if (topics.empty()) {
+            rows.push_back(text("  (no topics configured)") | color(TextColors::subtext));
+        } else {
+            for (int i = 0; i < static_cast<int>(topics.size()); ++i) {
+                const auto& t = topics[static_cast<size_t>(i)];
+                bool active   = core.IsCategoryActive(t);
+                bool selected = (i == category_selected_index);
+                std::string mark = active ? "[x] " : "[ ] ";
+                auto row = text("  " + mark + t);
+                if (selected)
+                    rows.push_back(row | bold | color(TextColors::base) | bgcolor(TextColors::primary));
+                else
+                    rows.push_back(row | color(active ? TextColors::text : TextColors::subtext));
+            }
+        }
+        rows.push_back(separator() | color(TextColors::border));
+        rows.push_back(text("  Showing " + std::to_string(core.GetCurrentArticles().size())
+                            + " article(s)") | color(TextColors::subtext));
+        rows.push_back(separator() | color(TextColors::border));
+        rows.push_back(hbox({
+            text("j/k") | bold | color(TextColors::primary),
+            text(": move  ") | color(TextColors::subtext),
+            text("Space/Enter") | bold | color(TextColors::primary),
+            text(": toggle  ") | color(TextColors::subtext),
+            text("a") | bold | color(TextColors::primary),
+            text(": all  ") | color(TextColors::subtext),
+            text("n") | bold | color(TextColors::primary),
+            text(": none  ") | color(TextColors::subtext),
+            text("Esc") | bold | color(TextColors::primary),
+            text(": close") | color(TextColors::subtext),
+        }));
+        return vbox(std::move(rows))
+            | borderStyled(ROUNDED, TextColors::border)
+            | bgcolor(TextColors::surface)
+            | clear_under
+            | center;
+    });
+
     main_renderer = Renderer(main_container, [&] {
         int filter_width = FilterPaneWidth();
         int remaining_width = Terminal::Size().dimx - filter_width - border_size; 
@@ -712,6 +773,11 @@ void ArxivApp::SetupUI() {
             document = dbox({
                 document,
                 keyword_dialog->Render(),
+            });
+        } else if (dialog_depth == Dialog::CategoryFilter) {
+            document = dbox({
+                document,
+                category_dialog->Render(),
             });
         }
 
@@ -1018,6 +1084,40 @@ void ArxivApp::SetupUI() {
             return true;
         }
 
+        // Handle category filter dialog. Toggling a checkbox immediately
+        // triggers FetchArticles in AppCore, which fires NotifyArticleUpdate
+        // → the article list updates live behind the overlay.
+        if (dialog_depth == Dialog::CategoryFilter) {
+            const auto& topics = core.GetTopics();
+            int n = static_cast<int>(topics.size());
+            if (event == Event::Escape) {
+                dialog_depth = Dialog::None;
+                return true;
+            }
+            if (n == 0) return true;
+            if (key_bindings.matches(event, KeyBindings::Action::Next)) {
+                category_selected_index = std::min(category_selected_index + 1, n - 1);
+                return true;
+            }
+            if (key_bindings.matches(event, KeyBindings::Action::Previous)) {
+                category_selected_index = std::max(category_selected_index - 1, 0);
+                return true;
+            }
+            if (event == Event::Return || event == Event::Character(' ')) {
+                core.ToggleCategory(topics[static_cast<size_t>(category_selected_index)]);
+                return true;
+            }
+            if (event == Event::Character('a')) {
+                core.SetActiveCategories(std::set<std::string>(topics.begin(), topics.end()));
+                return true;
+            }
+            if (event == Event::Character('n')) {
+                core.SetActiveCategories({});
+                return true;
+            }
+            return true;
+        }
+
         // Handle keyword editor dialog
         if (dialog_depth == Dialog::KeywordEditor) {
             if (event == Event::Return && !keyword_new_entry.empty()) {
@@ -1093,6 +1193,42 @@ void ArxivApp::SetupUI() {
             keyword_new_entry.clear();
             keyword_selected_index = 0;
             dialog_depth = Dialog::KeywordEditor;
+            return true;
+        }
+
+        // Open arXiv category filter
+        if (key_bindings.matches(event, KeyBindings::Action::FilterCategories)) {
+            category_selected_index = 0;
+            dialog_depth = Dialog::CategoryFilter;
+            return true;
+        }
+
+        // Toggle selection of the focused article (used by Export Selected Digest).
+        if (key_bindings.matches(event, KeyBindings::Action::ToggleSelection)) {
+            auto articles = core.GetCurrentArticles();
+            if (!articles.empty()) {
+                int idx = core.GetArticleIndex();
+                if (idx >= 0 && idx < static_cast<int>(articles.size())) {
+                    if (m_recorder) m_recorder->RecordEvent(
+                        "app/toggle_selection",
+                        "link=" + articles[static_cast<size_t>(idx)].link);
+                    core.ToggleSelection(articles[static_cast<size_t>(idx)].link);
+                }
+            }
+            return true;
+        }
+
+        // Export selected articles as a markdown digest + bundle their PDFs
+        // into <download_dir>/<YYYY-MM-DD>/. Path is logged via spdlog;
+        // failure surfaces in the Error overlay.
+        if (key_bindings.matches(event, KeyBindings::Action::ExportSelectedDigest)) {
+            std::string dir = core.ExportSelectedDigest();
+            if (dir.empty()) {
+                err_msg = core.GetSelectionCount() == 0
+                              ? "No articles selected (Space to select)"
+                              : "Failed to export digest";
+                dialog_depth = Dialog::Error;
+            }
             return true;
         }
 

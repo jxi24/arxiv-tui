@@ -19,7 +19,8 @@ TEST_CASE("KeyBindings: defaults are populated for every action", "[keybindings]
                    Action::RateArticle, Action::ForceRetrain, Action::EditNote,
                    Action::ExportProject, Action::ImportProject,
                    Action::ExportBibTeX, Action::EditKeywords,
-                   Action::ExportDigest}) {
+                   Action::ExportDigest, Action::FilterCategories,
+                   Action::ToggleSelection, Action::ExportSelectedDigest}) {
         INFO("action enum value = " << static_cast<int>(a));
         REQUIRE_FALSE(kb.get_key(a).empty());
     }
@@ -51,6 +52,9 @@ TEST_CASE("KeyBindings: user overrides apply to every action", "[keybindings]") 
         {"export_bibtex",    "C"},
         {"edit_keywords",    "W"},
         {"export_digest",    "G"},
+        {"filter_categories","T"},
+        {"toggle_selection", "v"},
+        {"export_selected_digest","g"},
     };
 
     std::vector<Config::KeyMapping> mappings;
@@ -83,6 +87,9 @@ TEST_CASE("KeyBindings: user overrides apply to every action", "[keybindings]") 
         {"export_bibtex",    Action::ExportBibTeX},
         {"edit_keywords",    Action::EditKeywords},
         {"export_digest",    Action::ExportDigest},
+        {"filter_categories",Action::FilterCategories},
+        {"toggle_selection", Action::ToggleSelection},
+        {"export_selected_digest",Action::ExportSelectedDigest},
     };
 
     for (size_t i = 0; i < overrides.size(); ++i) {
@@ -100,7 +107,8 @@ TEST_CASE("KeyBindings: get_action_name covers every action", "[keybindings]") {
                    Action::RateArticle, Action::ForceRetrain, Action::EditNote,
                    Action::ExportProject, Action::ImportProject,
                    Action::ExportBibTeX, Action::EditKeywords,
-                   Action::ExportDigest}) {
+                   Action::ExportDigest, Action::FilterCategories,
+                   Action::ToggleSelection, Action::ExportSelectedDigest}) {
         INFO("action enum value = " << static_cast<int>(a));
         const auto name = KeyBindings::get_action_name(a);
         REQUIRE_FALSE(name.empty());

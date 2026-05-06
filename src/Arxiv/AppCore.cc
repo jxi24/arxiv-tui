@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <chrono>
 #include <ctime>
+#include <filesystem>
 #include <fstream>
 #include <functional>
 #include <map>
@@ -41,6 +42,10 @@ AppCore::AppCore(const Config& config,
 
     spdlog::info("ArxivAppCore Initialized");
     if (m_recorder) m_recorder->RecordEvent("appcore/ctor_begin");
+
+    // Show every configured topic by default; user toggles via the filter
+    // dialog.
+    m_active_categories.insert(m_topics.begin(), m_topics.end());
 
     const std::string today      = today_utc_string();
     const std::string prev_fetch = m_db->GetMetadata("last_fetch_date");
@@ -148,6 +153,17 @@ void AppCore::WaitForInitialFetch() {
     }
 }
 
+void AppCore::ToggleCategory(const std::string& cat) {
+    if (m_active_categories.count(cat)) m_active_categories.erase(cat);
+    else                                m_active_categories.insert(cat);
+    FetchArticles();
+}
+
+void AppCore::SetActiveCategories(const std::set<std::string>& cats) {
+    m_active_categories = cats;
+    FetchArticles();
+}
+
 void AppCore::FetchArticles() {
     if (m_recorder) m_recorder->RecordEvent("appcore/fetcharticles_begin",
                                             "view=" + std::to_string(static_cast<int>(GetFilterView())));
@@ -219,12 +235,50 @@ void AppCore::FetchArticles() {
             std::strftime(buf, sizeof(buf), "%Y-%m-%d", &tm);
             m_current_articles = m_db->GetArticlesSince(buf);
         }
+        // If a trained ranker is available, surface the most relevant new
+        // articles first. No threshold is applied — the user wants to see
+        // *every* new paper, just in priority order. Predict is called
+        // exactly once per article (cached side-vector) to keep the sort
+        // O(N log N) on the comparisons.
+        if (m_ranker.IsTrained() && m_current_articles.size() > 1) {
+            std::vector<std::pair<float, Article>> scored;
+            scored.reserve(m_current_articles.size());
+            {
+                std::lock_guard<std::mutex> lock(m_ranker_mutex);
+                for (auto& a : m_current_articles) {
+                    scored.emplace_back(m_ranker.Predict(a), std::move(a));
+                }
+            }
+            std::sort(scored.begin(), scored.end(),
+                      [](const auto& l, const auto& r) { return l.first > r.first; });
+            m_current_articles.clear();
+            for (auto& [s, a] : scored) m_current_articles.push_back(std::move(a));
+        }
         break;
     case FilterView::Project:
         m_current_articles = GetArticlesForProject(GetProjectNameForFilter(m_filter_index));
         break;
     }
-    
+
+    // Apply the global category filter on top of the per-view selection.
+    // An article matches if any of its (comma-separated) categories is in
+    // the active set. Semantics: ticked = visible. Articles with an empty
+    // category field pass through unconditionally — this keeps rows that
+    // were inserted before the schema migration (which had no category
+    // column) visible until a fresh fetch backfills the column.
+    if (m_active_categories.size() != m_topics.size()) {
+        m_current_articles.erase(
+            std::remove_if(m_current_articles.begin(), m_current_articles.end(),
+                [this](const Article& a) {
+                    if (a.category.empty()) return false;
+                    for (const auto& cat : m_active_categories) {
+                        if (a.category.find(cat) != std::string::npos) return false;
+                    }
+                    return true;
+                }),
+            m_current_articles.end());
+    }
+
     RefreshTitles();
     m_article_index = 0;
     if (m_recorder) m_recorder->RecordEvent("appcore/fetcharticles_end",
@@ -378,7 +432,9 @@ void AppCore::RefreshTitles() {
     m_current_titles.clear();
     for(const auto& article : m_current_articles) {
         std::string display_title = article.title;
-        if(article.bookmarked) {
+        if (m_selected_links.count(article.link)) {
+            display_title = "[*] " + display_title;
+        } else if (article.bookmarked) {
             display_title = "⭐ " + display_title;
         }
         m_current_titles.push_back(display_title);
@@ -946,6 +1002,86 @@ bool AppCore::ExportDailyDigestYAML(const std::string& output_path) const {
                 f << "    abstract: \"" << escape_yaml(a.abstract) << "\"\n";
         }
     });
+}
+
+// ---------------------------------------------------------------------------
+// Article selection + curated digest
+// ---------------------------------------------------------------------------
+
+void AppCore::ToggleSelection(const std::string& link) {
+    if (m_selected_links.count(link)) m_selected_links.erase(link);
+    else                              m_selected_links.insert(link);
+    RefreshTitles();
+    NotifyArticleUpdate();
+}
+
+void AppCore::ClearSelections() {
+    m_selected_links.clear();
+    RefreshTitles();
+    NotifyArticleUpdate();
+}
+
+std::string AppCore::ExportSelectedDigest() {
+    if (m_selected_links.empty()) {
+        spdlog::warn("[AppCore]: ExportSelectedDigest called with no selections");
+        return "";
+    }
+
+    // Resolve selected links to full Article rows. Fetching everything once
+    // and filtering avoids N round-trips for typical selection sizes.
+    auto all = m_db->GetRecent(-1);
+    std::vector<Article> picked;
+    picked.reserve(m_selected_links.size());
+    for (const auto& a : all) {
+        if (m_selected_links.count(a.link)) picked.push_back(a);
+    }
+    if (picked.empty()) {
+        spdlog::warn("[AppCore]: ExportSelectedDigest: no matching articles in DB");
+        return "";
+    }
+
+    const std::string date_dir = today_string();
+    namespace fs = std::filesystem;
+    fs::path digest_dir = fs::path(m_config.get_download_dir()) / date_dir;
+    std::error_code ec;
+    fs::create_directories(digest_dir, ec);
+    if (ec) {
+        spdlog::error("[AppCore]: Cannot create digest dir {}: {}", digest_dir.string(), ec.message());
+        return "";
+    }
+
+    // Write the markdown digest.
+    fs::path md_path = digest_dir / "digest.md";
+    std::ofstream f(md_path);
+    if (!f.is_open()) {
+        spdlog::error("[AppCore]: Cannot open digest file {}", md_path.string());
+        return "";
+    }
+    f << "# arXiv Selected Digest — " << date_dir << "\n\n";
+    f << picked.size() << " selected article(s)\n\n---\n\n";
+    for (const auto& a : picked) {
+        f << "## " << a.title << "\n\n";
+        f << "**Authors:** " << a.authors << "  \n";
+        f << "**Link:** <" << a.link << ">  \n";
+        f << "**PDF:** [" << a.id() << ".pdf](" << a.id() << ".pdf)  \n";
+        if (!a.category.empty()) f << "**Category:** " << a.category << "  \n";
+        if (!a.abstract.empty()) f << "\n" << a.abstract << "\n";
+        f << "\n---\n\n";
+    }
+    f.close();
+
+    // Download each PDF into the same directory. The Fetcher writes
+    // relative to its base_path (= download_dir), so the relative
+    // "<date_dir>/<id>.pdf" lands next to the digest.
+    int ok = 0;
+    for (const auto& a : picked) {
+        std::string rel = date_dir + "/" + a.id() + ".pdf";
+        if (m_fetcher->DownloadPaper(a.id(), rel)) ++ok;
+    }
+    spdlog::info("[AppCore]: Selected digest written to {} ({}/{} PDFs downloaded)",
+                 digest_dir.string(), ok, picked.size());
+
+    return digest_dir.string();
 }
 
 // ---------------------------------------------------------------------------
