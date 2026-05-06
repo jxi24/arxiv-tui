@@ -25,7 +25,8 @@ static std::string today_utc_string() {
 
 AppCore::AppCore(const Config& config,
                  std::unique_ptr<DatabaseManager> db,
-                 std::unique_ptr<Fetcher> fetcher)
+                 std::unique_ptr<Fetcher> fetcher,
+                 FetchMode fetch_mode)
     : m_config(config)
     , m_topics(config.get_topics())
     , m_db(std::move(db))
@@ -37,30 +38,26 @@ AppCore::AppCore(const Config& config,
 
     spdlog::info("ArxivAppCore Initialized");
 
-    // Determine the UTC date of the previous session and decide fetch strategy.
-    const std::string prev_date = m_db->GetMetadata("last_fetch_date");
-    const std::string today     = today_utc_string();
+    const std::string today      = today_utc_string();
+    const std::string prev_fetch = m_db->GetMetadata("last_fetch_date");
+    std::string anchor           = m_db->GetMetadata("new_articles_anchor");
 
-    std::vector<Article> articles;
-    if (!prev_date.empty() && prev_date < today) {
-        // User missed one or more days — use the API to back-fill.
-        articles = m_fetcher->FetchSince(prev_date);
-    } else {
-        // First run, or same-day restart — use the normal RSS feed.
-        articles = m_fetcher->Fetch();
+    // The "New Articles" anchor only advances on a real day-boundary
+    // crossing. A same-day restart must NOT collapse the anchor to today —
+    // doing so would push GetArticlesSince() past every existing article and
+    // make the New Articles view appear empty.
+    if (!prev_fetch.empty() && prev_fetch < today) {
+        anchor = prev_fetch;
+        m_db->SetMetadata("new_articles_anchor", anchor);
     }
-    for (const auto &article : articles) {
-        m_db->AddArticle(article);
-    }
-
-    // Record which date was the "previous" session for the NewArticles view,
-    // then update the persisted date to today.
-    m_new_articles_since_date = prev_date;
+    m_new_articles_since_date = anchor;
     m_db->SetMetadata("last_fetch_date", today);
 
+    // Show whatever is already in the local DB immediately.
     RefreshFilterOptions();
     FetchArticles();
-    // Try to restore a previously saved model; fall back to training if absent
+
+    // Try to restore a previously saved model; fall back to training if absent.
     if (!m_ranker.Load(m_ranker_path)) {
         auto all_articles = m_db->GetRecent(-1);
         auto rated = m_db->GetRatedArticles();
@@ -70,13 +67,46 @@ AppCore::AppCore(const Config& config,
             m_ranker.Save(m_ranker_path);
         }
     }
+
+    // Network fetch. In Async mode it runs on a background thread so the TUI
+    // launches immediately; IsFetching() reports its state. In Sync mode
+    // (the test default) the same logic runs inline so callers see fetched
+    // data as soon as the constructor returns.
+    auto do_fetch = [this, prev_fetch, today]() {
+        std::vector<Article> articles;
+        if (!prev_fetch.empty() && prev_fetch < today) {
+            articles = m_fetcher->FetchSince(prev_fetch);
+        } else {
+            articles = m_fetcher->Fetch();
+        }
+        for (const auto& article : articles) {
+            m_db->AddArticle(article);
+        }
+        FetchArticles();
+        m_fetching.store(false);
+        NotifyArticleUpdate();
+    };
+
+    m_fetching.store(true);
+    if (fetch_mode == FetchMode::Async) {
+        m_initial_fetch_thread = std::thread(std::move(do_fetch));
+    } else {
+        do_fetch();
+    }
 }
 
 AppCore::~AppCore() {
     StopAutoRefresh();
+    WaitForInitialFetch();
     // Ensure the background training thread has finished before destruction.
     if (m_train_thread.joinable()) {
         m_train_thread.join();
+    }
+}
+
+void AppCore::WaitForInitialFetch() {
+    if (m_initial_fetch_thread.joinable()) {
+        m_initial_fetch_thread.join();
     }
 }
 

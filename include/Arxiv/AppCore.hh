@@ -20,12 +20,19 @@ namespace Arxiv {
 
 class AppCore {
 public:
+    // Whether the initial network fetch runs on the constructor thread (Sync,
+    // the default — chosen so existing tests with mocked fetchers see the
+    // fetched data immediately) or on a background thread (Async — used by
+    // the production TUI so launch is instant).
+    enum class FetchMode { Sync, Async };
+
     // Constructor with dependency injection
     explicit AppCore(const Config &config,
                     std::unique_ptr<DatabaseManager> db,
-                    std::unique_ptr<Fetcher> fetcher);
+                    std::unique_ptr<Fetcher> fetcher,
+                    FetchMode fetch_mode = FetchMode::Sync);
     ~AppCore();
-    
+
     enum class SearchMode {
         title,
         authors,
@@ -151,6 +158,13 @@ public:
     bool IsAutoRefreshing() const;
     int  GetAutoRefreshMinutes() const;
 
+    // Initial network fetch state (see FetchMode at top of class).
+    // While an Async fetch is in flight, IsFetching() is true so the UI can
+    // render a "fetching..." indicator. WaitForInitialFetch() joins the
+    // background thread (no-op in Sync mode).
+    bool IsFetching() const { return m_fetching.load(); }
+    void WaitForInitialFetch();
+
     // Keyword management (cold-start ranking)
     void ReloadKeywords();
     bool SaveKeywords(const std::vector<std::string>& keywords);
@@ -221,6 +235,10 @@ private:
     std::condition_variable  m_refresh_cv;
     std::mutex               m_refresh_mutex;
     int                      m_auto_refresh_minutes{0};
+
+    // Initial network fetch state.
+    std::thread              m_initial_fetch_thread;
+    std::atomic<bool>        m_fetching{false};
 
     // Keyword cold-start
     std::vector<std::string> m_keywords;

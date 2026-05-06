@@ -317,3 +317,81 @@ TEST_CASE("AppCore: FetchSince is called with the previous fetch date (posted-da
     REQUIRE(fetch_since_arg == prev);
 }
 
+// ---------------------------------------------------------------------------
+// New Articles anchor: same-day restart must not collapse the "new" window
+// ---------------------------------------------------------------------------
+TEST_CASE("AppCore: same-day restart preserves the New Articles anchor",
+          "[newart][appcore]")
+{
+    // Scenario: yesterday the user fetched (last_fetch_date=yesterday).
+    // Today's first run sets new_articles_anchor=yesterday and last_fetch_date=today.
+    // Today's SECOND run (same-day restart) must NOT overwrite the anchor —
+    // otherwise NewArticles asks GetArticlesSince(today+1) which is empty.
+    auto db_ptr  = std::make_unique<DatabaseManagerMock>();
+    auto fet_ptr = std::make_unique<FetcherMock>();
+    auto* db_raw = db_ptr.get();
+
+    const std::string today_str = today_utc();
+    const std::string yesterday = "2026-05-01"; // any date < today
+
+    // Simulate: this is the same-day SECOND run. last_fetch_date already == today,
+    // and new_articles_anchor was previously set to "yesterday".
+    // Note: trompeloeil matches expectations in REVERSE registration order, so
+    // the wildcard fallback must be registered first and the specific keys last.
+    ALLOW_CALL(*db_raw, GetMetadata(trompeloeil::_)).RETURN(std::string{});
+    ALLOW_CALL(*db_raw, GetMetadata(std::string("last_fetch_date")))
+        .RETURN(today_str);
+    ALLOW_CALL(*db_raw, GetMetadata(std::string("new_articles_anchor")))
+        .RETURN(yesterday);
+
+    // The anchor must NOT be reset to today on this same-day restart.
+    FORBID_CALL(*db_raw, SetMetadata(std::string("new_articles_anchor"),
+                                     trompeloeil::eq(today_str)));
+
+    // GetArticlesSince should be called with the day AFTER the anchor (= "2026-05-02"),
+    // not with the day after today.
+    std::string articles_since_arg;
+    ALLOW_CALL(*db_raw, GetArticlesSince(trompeloeil::_))
+        .LR_SIDE_EFFECT(articles_since_arg = _1)
+        .RETURN(std::vector<Arxiv::Article>{});
+
+    Arxiv::Config cfg;
+    cfg.set_topics({"cs.AI"});
+    cfg.set_download_dir("/tmp");
+    auto core = std::make_unique<Arxiv::AppCore>(cfg, std::move(db_ptr), std::move(fet_ptr));
+
+    core->SetFilterIndex(Arxiv::AppCore::FilterView::NewArticles);
+    REQUIRE(articles_since_arg == "2026-05-02");
+}
+
+TEST_CASE("AppCore: day-boundary crossing advances the New Articles anchor",
+          "[newart][appcore]")
+{
+    // Scenario: last_fetch_date is some date strictly before today, and no
+    // anchor is persisted yet. We must set the anchor to that previous date.
+    auto db_ptr  = std::make_unique<DatabaseManagerMock>();
+    auto fet_ptr = std::make_unique<FetcherMock>();
+    auto* db_raw = db_ptr.get();
+
+    const std::string yesterday = "2026-05-01";
+
+    ALLOW_CALL(*db_raw, GetMetadata(trompeloeil::_)).RETURN(std::string{});
+    ALLOW_CALL(*db_raw, GetMetadata(std::string("last_fetch_date")))
+        .RETURN(yesterday);
+    ALLOW_CALL(*db_raw, GetMetadata(std::string("new_articles_anchor")))
+        .RETURN(std::string{});
+
+    bool anchor_set = false;
+    std::string anchor_value;
+    ALLOW_CALL(*db_raw, SetMetadata(std::string("new_articles_anchor"), trompeloeil::_))
+        .LR_SIDE_EFFECT({ anchor_set = true; anchor_value = _2; });
+
+    Arxiv::Config cfg;
+    cfg.set_topics({"cs.AI"});
+    cfg.set_download_dir("/tmp");
+    auto core = std::make_unique<Arxiv::AppCore>(cfg, std::move(db_ptr), std::move(fet_ptr));
+
+    REQUIRE(anchor_set);
+    REQUIRE(anchor_value == yesterday);
+}
+

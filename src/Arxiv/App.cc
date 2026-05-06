@@ -22,7 +22,8 @@ const Color error   = Color::RGB(231, 130, 132);  // #e78284  Red
 ArxivApp::ArxivApp(const Config& config, ReplayRecorder* recorder)
     : core(config,
            std::make_unique<DatabaseManager>("articles.db"),
-           std::make_unique<Fetcher>(config.get_topics(), config.get_download_dir()))
+           std::make_unique<Fetcher>(config.get_topics(), config.get_download_dir()),
+           AppCore::FetchMode::Async)
     , key_bindings(config.get_key_mappings())
     , screen(ScreenInteractive::Fullscreen()) {
     m_recorder = recorder;
@@ -716,6 +717,24 @@ void ArxivApp::SetupUI() {
                 document,
                 help_dialog->Render(),
             });
+        }
+
+        // Status footer: visible only while the initial network fetch is in
+        // flight. Tells the user the TUI is alive and currently downloading,
+        // without blocking startup or interaction.
+        if (core.IsFetching()) {
+            // Animate a dot pulse so it's clear the work is ongoing rather
+            // than a stuck splash screen.
+            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                          std::chrono::steady_clock::now().time_since_epoch())
+                          .count();
+            const char* dots[] = {"   ", ".  ", ".. ", "..."};
+            const char* anim = dots[(ms / 400) % 4];
+            auto status = hbox({
+                text(" ⟳ Fetching new articles") | color(TextColors::primary) | bold,
+                text(anim) | color(TextColors::primary),
+            }) | bgcolor(TextColors::surface);
+            document = vbox({document, status});
         }
 
         return document;
