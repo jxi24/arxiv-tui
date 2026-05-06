@@ -21,6 +21,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <unistd.h>
 
 #include "Arxiv/AppCore.hh"
 #include "Arxiv/Article.hh"
@@ -68,7 +69,10 @@ struct CoreBundle {
 
 static CoreBundle make_core(const std::vector<Arxiv::Article>& articles) {
     CoreBundle b;
-    b.tmp_dir = fs::temp_directory_path() / "arxiv_stress_test";
+    // Per-pid tmp dir so ctest -j N doesn't have parallel processes step on
+    // each other's exported files.
+    b.tmp_dir = fs::temp_directory_path() /
+                ("arxiv_stress_test_" + std::to_string(::getpid()));
     fs::create_directories(b.tmp_dir);
 
     auto db  = std::make_unique<Arxiv::DatabaseManager>(":memory:");
