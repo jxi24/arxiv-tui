@@ -224,6 +224,25 @@ std::vector<Article> Fetcher::ParseFeed(const std::string &xml_content) {
             }
             article.category = categories.str();
 
+            // Replacement detection. arxiv RSS marks replacements either via
+            //   <dc:type>replace</dc:type>  / "Replacement"
+            //   <arxiv:announce_type>replace…</arxiv:announce_type>
+            // or by suffixing the title with " (UPDATED)". Be permissive.
+            std::string dc_type   = item.child_value("dc:type");
+            std::string ann_type  = item.child_value("arxiv:announce_type");
+            auto contains_ci = [](const std::string& hay, const std::string& needle) {
+                auto it = std::search(hay.begin(), hay.end(), needle.begin(), needle.end(),
+                    [](char a, char b) {
+                        return std::tolower(static_cast<unsigned char>(a)) ==
+                               std::tolower(static_cast<unsigned char>(b));
+                    });
+                return it != hay.end();
+            };
+            article.is_replacement =
+                contains_ci(dc_type,  "replace") ||
+                contains_ci(ann_type, "replace") ||
+                contains_ci(article.title, "(UPDATED)");
+
             articles.push_back(article);
         }
     } catch (const pugi::xpath_exception &e) {
@@ -489,6 +508,24 @@ std::vector<Article> Fetcher::ParseAtomFeed(const std::string &xml_content) {
         } else {
             auto cat = entry.child("category");
             if (cat) article.category = cat.attribute("term").value();
+        }
+
+        // Replacement detection. arxiv's atom output uses
+        //   <arxiv:announce_type>replace</arxiv:announce_type>     (and
+        //   "replace-cross"). Treat the substring "replace" as the signal.
+        // As a fallback the <id> is "<base>v<N>" — anything past v1 is a
+        // replacement when announce_type is missing.
+        std::string ann = entry.child_value("arxiv:announce_type");
+        if (ann.find("replace") != std::string::npos) {
+            article.is_replacement = true;
+        } else if (ann.empty()) {
+            auto v_pos = article.link.rfind('v');
+            if (v_pos != std::string::npos && v_pos + 1 < article.link.size()) {
+                std::string ver = article.link.substr(v_pos + 1);
+                bool all_digits = !ver.empty() &&
+                    std::all_of(ver.begin(), ver.end(), [](char c){ return std::isdigit(c); });
+                if (all_digits && ver != "1") article.is_replacement = true;
+            }
         }
 
         articles.push_back(std::move(article));

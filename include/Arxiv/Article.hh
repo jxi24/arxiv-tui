@@ -17,6 +17,10 @@ struct Article {
     time_point date;
     std::string category;
     bool bookmarked{false};
+    // True if this entry is a "replacement" (later version of an existing
+    // submission) per arXiv's announce_type / dc:type. The New Articles view
+    // hides these so users only see truly fresh submissions.
+    bool is_replacement{false};
 
     Article() = default;
 

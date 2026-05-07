@@ -364,6 +364,45 @@ TEST_CASE("AppCore: same-day restart preserves the New Articles anchor",
     REQUIRE(articles_since_arg == "2026-05-02");
 }
 
+TEST_CASE("AppCore: NewArticles excludes replacements (updated papers)",
+          "[newart][appcore]")
+{
+    auto db_ptr  = std::make_unique<DatabaseManagerMock>();
+    auto fet_ptr = std::make_unique<FetcherMock>();
+    auto* db_raw = db_ptr.get();
+
+    const std::string yesterday = "2026-05-01";
+
+    ALLOW_CALL(*db_raw, GetMetadata(trompeloeil::_)).RETURN(std::string{});
+    ALLOW_CALL(*db_raw, GetMetadata(std::string("last_fetch_date"))).RETURN(yesterday);
+    ALLOW_CALL(*db_raw, GetMetadata(std::string("new_articles_anchor"))).RETURN(yesterday);
+
+    Arxiv::Article original;
+    original.link           = "https://arxiv.org/abs/2401.12345";
+    original.title          = "Original Submission";
+    original.is_replacement = false;
+    original.date           = std::chrono::system_clock::now();
+
+    Arxiv::Article update;
+    update.link             = "https://arxiv.org/abs/2400.99999";
+    update.title            = "An Updated Paper";
+    update.is_replacement   = true;
+    update.date             = std::chrono::system_clock::now();
+
+    ALLOW_CALL(*db_raw, GetArticlesSince(trompeloeil::_))
+        .RETURN(std::vector<Arxiv::Article>{original, update});
+
+    Arxiv::Config cfg;
+    cfg.set_topics({"hep-ph"});
+    cfg.set_download_dir("/tmp");
+    auto core = std::make_unique<Arxiv::AppCore>(cfg, std::move(db_ptr), std::move(fet_ptr));
+
+    core->SetFilterIndex(Arxiv::AppCore::FilterView::NewArticles);
+    auto current = core->GetCurrentArticles();
+    REQUIRE(current.size() == 1);
+    REQUIRE(current[0].link == original.link);
+}
+
 TEST_CASE("AppCore: day-boundary crossing advances the New Articles anchor",
           "[newart][appcore]")
 {

@@ -219,7 +219,7 @@ void AppCore::FetchArticles() {
     case FilterView::FollowedAuthors:
         m_current_articles = GetArticlesForFollowedAuthors();
         break;
-    case FilterView::NewArticles:
+    case FilterView::NewArticles: {
         if (m_new_articles_since_date.empty()) {
             // First run: show today's articles as "new".
             m_current_articles = m_db->GetRecent(1);
@@ -235,6 +235,12 @@ void AppCore::FetchArticles() {
             std::strftime(buf, sizeof(buf), "%Y-%m-%d", &tm);
             m_current_articles = m_db->GetArticlesSince(buf);
         }
+        // Drop replacements (later versions of older submissions) — the
+        // New Articles view is meant for truly fresh papers only.
+        m_current_articles.erase(
+            std::remove_if(m_current_articles.begin(), m_current_articles.end(),
+                [](const Article& a) { return a.is_replacement; }),
+            m_current_articles.end());
         // If a trained ranker is available, surface the most relevant new
         // articles first. No threshold is applied — the user wants to see
         // *every* new paper, just in priority order. Predict is called
@@ -255,6 +261,7 @@ void AppCore::FetchArticles() {
             for (auto& [s, a] : scored) m_current_articles.push_back(std::move(a));
         }
         break;
+    }
     case FilterView::Project:
         m_current_articles = GetArticlesForProject(GetProjectNameForFilter(m_filter_index));
         break;
