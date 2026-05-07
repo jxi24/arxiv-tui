@@ -204,7 +204,7 @@ void ArxivApp::SetupUI() {
         int filter_width = FilterPaneWidth();
         int remaining_width = Terminal::Size().dimx - filter_width - border_size; 
         int articles_width = show_detail ? remaining_width / 2 : remaining_width;
-        visible_rows = Terminal::Size().dimy - 4;  // Account for header, separator, and borders
+        visible_rows = Terminal::Size().dimy - 5;  // Account for header, separator, borders, and footer
 
         // Update visible range
         UpdateVisibleRange();
@@ -697,7 +697,24 @@ void ArxivApp::SetupUI() {
         if(show_detail) {
             panes.push_back(detail_view->Render() | size(WIDTH, EQUAL, detail_width));
         }
-        Element document = hbox(std::move(panes)) | bgcolor(TextColors::base);
+        Element body = hbox(std::move(panes)) | bgcolor(TextColors::base);
+
+        // Persistent footer with the keys most users need at hand. body is
+        // marked flex so the footer reliably claims its row even when the
+        // panes' internal sizing would otherwise consume the whole screen.
+        auto fmt_key = [](std::string k) { return k == " " ? std::string("<space>") : k; };
+        std::string quit_key = fmt_key(key_bindings.get_key(KeyBindings::Action::Quit));
+        std::string help_key = fmt_key(key_bindings.get_key(KeyBindings::Action::ShowHelp));
+        auto footer = hbox({
+            text(" "),
+            text(quit_key) | bold | color(TextColors::primary),
+            text(" quit  ") | color(TextColors::subtext),
+            text(help_key) | bold | color(TextColors::primary),
+            text(" keybindings ") | color(TextColors::subtext),
+            filler(),
+        }) | bgcolor(TextColors::surface) | size(HEIGHT, EQUAL, 1);
+
+        Element document = vbox({body | flex, footer});
 
         if (dialog_depth == Dialog::NewProject) {
             Elements new_proj_elements = {
