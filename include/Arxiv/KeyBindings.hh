@@ -34,7 +34,8 @@ public:
         ExportDigest,
         FilterCategories,
         ToggleSelection,
-        ExportSelectedDigest
+        ExportSelectedDigest,
+        ExportToObsidian
     };
 
     KeyBindings() = default;

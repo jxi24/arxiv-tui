@@ -199,6 +199,14 @@ public:
     // Returns the digest directory's path on success, empty on failure.
     std::string ExportSelectedDigest();
 
+    // Export the current selection into the configured Obsidian vault. Each
+    // article becomes a Markdown note with YAML frontmatter at
+    //     <vault>/arxiv-tui/<YYYY-MM-DD>/<arxiv_id>.md
+    // its PDF is downloaded beside it, and an index note links them via
+    // [[wikilinks]]. Returns the index note's path on success or empty
+    // string if the vault isn't configured / the write fails.
+    std::string ExportSelectedToObsidian();
+
     // Keyword management (cold-start ranking)
     void ReloadKeywords();
     bool SaveKeywords(const std::vector<std::string>& keywords);

@@ -1232,6 +1232,19 @@ void ArxivApp::SetupUI() {
             return true;
         }
 
+        // Export selected articles into the configured Obsidian vault.
+        if (key_bindings.matches(event, KeyBindings::Action::ExportToObsidian)) {
+            std::string path = core.ExportSelectedToObsidian();
+            if (path.empty()) {
+                if (core.GetSelectionCount() == 0)
+                    err_msg = "No articles selected (Space to select)";
+                else
+                    err_msg = "Obsidian export failed — set 'obsidian_vault' in .arxiv-tui.yml";
+                dialog_depth = Dialog::Error;
+            }
+            return true;
+        }
+
         // Export daily digest to digest-YYYY-MM-DD.md
         if (key_bindings.matches(event, KeyBindings::Action::ExportDigest)) {
             auto now = std::chrono::system_clock::now();

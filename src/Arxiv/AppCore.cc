@@ -1084,6 +1084,150 @@ std::string AppCore::ExportSelectedDigest() {
     return digest_dir.string();
 }
 
+namespace {
+
+// Quote a string for YAML frontmatter — wrap in double quotes and escape
+// embedded backslashes / double quotes. Newlines are folded to spaces so a
+// single-line value remains valid in flow style.
+std::string yaml_quote(const std::string& s) {
+    std::string out = "\"";
+    out.reserve(s.size() + 2);
+    for (char c : s) {
+        if      (c == '\\') out += "\\\\";
+        else if (c == '"')  out += "\\\"";
+        else if (c == '\n' || c == '\r') out += ' ';
+        else                out += c;
+    }
+    out += '"';
+    return out;
+}
+
+// Split a comma-separated category string into a YAML inline list.
+// "hep-ph, hep-lat" -> "[hep-ph, hep-lat]"
+std::string yaml_inline_list(const std::string& csv) {
+    std::string out = "[";
+    bool first = true;
+    std::string token;
+    auto flush = [&]() {
+        // trim
+        size_t a = token.find_first_not_of(" \t");
+        size_t b = token.find_last_not_of(" \t");
+        if (a == std::string::npos) { token.clear(); return; }
+        std::string t = token.substr(a, b - a + 1);
+        token.clear();
+        if (t.empty()) return;
+        if (!first) out += ", ";
+        out += t;
+        first = false;
+    };
+    for (char c : csv) {
+        if (c == ',') flush();
+        else token += c;
+    }
+    flush();
+    out += "]";
+    return out;
+}
+
+} // namespace
+
+std::string AppCore::ExportSelectedToObsidian() {
+    const std::string& vault = m_config.get_obsidian_vault();
+    if (vault.empty()) {
+        spdlog::warn("[AppCore]: ExportSelectedToObsidian: no vault configured");
+        return "";
+    }
+    if (m_selected_links.empty()) {
+        spdlog::warn("[AppCore]: ExportSelectedToObsidian: no selections");
+        return "";
+    }
+
+    // Resolve selections to full Article rows.
+    auto all = m_db->GetRecent(-1);
+    std::vector<Article> picked;
+    picked.reserve(m_selected_links.size());
+    for (const auto& a : all) {
+        if (m_selected_links.count(a.link)) picked.push_back(a);
+    }
+    if (picked.empty()) {
+        spdlog::warn("[AppCore]: ExportSelectedToObsidian: no matching articles in DB");
+        return "";
+    }
+
+    namespace fs = std::filesystem;
+    const std::string date_str = today_string();
+    fs::path note_dir = fs::path(vault) / "arxiv-tui" / date_str;
+    std::error_code ec;
+    fs::create_directories(note_dir, ec);
+    if (ec) {
+        spdlog::error("[AppCore]: Cannot create vault dir {}: {}", note_dir.string(), ec.message());
+        return "";
+    }
+
+    // Per-paper notes with YAML frontmatter + abstract + PDF embed.
+    int pdf_ok = 0;
+    for (const auto& a : picked) {
+        const std::string aid = a.id();
+        fs::path note_path = note_dir / (aid + ".md");
+
+        std::ofstream nf(note_path);
+        if (!nf.is_open()) {
+            spdlog::error("[AppCore]: Cannot write note {}", note_path.string());
+            continue;
+        }
+        nf << "---\n";
+        nf << "title: "    << yaml_quote(a.title)   << "\n";
+        nf << "authors: "  << yaml_quote(a.authors) << "\n";
+        nf << "arxiv_id: " << aid                   << "\n";
+        nf << "url: "      << yaml_quote(a.link)    << "\n";
+        if (!a.category.empty()) {
+            nf << "tags: "     << yaml_inline_list(a.category) << "\n";
+            nf << "category: " << yaml_quote(a.category)       << "\n";
+        }
+        nf << "imported: "  << date_str << "\n";
+        nf << "---\n\n";
+        nf << "# " << a.title << "\n\n";
+        nf << "**Authors:** " << a.authors << "\n\n";
+        nf << "**Link:** [" << a.link << "](" << a.link << ")\n\n";
+        // Obsidian PDF embed: ![[file.pdf]] renders inline when colocated.
+        nf << "![[" << aid << ".pdf]]\n\n";
+        if (!a.abstract.empty()) {
+            nf << "## Abstract\n\n" << a.abstract << "\n";
+        }
+
+        // Download the PDF next to the note. Fetcher writes relative to
+        // its own base_path (the configured download_dir), which is *not*
+        // the vault. Use an absolute path via the std::filesystem API
+        // instead so the file lands in the vault directory.
+        fs::path pdf_path = note_dir / (aid + ".pdf");
+        if (m_fetcher->DownloadPaper(aid, pdf_path.string())) ++pdf_ok;
+    }
+
+    // Index note that links to every paper imported today.
+    fs::path index_path = note_dir / ("digest-" + date_str + ".md");
+    std::ofstream idx(index_path);
+    if (!idx.is_open()) {
+        spdlog::error("[AppCore]: Cannot write index note {}", index_path.string());
+        return "";
+    }
+    idx << "---\n";
+    idx << "title: " << yaml_quote("arXiv digest " + date_str) << "\n";
+    idx << "tags: [arxiv-digest]\n";
+    idx << "date: " << date_str << "\n";
+    idx << "---\n\n";
+    idx << "# arXiv Digest — " << date_str << "\n\n";
+    idx << picked.size() << " paper(s) imported.\n\n";
+    for (const auto& a : picked) {
+        // Wikilink with display text — Obsidian uses [[file|alias]].
+        idx << "- [[" << a.id() << "|" << a.title << "]]\n";
+    }
+    idx.close();
+
+    spdlog::info("[AppCore]: Obsidian digest written to {} ({}/{} PDFs)",
+                 index_path.string(), pdf_ok, picked.size());
+    return index_path.string();
+}
+
 // ---------------------------------------------------------------------------
 // Keyword management
 // ---------------------------------------------------------------------------
