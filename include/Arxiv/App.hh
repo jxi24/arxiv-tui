@@ -36,6 +36,7 @@ enum class Dialog {
     Import        = 9,
     KeywordEditor = 10,
     CategoryFilter = 11,
+    Success = 12,
 };
 
 class ArxivApp {
@@ -69,6 +70,7 @@ private:
     std::atomic<bool> refresh_ui_continue = true;
     std::thread refresh_ui;
     std::string err_msg = "";
+    std::string success_msg = "";
     static constexpr int arrow_size = 2;
     static constexpr int padding = 4;
     static constexpr int border_size = 3;

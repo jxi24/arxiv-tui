@@ -36,6 +36,9 @@ CPMAddPackage(
     Name ftxui
     GIT_TAG main
     GITHUB_REPOSITORY ArthurSonzogni/FTXUI
+    OPTIONS
+        "FTXUI_BUILD_TESTS OFF"
+        "BUILD_SHARED_LIBS OFF"
 )
 add_library(ftxui::component ALIAS component)
 add_library(ftxui::dom ALIAS dom)
