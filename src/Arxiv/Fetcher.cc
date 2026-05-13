@@ -397,7 +397,7 @@ std::vector<Article> Fetcher::FetchSince(const std::string &utc_date) {
     parse_ymd_prefix(utc_date, from_tm);
     timegm(&from_tm);  // normalise
     char from_buf[16];
-    std::strftime(from_buf, sizeof(from_buf), ARXIV_QUERY_FROM_FORMAT.data(), &from_tm);
+    std::strftime(from_buf, sizeof(from_buf), "%Y%m%d0000", &from_tm);
 
     // Today UTC as the end of the range.
     auto now = std::chrono::system_clock::now();
@@ -405,7 +405,7 @@ std::vector<Article> Fetcher::FetchSince(const std::string &utc_date) {
     std::tm to_tm{};
     gmtime_r(&now_t, &to_tm);
     char to_buf[16];
-    std::strftime(to_buf, sizeof(to_buf), ARXIV_QUERY_TO_FORMAT.data(), &to_tm);
+    std::strftime(to_buf, sizeof(to_buf), "%Y%m%d2359", &to_tm);
 
     if (std::string(from_buf) > std::string(to_buf)) {
         // utc_date is today or in the future — nothing missed.

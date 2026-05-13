@@ -45,7 +45,7 @@ target_link_libraries(unit_tests PRIVATE
     trompeloeil
     arxiv_tui_options
     arxiv_tui_warnings
-    libarxiv-tui
+    libarxiv-core
 )
 
 # Add include directories for test files
@@ -70,7 +70,7 @@ target_link_libraries(integration_tests PRIVATE
     trompeloeil
     arxiv_tui_options
     arxiv_tui_warnings
-    libarxiv-tui
+    libarxiv-core
 )
 
 target_include_directories(integration_tests PRIVATE
@@ -93,3 +93,26 @@ endif()
 include(CTest)
 catch_discover_tests(unit_tests)
 catch_discover_tests(integration_tests)
+
+# --- GUI tests (headless ImGui, no display required) ---
+add_executable(gui_tests
+    unit/GuiTest.cc
+)
+
+target_link_libraries(gui_tests PRIVATE
+    Catch2::Catch2WithMain
+    trompeloeil
+    arxiv_tui_options
+    arxiv_tui_warnings
+    arxiv-gui-lib   # ArxivGuiApp + imgui_headless + libarxiv-tui
+)
+
+target_include_directories(gui_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/test
+    ${CMAKE_SOURCE_DIR}/test/mocks
+    ${CMAKE_SOURCE_DIR}/test/fixtures
+    ${CMAKE_SOURCE_DIR}/src/GUI
+)
+
+catch_discover_tests(gui_tests DISCOVERY_MODE PRE_TEST)

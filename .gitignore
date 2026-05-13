@@ -1,5 +1,6 @@
 build/
 CMakeFiles/
+imgui.ini
 articles.db
 arxiv_tui.log
 downloads/
