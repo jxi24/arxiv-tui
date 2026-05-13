@@ -37,6 +37,7 @@ add_executable(unit_tests
     unit/BackgroundRefreshTest.cc
     unit/NewArticlesTest.cc
     unit/KeyBindingsTest.cc
+    unit/GuiStyleTest.cc
 )
 
 # Link against Catch2 and our library
