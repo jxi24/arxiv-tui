@@ -287,3 +287,70 @@ TEST_CASE("ArxivGuiApp renders correctly when a category is toggled off", "[gui]
 
     REQUIRE_NOTHROW(imgui.frame([&]{ app.render(); }));
 }
+
+// ---------------------------------------------------------------------------
+// Theme rendering — each built-in theme must render without crash
+// ---------------------------------------------------------------------------
+
+TEST_CASE("ArxivGuiApp renders correctly with Dark theme", "[gui][theme]") {
+    ImGuiHeadless imgui;
+    CoreFixture   fix;
+    fix.config.set_gui_style(GuiStyle::Dark());
+    fix.db->setArticles(sample_articles);
+    fix.core.SetFilterIndex(AppCore::FilterView::All);
+    ArxivGuiApp app(fix.core, fix.config);
+
+    SECTION("single frame does not crash") {
+        REQUIRE_NOTHROW(imgui.frame([&]{ app.render(); }));
+    }
+
+    SECTION("ten frames do not crash") {
+        for (int i = 0; i < 10; ++i)
+            REQUIRE_NOTHROW(imgui.frame([&]{ app.render(); }));
+    }
+}
+
+TEST_CASE("ArxivGuiApp renders correctly with Light theme", "[gui][theme]") {
+    ImGuiHeadless imgui;
+    CoreFixture   fix;
+    fix.config.set_gui_style(GuiStyle::Light());
+    fix.db->setArticles(sample_articles);
+    fix.core.SetFilterIndex(AppCore::FilterView::All);
+    ArxivGuiApp app(fix.core, fix.config);
+
+    SECTION("single frame does not crash") {
+        REQUIRE_NOTHROW(imgui.frame([&]{ app.render(); }));
+    }
+}
+
+TEST_CASE("ArxivGuiApp renders correctly with Catppuccin Frappe theme", "[gui][theme]") {
+    ImGuiHeadless imgui;
+    CoreFixture   fix;
+    fix.config.set_gui_style(GuiStyle::CatppuccinFrappe());
+    fix.db->setArticles(sample_articles);
+    fix.core.SetFilterIndex(AppCore::FilterView::All);
+    ArxivGuiApp app(fix.core, fix.config);
+
+    SECTION("single frame does not crash") {
+        REQUIRE_NOTHROW(imgui.frame([&]{ app.render(); }));
+    }
+}
+
+TEST_CASE("ArxivGuiApp picks up style layout values from config", "[gui][theme]") {
+    ImGuiHeadless imgui;
+    CoreFixture   fix;
+
+    GuiStyle style = GuiStyle::Dark();
+    style.filter_panel_width = 300.0f;
+    style.detail_panel_width = 550.0f;
+    style.row_height_scale   = 3.0f;
+    fix.config.set_gui_style(style);
+
+    fix.db->setArticles(sample_articles);
+    fix.core.SetFilterIndex(AppCore::FilterView::All);
+    ArxivGuiApp app(fix.core, fix.config);
+
+    SECTION("renders without crash with non-default panel widths") {
+        REQUIRE_NOTHROW(imgui.frame([&]{ app.render(); }));
+    }
+}
