@@ -7,6 +7,8 @@
 #include <mocks/DatabaseManagerMock.hh>
 #include <mocks/FetcherMock.hh>
 #include <fstream>
+#include <cstdio>
+#include <unistd.h>
 
 using namespace Arxiv;
 using namespace arxiv_tui::test;
@@ -195,6 +197,14 @@ TEST_CASE("AppCore state management", "[app]") {
 
 TEST_CASE("AppCore rating and recommendation", "[app][ranking]") {
     Config config("test/fixtures/test_config.yml");
+    // Point ranker storage at a unique tmp path so the test is hermetic:
+    // a stale ranker.bin from a prior run (or another test) must not cause
+    // IsRankerTrained() to spuriously return true, and our writes must not
+    // pollute the next test's cwd.
+    config.set_ranker_file("/tmp/arxiv_tui_apptest_ranker_" +
+                           std::to_string(::getpid()) + ".bin");
+    std::remove(config.get_ranker_file().c_str());
+
     auto db = std::make_unique<DatabaseManagerMock>();
     auto fetcher = std::make_unique<FetcherMock>();
     auto* db_ptr = db.get();

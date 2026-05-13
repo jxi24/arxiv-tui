@@ -52,9 +52,8 @@ CPMAddPackage(
 
 CPMAddPackage(
     NAME yaml-cpp
-    VERSION 0.7.0
     GITHUB_REPOSITORY jbeder/yaml-cpp
-    GIT_TAG "yaml-cpp-0.7.0"
+    GIT_TAG a83cd31
     OPTIONS
         "YAML_BUILD_SHARED_LIBS ON"
         "YAML_CPP_BUILD_TESTS OFF"

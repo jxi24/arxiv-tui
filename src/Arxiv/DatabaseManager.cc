@@ -5,9 +5,91 @@
 #include <chrono>
 #include <sqlite3.h>
 #include <stdexcept>
+#include <string>
+#include <string_view>
 #include <ctime>
 
 using Arxiv::DatabaseManager;
+
+// ---------------------------------------------------------------------------
+// SQL helpers
+// ---------------------------------------------------------------------------
+namespace {
+
+// The article column list appears in nearly every SELECT — keep it in one
+// place so adding a column does not require touching seven query strings.
+constexpr const char* ARTICLE_COLUMNS    = "link, title, authors, abstract, date, bookmarked, category, is_replacement";
+constexpr const char* ARTICLE_COLUMNS_A  = "a.link, a.title, a.authors, a.abstract, a.date, a.bookmarked, a.category, a.is_replacement";
+
+/// RAII wrapper around a prepared sqlite3_stmt. Construction prepares the
+/// statement (throws on failure); destruction always finalizes.
+///
+/// The fluent `bind(idx, value)` overloads cover every type used in this file
+/// and return *this so calls can be chained in expression-style code.
+///
+/// Use `step_done()` for INSERT/UPDATE/DELETE where SQLITE_DONE is expected
+/// and any other return is a fatal error worth throwing about. Use
+/// `for_each(on_row)` for SELECTs that may return many rows. Single-row
+/// SELECTs can call `step()` directly and inspect the return value.
+class Stmt {
+public:
+    Stmt(sqlite3* db, const char* sql, std::string_view op)
+        : m_db(db), m_op(op) {
+        if (sqlite3_prepare_v2(db, sql, -1, &m_stmt, nullptr) != SQLITE_OK) {
+            throw std::runtime_error(std::string("[Database]: ") + std::string(op) +
+                                     " prepare failed: " + sqlite3_errmsg(db));
+        }
+    }
+    ~Stmt() { if (m_stmt) sqlite3_finalize(m_stmt); }
+    Stmt(const Stmt&) = delete;
+    Stmt& operator=(const Stmt&) = delete;
+
+    Stmt& bind(int idx, const std::string& v) {
+        sqlite3_bind_text(m_stmt, idx, v.c_str(), -1, SQLITE_TRANSIENT);
+        return *this;
+    }
+    Stmt& bind(int idx, const char* v) {
+        sqlite3_bind_text(m_stmt, idx, v, -1, SQLITE_TRANSIENT);
+        return *this;
+    }
+    Stmt& bind(int idx, int v) {
+        sqlite3_bind_int(m_stmt, idx, v);
+        return *this;
+    }
+    Stmt& bind(int idx, sqlite3_int64 v) {
+        sqlite3_bind_int64(m_stmt, idx, v);
+        return *this;
+    }
+    Stmt& bind(int idx, double v) {
+        sqlite3_bind_double(m_stmt, idx, v);
+        return *this;
+    }
+
+    int step() { return sqlite3_step(m_stmt); }
+
+    /// Step a mutation, throwing if the result is anything other than DONE.
+    void step_done() {
+        if (sqlite3_step(m_stmt) != SQLITE_DONE) {
+            throw std::runtime_error(std::string("[Database]: ") + std::string(m_op) +
+                                     " failed: " + sqlite3_errmsg(m_db));
+        }
+    }
+
+    /// Iterate every result row, invoking `on_row(stmt)` once per row.
+    template <typename F>
+    void for_each(F&& on_row) {
+        while (sqlite3_step(m_stmt) == SQLITE_ROW) on_row(m_stmt);
+    }
+
+    sqlite3_stmt* raw() { return m_stmt; }
+
+private:
+    sqlite3*         m_db;
+    sqlite3_stmt*    m_stmt = nullptr;
+    std::string_view m_op;
+};
+
+} // namespace
 
 DatabaseManager::DatabaseManager(const std::string &path) {
     spdlog::info("[Database]: Opening database at {}", path);
@@ -68,6 +150,21 @@ DatabaseManager::DatabaseManager(const std::string &path) {
         // Column already exists — ignore
     }
 
+    // Add category column to articles table (migration for existing DBs)
+    try {
+        ExecuteSQL("ALTER TABLE articles ADD COLUMN category TEXT DEFAULT ''");
+    } catch (const std::exception&) {
+        // Column already exists — ignore
+    }
+
+    // Add is_replacement column (migration for existing DBs). Used by the
+    // New Articles view to hide updates of older submissions.
+    try {
+        ExecuteSQL("ALTER TABLE articles ADD COLUMN is_replacement INTEGER DEFAULT 0");
+    } catch (const std::exception&) {
+        // Column already exists — ignore
+    }
+
     // Create followed_authors table
     ExecuteSQL(R"(CREATE TABLE IF NOT EXISTS followed_authors (
                author_name TEXT PRIMARY KEY))");
@@ -102,178 +199,128 @@ void DatabaseManager::ExecuteSQL(const std::string &sql) {
     }
 }
 
+void DatabaseManager::AddArticles(const std::vector<Article> &articles) {
+    if (articles.empty()) return;
+    ExecuteSQL("BEGIN TRANSACTION");
+    try {
+        for (const auto &a : articles) AddArticle(a);
+        ExecuteSQL("COMMIT");
+    } catch (...) {
+        ExecuteSQL("ROLLBACK");
+        throw;
+    }
+}
+
 void DatabaseManager::AddArticle(const Article &article) {
     spdlog::debug("[Database]: Adding article: {}", article.link);
     auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(
         article.date.time_since_epoch()).count();
 
-    const char* sql =
-        "INSERT OR REPLACE INTO articles (link, title, authors, abstract, date, bookmarked) "
-        "VALUES (?, ?, ?, ?, ?, ?)";
-    sqlite3_stmt* stmt = nullptr;
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
-        throw std::runtime_error(std::string("[Database]: prepare failed: ") + sqlite3_errmsg(db));
-    }
-    sqlite3_bind_text(stmt, 1, article.link.c_str(),     -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 2, article.title.c_str(),    -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 3, article.authors.c_str(),  -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 4, article.abstract.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_int64(stmt, 5, static_cast<sqlite3_int64>(timestamp));
-    sqlite3_bind_int(stmt,  6, article.bookmarked ? 1 : 0);
-    int rc = sqlite3_step(stmt);
-    sqlite3_finalize(stmt);
-    if (rc != SQLITE_DONE) {
-        throw std::runtime_error(std::string("[Database]: AddArticle failed: ") + sqlite3_errmsg(db));
-    }
+    Stmt stmt(db,
+        "INSERT OR REPLACE INTO articles "
+        "(link, title, authors, abstract, date, bookmarked, category, is_replacement) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "AddArticle");
+    stmt.bind(1, article.link)
+        .bind(2, article.title)
+        .bind(3, article.authors)
+        .bind(4, article.abstract)
+        .bind(5, static_cast<sqlite3_int64>(timestamp))
+        .bind(6, article.bookmarked ? 1 : 0)
+        .bind(7, article.category)
+        .bind(8, article.is_replacement ? 1 : 0);
+    stmt.step_done();
 }
 
 std::vector<Arxiv::Article> DatabaseManager::GetRecent(int days) {
-    std::vector<Article> articles;
-    sqlite3_stmt *stmt;
-    std::string sql = "SELECT link, title, authors, abstract, date, bookmarked FROM articles";
-    if(days >= 0) {
+    std::string sql = std::string("SELECT ") + ARTICLE_COLUMNS + " FROM articles";
+    if (days >= 0) {
         auto now = std::chrono::system_clock::now();
         auto past = now - std::chrono::hours(24 * days);
         auto past_seconds = std::chrono::duration_cast<std::chrono::seconds>(past.time_since_epoch()).count();
         sql += " WHERE date >= " + std::to_string(past_seconds);
     }
     sql += " ORDER BY date DESC";
-    if(sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) == SQLITE_OK) {
-        while(sqlite3_step(stmt) == SQLITE_ROW) {
-            articles.push_back(RowToArticle(stmt));
-        }
-        sqlite3_finalize(stmt);
-    }
+
+    std::vector<Article> articles;
+    Stmt stmt(db, sql.c_str(), "GetRecent");
+    stmt.for_each([&](sqlite3_stmt* s) { articles.push_back(RowToArticle(s)); });
     return articles;
 }
 
 std::vector<Arxiv::Article> DatabaseManager::ListBookmarked() {
-    std::vector<Article> articles;
     spdlog::debug("[Database]: Collecting all bookmarked articles");
-    sqlite3_stmt *stmt;
-    const char* sql = "SELECT link, title, authors, abstract, date, bookmarked FROM articles WHERE bookmarked = 1";
-    if(sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
-        while(sqlite3_step(stmt) == SQLITE_ROW) {
-            articles.push_back(RowToArticle(stmt));
-        }
-        sqlite3_finalize(stmt);
-    }
+    std::string sql = std::string("SELECT ") + ARTICLE_COLUMNS +
+                      " FROM articles WHERE bookmarked = 1";
+    std::vector<Article> articles;
+    Stmt stmt(db, sql.c_str(), "ListBookmarked");
+    stmt.for_each([&](sqlite3_stmt* s) { articles.push_back(RowToArticle(s)); });
     return articles;
 }
 
 void DatabaseManager::ToggleBookmark(const std::string &link, bool bookmarked) {
     spdlog::debug("[Database]: Toggling bookmark for {}", link);
-    const char* sql = "UPDATE articles SET bookmarked = ? WHERE link = ?";
-    sqlite3_stmt* stmt = nullptr;
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
-        throw std::runtime_error(std::string("[Database]: prepare failed: ") + sqlite3_errmsg(db));
-    }
-    sqlite3_bind_int(stmt,  1, bookmarked ? 1 : 0);
-    sqlite3_bind_text(stmt, 2, link.c_str(), -1, SQLITE_TRANSIENT);
-    int rc = sqlite3_step(stmt);
-    sqlite3_finalize(stmt);
-    if (rc != SQLITE_DONE) {
-        throw std::runtime_error(std::string("[Database]: ToggleBookmark failed: ") + sqlite3_errmsg(db));
-    }
+    Stmt stmt(db, "UPDATE articles SET bookmarked = ? WHERE link = ?", "ToggleBookmark");
+    stmt.bind(1, bookmarked ? 1 : 0).bind(2, link).step_done();
 }
 
 void DatabaseManager::AddProject(const std::string &project_name) {
-    const char* sql = "INSERT OR REPLACE INTO projects (name) VALUES (?)";
-    sqlite3_stmt* stmt = nullptr;
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
-        throw std::runtime_error(std::string("[Database]: prepare failed: ") + sqlite3_errmsg(db));
-    }
-    sqlite3_bind_text(stmt, 1, project_name.c_str(), -1, SQLITE_TRANSIENT);
-    int rc = sqlite3_step(stmt);
-    sqlite3_finalize(stmt);
-    if (rc != SQLITE_DONE) {
-        throw std::runtime_error(std::string("[Database]: AddProject failed: ") + sqlite3_errmsg(db));
-    }
+    Stmt stmt(db, "INSERT OR REPLACE INTO projects (name) VALUES (?)", "AddProject");
+    stmt.bind(1, project_name).step_done();
 }
 
 void DatabaseManager::RemoveProject(const std::string &project_name) {
     ExecuteSQL("BEGIN TRANSACTION");
-    auto bind_and_step = [&](const char* sql) {
-        sqlite3_stmt* stmt = nullptr;
-        if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+    auto bind_and_step = [&](const char* sql, const char* op) {
+        try {
+            Stmt s(db, sql, op);
+            s.bind(1, project_name).step_done();
+        } catch (...) {
             ExecuteSQL("ROLLBACK");
-            throw std::runtime_error(std::string("[Database]: prepare failed: ") + sqlite3_errmsg(db));
-        }
-        sqlite3_bind_text(stmt, 1, project_name.c_str(), -1, SQLITE_TRANSIENT);
-        int rc = sqlite3_step(stmt);
-        sqlite3_finalize(stmt);
-        if (rc != SQLITE_DONE) {
-            ExecuteSQL("ROLLBACK");
-            throw std::runtime_error(std::string("[Database]: RemoveProject failed: ") + sqlite3_errmsg(db));
+            throw;
         }
     };
-    bind_and_step("DELETE FROM projects WHERE name = ?");
-    bind_and_step("DELETE FROM project_articles WHERE project_name = ?");
-    bind_and_step("DELETE FROM project_notes WHERE project_name = ?");
-    bind_and_step("UPDATE projects SET parent = '' WHERE parent = ?");
+    bind_and_step("DELETE FROM projects WHERE name = ?",                  "RemoveProject:projects");
+    bind_and_step("DELETE FROM project_articles WHERE project_name = ?",  "RemoveProject:project_articles");
+    bind_and_step("DELETE FROM project_notes WHERE project_name = ?",     "RemoveProject:project_notes");
+    bind_and_step("UPDATE projects SET parent = '' WHERE parent = ?",     "RemoveProject:reparent");
     ExecuteSQL("COMMIT");
 }
 
 std::vector<std::string> DatabaseManager::GetProjects() {
     std::vector<std::string> projects;
-    sqlite3_stmt *stmt;
-    const char* sql = "SELECT name FROM projects";
-    if(sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
-        while(sqlite3_step(stmt) == SQLITE_ROW) {
-            projects.push_back(reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0)));
-        }
-        sqlite3_finalize(stmt);
-    }
+    Stmt stmt(db, "SELECT name FROM projects", "GetProjects");
+    stmt.for_each([&](sqlite3_stmt* s) {
+        projects.push_back(reinterpret_cast<const char*>(sqlite3_column_text(s, 0)));
+    });
     return projects;
 }
 
 void DatabaseManager::LinkArticleToProject(const std::string &article_link, const std::string &project_name) {
     spdlog::debug("[Database]: Linking article {} to project {}", article_link, project_name);
-    const char* sql = "INSERT OR IGNORE INTO project_articles (project_name, article_link) VALUES (?, ?)";
-    sqlite3_stmt* stmt = nullptr;
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
-        throw std::runtime_error(std::string("[Database]: prepare failed: ") + sqlite3_errmsg(db));
-    }
-    sqlite3_bind_text(stmt, 1, project_name.c_str(),  -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 2, article_link.c_str(), -1, SQLITE_TRANSIENT);
-    int rc = sqlite3_step(stmt);
-    sqlite3_finalize(stmt);
-    if (rc != SQLITE_DONE) {
-        throw std::runtime_error(std::string("[Database]: LinkArticleToProject failed: ") + sqlite3_errmsg(db));
-    }
+    Stmt stmt(db,
+        "INSERT OR IGNORE INTO project_articles (project_name, article_link) VALUES (?, ?)",
+        "LinkArticleToProject");
+    stmt.bind(1, project_name).bind(2, article_link).step_done();
 }
 
 void DatabaseManager::UnlinkArticleFromProject(const std::string &article_link, const std::string &project_name) {
     spdlog::debug("[Database]: Unlinking article {} from project {}", article_link, project_name);
-    const char* sql = "DELETE FROM project_articles WHERE project_name = ? AND article_link = ?";
-    sqlite3_stmt* stmt = nullptr;
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
-        throw std::runtime_error(std::string("[Database]: prepare failed: ") + sqlite3_errmsg(db));
-    }
-    sqlite3_bind_text(stmt, 1, project_name.c_str(),  -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 2, article_link.c_str(), -1, SQLITE_TRANSIENT);
-    int rc = sqlite3_step(stmt);
-    sqlite3_finalize(stmt);
-    if (rc != SQLITE_DONE) {
-        throw std::runtime_error(std::string("[Database]: UnlinkArticleFromProject failed: ") + sqlite3_errmsg(db));
-    }
+    Stmt stmt(db,
+        "DELETE FROM project_articles WHERE project_name = ? AND article_link = ?",
+        "UnlinkArticleFromProject");
+    stmt.bind(1, project_name).bind(2, article_link).step_done();
 }
 
 std::vector<Arxiv::Article> DatabaseManager::GetArticlesForProject(const std::string &project_name) {
-    std::vector<Article> articles;
-    sqlite3_stmt *stmt;
-    const char* sql = R"(SELECT a.link, a.title, a.authors, a.abstract, a.date, a.bookmarked
-                         FROM articles a
-                         JOIN project_articles pa ON a.link = pa.article_link
-                         WHERE pa.project_name = ?)";
     spdlog::debug("[Database]: Collecting articles for project {}", project_name);
-    if(sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
-        sqlite3_bind_text(stmt, 1, project_name.c_str(), -1, SQLITE_TRANSIENT);
-        while(sqlite3_step(stmt) == SQLITE_ROW) {
-            articles.push_back(RowToArticle(stmt));
-        }
-        sqlite3_finalize(stmt);
-    }
+    std::string sql = std::string("SELECT ") + ARTICLE_COLUMNS_A +
+                      " FROM articles a JOIN project_articles pa ON a.link = pa.article_link "
+                      "WHERE pa.project_name = ?";
+    std::vector<Article> articles;
+    Stmt stmt(db, sql.c_str(), "GetArticlesForProject");
+    stmt.bind(1, project_name);
+    stmt.for_each([&](sqlite3_stmt* s) { articles.push_back(RowToArticle(s)); });
     spdlog::debug("[Database]: Success. Found {} articles", articles.size());
     return articles;
 }
@@ -293,7 +340,9 @@ Arxiv::Article DatabaseManager::RowToArticle(sqlite3_stmt *stmt) {
     int64_t timestamp = sqlite3_column_int64(stmt, 4);
     article.date = std::chrono::system_clock::from_time_t(timestamp);
 
-    article.bookmarked = sqlite3_column_int(stmt, 5) != 0;
+    article.bookmarked     = sqlite3_column_int(stmt, 5) != 0;
+    article.category       = ExtractColumn(stmt, 6);
+    article.is_replacement = sqlite3_column_int(stmt, 7) != 0;
 
     return article;
 }
@@ -321,24 +370,19 @@ int DatabaseManager::TraceCallback(unsigned type, void *, void *p, void *x) {
 }
 
 std::vector<std::string> DatabaseManager::GetProjectsForArticle(const std::string &article_link) {
-    std::vector<std::string> projects;
-    sqlite3_stmt *stmt;
-    const char* sql = "SELECT project_name FROM project_articles WHERE article_link = ?";
     spdlog::debug("[Database]: Getting projects for article {}", article_link);
-    if(sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
-        sqlite3_bind_text(stmt, 1, article_link.c_str(), -1, SQLITE_TRANSIENT);
-        while(sqlite3_step(stmt) == SQLITE_ROW) {
-            projects.push_back(reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0)));
-        }
-        sqlite3_finalize(stmt);
-    }
+    std::vector<std::string> projects;
+    Stmt stmt(db, "SELECT project_name FROM project_articles WHERE article_link = ?",
+              "GetProjectsForArticle");
+    stmt.bind(1, article_link);
+    stmt.for_each([&](sqlite3_stmt* s) {
+        projects.push_back(reinterpret_cast<const char*>(sqlite3_column_text(s, 0)));
+    });
     return projects;
 }
 
 std::vector<Arxiv::Article> DatabaseManager::GetArticlesForDateRange(const std::string &start_date, const std::string &end_date) {
     std::vector<Article> articles;
-    sqlite3_stmt *stmt;
-
     std::tm start_tm = {};
     std::tm end_tm = {};
 
@@ -346,7 +390,6 @@ std::vector<Arxiv::Article> DatabaseManager::GetArticlesForDateRange(const std::
         spdlog::error("[Database]: Invalid start date format: {}", start_date);
         return articles;
     }
-
     if (strptime(end_date.c_str(), "%Y-%m-%d", &end_tm) == nullptr) {
         spdlog::error("[Database]: Invalid end date format: {}", end_date);
         return articles;
@@ -355,21 +398,14 @@ std::vector<Arxiv::Article> DatabaseManager::GetArticlesForDateRange(const std::
     time_t start_time = mktime(&start_tm);
     time_t end_time   = mktime(&end_tm) + 24 * 60 * 60;
 
-    const char* sql = R"(SELECT link, title, authors, abstract, date, bookmarked
-                          FROM articles
-                          WHERE date >= ? AND date < ?
-                          ORDER BY date DESC)";
-
     spdlog::debug("[Database]: Fetching articles between {} and {}", start_date, end_date);
 
-    if(sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
-        sqlite3_bind_int64(stmt, 1, static_cast<sqlite3_int64>(start_time));
-        sqlite3_bind_int64(stmt, 2, static_cast<sqlite3_int64>(end_time));
-        while(sqlite3_step(stmt) == SQLITE_ROW) {
-            articles.push_back(RowToArticle(stmt));
-        }
-        sqlite3_finalize(stmt);
-    }
+    std::string sql = std::string("SELECT ") + ARTICLE_COLUMNS +
+                      " FROM articles WHERE date >= ? AND date < ? ORDER BY date DESC";
+    Stmt stmt(db, sql.c_str(), "GetArticlesForDateRange");
+    stmt.bind(1, static_cast<sqlite3_int64>(start_time))
+        .bind(2, static_cast<sqlite3_int64>(end_time));
+    stmt.for_each([&](sqlite3_stmt* s) { articles.push_back(RowToArticle(s)); });
 
     spdlog::debug("[Database]: Found {} articles in date range", articles.size());
     return articles;
@@ -377,112 +413,69 @@ std::vector<Arxiv::Article> DatabaseManager::GetArticlesForDateRange(const std::
 
 void DatabaseManager::SetRating(const std::string &link, int rating) {
     spdlog::debug("[Database]: Setting rating {} for {}", rating, link);
-    const char* sql = "INSERT OR REPLACE INTO article_ratings (article_link, rating) VALUES (?, ?)";
-    sqlite3_stmt* stmt = nullptr;
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
-        throw std::runtime_error(std::string("[Database]: prepare failed: ") + sqlite3_errmsg(db));
-    }
-    sqlite3_bind_text(stmt, 1, link.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_int(stmt,  2, rating);
-    int rc = sqlite3_step(stmt);
-    sqlite3_finalize(stmt);
-    if (rc != SQLITE_DONE) {
-        throw std::runtime_error(std::string("[Database]: SetRating failed: ") + sqlite3_errmsg(db));
-    }
+    Stmt stmt(db,
+        "INSERT OR REPLACE INTO article_ratings (article_link, rating) VALUES (?, ?)",
+        "SetRating");
+    stmt.bind(1, link).bind(2, rating).step_done();
 }
 
 int DatabaseManager::GetRating(const std::string &link) {
-    sqlite3_stmt *stmt;
-    const char* sql = "SELECT rating FROM article_ratings WHERE article_link = ?";
+    Stmt stmt(db, "SELECT rating FROM article_ratings WHERE article_link = ?", "GetRating");
+    stmt.bind(1, link);
     int rating = 0;
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
-        sqlite3_bind_text(stmt, 1, link.c_str(), -1, SQLITE_TRANSIENT);
-        if (sqlite3_step(stmt) == SQLITE_ROW) {
-            rating = sqlite3_column_int(stmt, 0);
-        }
-        sqlite3_finalize(stmt);
+    if (stmt.step() == SQLITE_ROW) {
+        rating = sqlite3_column_int(stmt.raw(), 0);
     }
     return rating;
 }
 
 DatabaseManager::RatedArticleList DatabaseManager::GetRatedArticles() {
     RatedArticleList result;
-    sqlite3_stmt *stmt;
-    const char* sql = R"(SELECT a.link, a.title, a.authors, a.abstract, a.date, a.bookmarked,
-                                r.rating
-                         FROM articles a
-                         JOIN article_ratings r ON a.link = r.article_link)";
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
-        while (sqlite3_step(stmt) == SQLITE_ROW) {
-            Article article = RowToArticle(stmt);
-            int rating = sqlite3_column_int(stmt, 6);
-            result.emplace_back(std::move(article), rating);
-        }
-        sqlite3_finalize(stmt);
-    }
+    std::string sql = std::string("SELECT ") + ARTICLE_COLUMNS_A + ", r.rating "
+                      "FROM articles a JOIN article_ratings r ON a.link = r.article_link";
+    Stmt stmt(db, sql.c_str(), "GetRatedArticles");
+    stmt.for_each([&](sqlite3_stmt* s) {
+        Article article = RowToArticle(s);
+        // ARTICLE_COLUMNS_A has 8 columns; rating is column 8 (index 8).
+        int rating = sqlite3_column_int(s, 8);
+        result.emplace_back(std::move(article), rating);
+    });
     spdlog::debug("[Database]: Found {} rated articles", result.size());
     return result;
 }
 
 std::string DatabaseManager::GetProjectParent(const std::string &project_name) {
-    sqlite3_stmt *stmt;
-    const char* sql = "SELECT COALESCE(parent, '') FROM projects WHERE name = ?";
+    Stmt stmt(db, "SELECT COALESCE(parent, '') FROM projects WHERE name = ?", "GetProjectParent");
+    stmt.bind(1, project_name);
     std::string parent;
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
-        sqlite3_bind_text(stmt, 1, project_name.c_str(), -1, SQLITE_TRANSIENT);
-        if (sqlite3_step(stmt) == SQLITE_ROW) {
-            parent = ExtractColumn(stmt, 0);
-        }
-        sqlite3_finalize(stmt);
+    if (stmt.step() == SQLITE_ROW) {
+        parent = ExtractColumn(stmt.raw(), 0);
     }
     return parent;
 }
 
 void DatabaseManager::SetProjectParent(const std::string &project_name, const std::string &parent) {
-    const char* sql = "UPDATE projects SET parent = ? WHERE name = ?";
-    sqlite3_stmt* stmt = nullptr;
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
-        throw std::runtime_error(std::string("[Database]: prepare failed: ") + sqlite3_errmsg(db));
-    }
-    sqlite3_bind_text(stmt, 1, parent.c_str(),       -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 2, project_name.c_str(), -1, SQLITE_TRANSIENT);
-    int rc = sqlite3_step(stmt);
-    sqlite3_finalize(stmt);
-    if (rc != SQLITE_DONE) {
-        throw std::runtime_error(std::string("[Database]: SetProjectParent failed: ") + sqlite3_errmsg(db));
-    }
+    Stmt stmt(db, "UPDATE projects SET parent = ? WHERE name = ?", "SetProjectParent");
+    stmt.bind(1, parent).bind(2, project_name).step_done();
 }
 
 void DatabaseManager::SetProjectNote(const std::string &project_name, const std::string &article_link,
                                      const std::string &note) {
     spdlog::debug("[Database]: Setting note for article {} in project {}", article_link, project_name);
-    const char* sql =
-        "INSERT OR REPLACE INTO project_notes (project_name, article_link, note) VALUES (?, ?, ?)";
-    sqlite3_stmt* stmt = nullptr;
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
-        throw std::runtime_error(std::string("[Database]: prepare failed: ") + sqlite3_errmsg(db));
-    }
-    sqlite3_bind_text(stmt, 1, project_name.c_str(),  -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 2, article_link.c_str(),  -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 3, note.c_str(),          -1, SQLITE_TRANSIENT);
-    int rc = sqlite3_step(stmt);
-    sqlite3_finalize(stmt);
-    if (rc != SQLITE_DONE) {
-        throw std::runtime_error(std::string("[Database]: SetProjectNote failed: ") + sqlite3_errmsg(db));
-    }
+    Stmt stmt(db,
+        "INSERT OR REPLACE INTO project_notes (project_name, article_link, note) VALUES (?, ?, ?)",
+        "SetProjectNote");
+    stmt.bind(1, project_name).bind(2, article_link).bind(3, note).step_done();
 }
 
 std::string DatabaseManager::GetProjectNote(const std::string &project_name, const std::string &article_link) {
-    sqlite3_stmt *stmt;
-    const char* sql = "SELECT note FROM project_notes WHERE project_name = ? AND article_link = ?";
+    Stmt stmt(db,
+        "SELECT note FROM project_notes WHERE project_name = ? AND article_link = ?",
+        "GetProjectNote");
+    stmt.bind(1, project_name).bind(2, article_link);
     std::string note;
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
-        sqlite3_bind_text(stmt, 1, project_name.c_str(),  -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(stmt, 2, article_link.c_str(),  -1, SQLITE_TRANSIENT);
-        if (sqlite3_step(stmt) == SQLITE_ROW) {
-            note = ExtractColumn(stmt, 0);
-        }
-        sqlite3_finalize(stmt);
+    if (stmt.step() == SQLITE_ROW) {
+        note = ExtractColumn(stmt.raw(), 0);
     }
     return note;
 }
@@ -505,135 +498,86 @@ std::vector<Arxiv::Article> DatabaseManager::SearchArticles(const std::string &q
     for (size_t i = 1; i < conditions.size(); ++i)
         where_clause += " OR " + conditions[i];
 
-    std::string sql = "SELECT link, title, authors, abstract, date, bookmarked FROM articles " +
+    std::string sql = std::string("SELECT ") + ARTICLE_COLUMNS + " FROM articles " +
                       where_clause + " ORDER BY date DESC";
 
     spdlog::debug("[Database]: Searching for '{}' in title: {}, authors: {}, abstract: {}",
                   query, search_title, search_authors, search_abstract);
 
-    sqlite3_stmt *stmt;
-    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, nullptr) == SQLITE_OK) {
-        // Escape LIKE metacharacters in the query itself
-        std::string escaped_query;
-        escaped_query.reserve(query.size() + 4);
-        for (char c : query) {
-            if (c == '%' || c == '_' || c == '\\') escaped_query += '\\';
-            escaped_query += c;
-        }
-        std::string pattern = "%" + escaped_query + "%";
-
-        int param = 1;
-        if (search_title)    sqlite3_bind_text(stmt, param++, pattern.c_str(), -1, SQLITE_TRANSIENT);
-        if (search_authors)  sqlite3_bind_text(stmt, param++, pattern.c_str(), -1, SQLITE_TRANSIENT);
-        if (search_abstract) sqlite3_bind_text(stmt, param++, pattern.c_str(), -1, SQLITE_TRANSIENT);
-
-        while (sqlite3_step(stmt) == SQLITE_ROW)
-            articles.push_back(RowToArticle(stmt));
-        sqlite3_finalize(stmt);
+    // Escape LIKE metacharacters in the query itself
+    std::string escaped_query;
+    escaped_query.reserve(query.size() + 4);
+    for (char c : query) {
+        if (c == '%' || c == '_' || c == '\\') escaped_query += '\\';
+        escaped_query += c;
     }
+    std::string pattern = "%" + escaped_query + "%";
+
+    Stmt stmt(db, sql.c_str(), "SearchArticles");
+    int param = 1;
+    if (search_title)    stmt.bind(param++, pattern);
+    if (search_authors)  stmt.bind(param++, pattern);
+    if (search_abstract) stmt.bind(param++, pattern);
+    stmt.for_each([&](sqlite3_stmt* s) { articles.push_back(RowToArticle(s)); });
 
     spdlog::debug("[Database]: Found {} articles matching search criteria", articles.size());
     return articles;
 }
 
 void DatabaseManager::SetRelevanceScore(const std::string &link, float score) {
-    const char* sql = "UPDATE articles SET relevance_score = ? WHERE link = ?";
-    sqlite3_stmt* stmt = nullptr;
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
-        throw std::runtime_error(std::string("[Database]: prepare failed: ") + sqlite3_errmsg(db));
-    }
-    sqlite3_bind_double(stmt, 1, static_cast<double>(score));
-    sqlite3_bind_text(stmt,  2, link.c_str(), -1, SQLITE_TRANSIENT);
-    int rc = sqlite3_step(stmt);
-    sqlite3_finalize(stmt);
-    if (rc != SQLITE_DONE) {
-        throw std::runtime_error(std::string("[Database]: SetRelevanceScore failed: ") + sqlite3_errmsg(db));
-    }
+    Stmt stmt(db, "UPDATE articles SET relevance_score = ? WHERE link = ?", "SetRelevanceScore");
+    stmt.bind(1, static_cast<double>(score)).bind(2, link).step_done();
 }
 
 float DatabaseManager::GetRelevanceScore(const std::string &link) {
-    sqlite3_stmt *stmt;
-    const char* sql = "SELECT relevance_score FROM articles WHERE link = ?";
+    Stmt stmt(db, "SELECT relevance_score FROM articles WHERE link = ?", "GetRelevanceScore");
+    stmt.bind(1, link);
     float score = 0.0f;
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
-        sqlite3_bind_text(stmt, 1, link.c_str(), -1, SQLITE_TRANSIENT);
-        if (sqlite3_step(stmt) == SQLITE_ROW) {
-            score = static_cast<float>(sqlite3_column_double(stmt, 0));
-        }
-        sqlite3_finalize(stmt);
+    if (stmt.step() == SQLITE_ROW) {
+        score = static_cast<float>(sqlite3_column_double(stmt.raw(), 0));
     }
     return score;
 }
 
 void DatabaseManager::FollowAuthor(const std::string &author_name) {
-    const char* sql = "INSERT OR IGNORE INTO followed_authors (author_name) VALUES (?)";
-    sqlite3_stmt* stmt = nullptr;
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
-        throw std::runtime_error(std::string("[Database]: prepare failed: ") + sqlite3_errmsg(db));
-    }
-    sqlite3_bind_text(stmt, 1, author_name.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_step(stmt);
-    sqlite3_finalize(stmt);
+    Stmt stmt(db,
+        "INSERT OR IGNORE INTO followed_authors (author_name) VALUES (?)",
+        "FollowAuthor");
+    stmt.bind(1, author_name).step();
 }
 
 void DatabaseManager::UnfollowAuthor(const std::string &author_name) {
-    const char* sql = "DELETE FROM followed_authors WHERE author_name = ?";
-    sqlite3_stmt* stmt = nullptr;
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
-        throw std::runtime_error(std::string("[Database]: prepare failed: ") + sqlite3_errmsg(db));
-    }
-    sqlite3_bind_text(stmt, 1, author_name.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_step(stmt);
-    sqlite3_finalize(stmt);
+    Stmt stmt(db, "DELETE FROM followed_authors WHERE author_name = ?", "UnfollowAuthor");
+    stmt.bind(1, author_name).step();
 }
 
 bool DatabaseManager::IsFollowingAuthor(const std::string &author_name) {
-    sqlite3_stmt *stmt;
-    const char* sql = "SELECT 1 FROM followed_authors WHERE author_name = ?";
-    bool found = false;
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
-        sqlite3_bind_text(stmt, 1, author_name.c_str(), -1, SQLITE_TRANSIENT);
-        found = (sqlite3_step(stmt) == SQLITE_ROW);
-        sqlite3_finalize(stmt);
-    }
-    return found;
+    Stmt stmt(db, "SELECT 1 FROM followed_authors WHERE author_name = ?", "IsFollowingAuthor");
+    stmt.bind(1, author_name);
+    return stmt.step() == SQLITE_ROW;
 }
 
 std::vector<std::string> DatabaseManager::GetFollowedAuthors() {
     std::vector<std::string> authors;
-    sqlite3_stmt *stmt;
-    const char* sql = "SELECT author_name FROM followed_authors";
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
-        while (sqlite3_step(stmt) == SQLITE_ROW)
-            authors.push_back(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)));
-        sqlite3_finalize(stmt);
-    }
+    Stmt stmt(db, "SELECT author_name FROM followed_authors", "GetFollowedAuthors");
+    stmt.for_each([&](sqlite3_stmt* s) {
+        authors.push_back(reinterpret_cast<const char*>(sqlite3_column_text(s, 0)));
+    });
     return authors;
 }
 
 void DatabaseManager::SetMetadata(const std::string &key, const std::string &value) {
-    const char* sql = "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)";
-    sqlite3_stmt* stmt = nullptr;
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
-        throw std::runtime_error(std::string("[Database]: prepare failed: ") + sqlite3_errmsg(db));
-    }
-    sqlite3_bind_text(stmt, 1, key.c_str(),   -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 2, value.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_step(stmt);
-    sqlite3_finalize(stmt);
+    Stmt stmt(db, "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)", "SetMetadata");
+    stmt.bind(1, key).bind(2, value).step();
 }
 
 std::string DatabaseManager::GetMetadata(const std::string &key) {
-    sqlite3_stmt* stmt = nullptr;
-    const char* sql = "SELECT value FROM metadata WHERE key = ?";
+    Stmt stmt(db, "SELECT value FROM metadata WHERE key = ?", "GetMetadata");
+    stmt.bind(1, key);
     std::string result;
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
-        sqlite3_bind_text(stmt, 1, key.c_str(), -1, SQLITE_TRANSIENT);
-        if (sqlite3_step(stmt) == SQLITE_ROW) {
-            const char* val = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
-            if (val) result = val;
-        }
-        sqlite3_finalize(stmt);
+    if (stmt.step() == SQLITE_ROW) {
+        const char* val = reinterpret_cast<const char*>(sqlite3_column_text(stmt.raw(), 0));
+        if (val) result = val;
     }
     return result;
 }
@@ -647,14 +591,10 @@ std::vector<Arxiv::Article> DatabaseManager::GetArticlesSince(const std::string 
     std::time_t since_ts = timegm(&tm);
 
     std::vector<Arxiv::Article> articles;
-    sqlite3_stmt* stmt = nullptr;
-    const char* sql = "SELECT link, title, authors, abstract, date, bookmarked "
-                      "FROM articles WHERE date >= ? ORDER BY date DESC";
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) == SQLITE_OK) {
-        sqlite3_bind_int64(stmt, 1, static_cast<sqlite3_int64>(since_ts));
-        while (sqlite3_step(stmt) == SQLITE_ROW)
-            articles.push_back(RowToArticle(stmt));
-        sqlite3_finalize(stmt);
-    }
+    std::string sql = std::string("SELECT ") + ARTICLE_COLUMNS +
+                      " FROM articles WHERE date >= ? ORDER BY date DESC";
+    Stmt stmt(db, sql.c_str(), "GetArticlesSince");
+    stmt.bind(1, static_cast<sqlite3_int64>(since_ts));
+    stmt.for_each([&](sqlite3_stmt* s) { articles.push_back(RowToArticle(s)); });
     return articles;
 }

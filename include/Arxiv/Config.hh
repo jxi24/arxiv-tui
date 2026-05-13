@@ -6,6 +6,7 @@
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wold-style-cast" 
+#pragma GCC diagnostic ignored "-Wsign-conversion" 
 #include <yaml-cpp/yaml.h>
 #pragma GCC diagnostic pop
 
@@ -33,6 +34,8 @@ public:
     float get_recommend_threshold() const { return recommend_threshold_; }
     int   get_retrain_interval()    const { return retrain_interval_; }
     const std::string& get_keywords_file()   const { return keywords_file_; }
+    const std::string& get_ranker_file()     const { return ranker_file_; }
+    const std::string& get_obsidian_vault()  const { return obsidian_vault_; }
     int  get_auto_refresh_minutes()          const { return auto_refresh_minutes_; }
 
     // Setters
@@ -42,6 +45,8 @@ public:
     void set_recommend_threshold(float t) { recommend_threshold_ = t; }
     void set_retrain_interval(int n)      { retrain_interval_ = n; }
     void set_keywords_file(const std::string& path) { keywords_file_ = path; }
+    void set_ranker_file(const std::string& path)   { ranker_file_ = path; }
+    void set_obsidian_vault(const std::string& path){ obsidian_vault_ = path; }
     void set_auto_refresh_minutes(int m)  { auto_refresh_minutes_ = m; }
 
     // Save/Load configuration
@@ -54,6 +59,8 @@ private:
     float       recommend_threshold_{3.5f};
     int         retrain_interval_{5};
     std::string keywords_file_;
+    std::string ranker_file_{"ranker.bin"};
+    std::string obsidian_vault_;
     int         auto_refresh_minutes_{0};
 };
 

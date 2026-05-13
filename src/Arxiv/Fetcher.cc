@@ -8,9 +8,53 @@
 #include <nlohmann/json.hpp>
 #include <sstream>
 #include <fstream>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 using Arxiv::Fetcher;
 using Arxiv::Article;
+
+namespace {
+
+// arXiv API endpoint used by FetchSince — pulled out as a constant so a
+// future move (mirror, version pin) is one edit, not a string-search.
+constexpr std::string_view ARXIV_API_URL = "https://export.arxiv.org/api/query";
+
+// arXiv submittedDate query format is YYYYMMDDHHMI.
+constexpr std::string_view ARXIV_QUERY_FROM_FORMAT = "%Y%m%d0000";
+constexpr std::string_view ARXIV_QUERY_TO_FORMAT   = "%Y%m%d2359";
+
+// Apply every (find, replace) entry in `table` to `text` in order, in-place.
+// Both StyleLatex and ReplaceLatexAccents do this exact loop; isolating it
+// removes the duplicate find-and-advance bookkeeping.
+void apply_replacements(std::string& text,
+                        const std::vector<std::pair<std::string, std::string>>& table) {
+    for (const auto& [needle, sub] : table) {
+        size_t pos = 0;
+        while ((pos = text.find(needle, pos)) != std::string::npos) {
+            text.replace(pos, needle.length(), sub);
+            pos += sub.length();
+        }
+    }
+}
+
+// Parse the "YYYY-MM-DD" prefix of an ISO-8601 date string into tm fields.
+// Returns false if the input is too short or non-numeric. Used by both the
+// Atom-feed date parser and the FetchSince date-window builder.
+bool parse_ymd_prefix(const std::string& date, std::tm& out) {
+    if (date.size() < 10) return false;
+    try {
+        out.tm_year = std::stoi(date.substr(0, 4)) - 1900;
+        out.tm_mon  = std::stoi(date.substr(5, 2)) - 1;
+        out.tm_mday = std::stoi(date.substr(8, 2));
+    } catch (...) {
+        return false;
+    }
+    return true;
+}
+
+} // namespace
 
 Fetcher::Fetcher(const std::vector<std::string> &topics, const std::string &_base_path) : m_topics{topics} {
     base_path = _base_path;
@@ -180,6 +224,25 @@ std::vector<Article> Fetcher::ParseFeed(const std::string &xml_content) {
             }
             article.category = categories.str();
 
+            // Replacement detection. arxiv RSS marks replacements either via
+            //   <dc:type>replace</dc:type>  / "Replacement"
+            //   <arxiv:announce_type>replace…</arxiv:announce_type>
+            // or by suffixing the title with " (UPDATED)". Be permissive.
+            std::string dc_type   = item.child_value("dc:type");
+            std::string ann_type  = item.child_value("arxiv:announce_type");
+            auto contains_ci = [](const std::string& hay, const std::string& needle) {
+                auto it = std::search(hay.begin(), hay.end(), needle.begin(), needle.end(),
+                    [](char a, char b) {
+                        return std::tolower(static_cast<unsigned char>(a)) ==
+                               std::tolower(static_cast<unsigned char>(b));
+                    });
+                return it != hay.end();
+            };
+            article.is_replacement =
+                contains_ci(dc_type,  "replace") ||
+                contains_ci(ann_type, "replace") ||
+                contains_ci(article.title, "(UPDATED)");
+
             articles.push_back(article);
         }
     } catch (const pugi::xpath_exception &e) {
@@ -207,8 +270,9 @@ std::optional<Arxiv::time_point> Fetcher::ParseDate(const std::string &date) con
 
 std::string Fetcher::StyleLatex(const std::string& text) const {
     std::string result = text;
-    
-    // Text formatting
+
+    // Text formatting commands whose opening (\cmd{) we strip; the matching
+    // closing brace is removed in the second pass below.
     const std::vector<std::pair<std::string, std::string>> replacements = {
         {"\\textit{", ""}, {"\\textbf{", ""}, {"\\emph{", ""},
         {"\\textsl{", ""}, {"\\textsc{", ""}, {"\\texttt{", ""},
@@ -217,14 +281,7 @@ std::string Fetcher::StyleLatex(const std::string& text) const {
         {"\\underline{", ""}, {"\\overline{", ""}, {"\\st{", ""}
     };
 
-    // First pass: remove opening commands
-    for (const auto& [latex, utf8] : replacements) {
-        size_t pos = 0;
-        while ((pos = result.find(latex, pos)) != std::string::npos) {
-            result.replace(pos, latex.length(), utf8);
-            pos += utf8.length();
-        }
-    }
+    apply_replacements(result, replacements);
 
     // Second pass: remove closing braces that follow formatting commands
     size_t pos = 0;
@@ -319,14 +376,7 @@ std::string Fetcher::ReplaceLatexAccents(const std::string& text) const {
         {"\\ng", "ŋ"}, {"\\NG", "Ŋ"}
     };
 
-    for (const auto& [latex, utf8] : replacements) {
-        size_t pos = 0;
-        while ((pos = result.find(latex, pos)) != std::string::npos) {
-            result.replace(pos, latex.length(), utf8);
-            pos += utf8.length();
-        }
-    }
-
+    apply_replacements(result, replacements);
     return result;
 }
 
@@ -344,12 +394,10 @@ std::vector<Article> Fetcher::FetchSince(const std::string &utc_date) {
     // INSERT OR IGNORE in AddArticle.
     // arXiv submittedDate query format: YYYYMMDDHHMI (e.g. 202605020000).
     std::tm from_tm{};
-    from_tm.tm_year = std::stoi(utc_date.substr(0, 4)) - 1900;
-    from_tm.tm_mon  = std::stoi(utc_date.substr(5, 2)) - 1;
-    from_tm.tm_mday = std::stoi(utc_date.substr(8, 2));
+    parse_ymd_prefix(utc_date, from_tm);
     timegm(&from_tm);  // normalise
     char from_buf[16];
-    std::strftime(from_buf, sizeof(from_buf), "%Y%m%d0000", &from_tm);
+    std::strftime(from_buf, sizeof(from_buf), ARXIV_QUERY_FROM_FORMAT.data(), &from_tm);
 
     // Today UTC as the end of the range.
     auto now = std::chrono::system_clock::now();
@@ -357,7 +405,7 @@ std::vector<Article> Fetcher::FetchSince(const std::string &utc_date) {
     std::tm to_tm{};
     gmtime_r(&now_t, &to_tm);
     char to_buf[16];
-    std::strftime(to_buf, sizeof(to_buf), "%Y%m%d2359", &to_tm);
+    std::strftime(to_buf, sizeof(to_buf), ARXIV_QUERY_TO_FORMAT.data(), &to_tm);
 
     if (std::string(from_buf) > std::string(to_buf)) {
         // utc_date is today or in the future — nothing missed.
@@ -382,10 +430,9 @@ std::vector<Article> Fetcher::FetchSince(const std::string &utc_date) {
 
     while (true) {
         auto url = fmt::format(
-            "https://export.arxiv.org/api/query"
-            "?search_query={}{}&start={}&max_results={}"
+            "{}?search_query={}{}&start={}&max_results={}"
             "&sortBy=submittedDate&sortOrder=descending",
-            topic_query, date_filter, start, max_results);
+            ARXIV_API_URL, topic_query, date_filter, start, max_results);
 
         spdlog::info("[Fetcher]: FetchSince GET {}", url);
         cpr::Response resp;
@@ -463,6 +510,24 @@ std::vector<Article> Fetcher::ParseAtomFeed(const std::string &xml_content) {
             if (cat) article.category = cat.attribute("term").value();
         }
 
+        // Replacement detection. arxiv's atom output uses
+        //   <arxiv:announce_type>replace</arxiv:announce_type>     (and
+        //   "replace-cross"). Treat the substring "replace" as the signal.
+        // As a fallback the <id> is "<base>v<N>" — anything past v1 is a
+        // replacement when announce_type is missing.
+        std::string ann = entry.child_value("arxiv:announce_type");
+        if (ann.find("replace") != std::string::npos) {
+            article.is_replacement = true;
+        } else if (ann.empty()) {
+            auto v_pos = article.link.rfind('v');
+            if (v_pos != std::string::npos && v_pos + 1 < article.link.size()) {
+                std::string ver = article.link.substr(v_pos + 1);
+                bool all_digits = !ver.empty() &&
+                    std::all_of(ver.begin(), ver.end(), [](char c){ return std::isdigit(c); });
+                if (all_digits && ver != "1") article.is_replacement = true;
+            }
+        }
+
         articles.push_back(std::move(article));
     }
 
@@ -472,15 +537,8 @@ std::vector<Article> Fetcher::ParseAtomFeed(const std::string &xml_content) {
 std::optional<Arxiv::time_point> Fetcher::ParseAtomDate(const std::string &date) const {
     // Format: "2026-05-04T00:00:00-04:00" or "2026-05-04T00:00:00Z"
     // We only need the date portion for day-level granularity.
-    if (date.size() < 10) return std::nullopt;
     std::tm tm{};
-    try {
-        tm.tm_year = std::stoi(date.substr(0, 4)) - 1900;
-        tm.tm_mon  = std::stoi(date.substr(5, 2)) - 1;
-        tm.tm_mday = std::stoi(date.substr(8, 2));
-    } catch (...) {
-        return std::nullopt;
-    }
+    if (!parse_ymd_prefix(date, tm)) return std::nullopt;
     return std::chrono::system_clock::from_time_t(timegm(&tm));
 }
 

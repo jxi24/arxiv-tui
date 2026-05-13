@@ -4,6 +4,7 @@
 #include <Arxiv/DatabaseManager.hh>
 #include <Arxiv/Article.hh>
 #include <fixtures/test_data.hh>
+#include <algorithm>
 #include <chrono>
 
 // Tests against the *real* DatabaseManager implementation (in-memory SQLite).

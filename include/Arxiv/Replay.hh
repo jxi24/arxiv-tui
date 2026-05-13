@@ -54,6 +54,11 @@ public:
     void RecordExportArticlesBibTeX(const std::string& path);
     void RecordExportProjectBibTeX(const std::string& project, const std::string& path);
 
+    /// Diagnostic event — does not correspond to a replayable action. Used
+    /// for instrumentation (e.g. lifecycle, fetch progress). The replay
+    /// player ignores it (unknown action -> skipped). Thread-safe.
+    void RecordEvent(const std::string& name, const std::string& detail = "");
+
     // --- Accessors ---
 
     /// Returns all recorded entries as a JSONL string (one JSON object per

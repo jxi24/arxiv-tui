@@ -22,14 +22,19 @@ const Color error   = Color::RGB(231, 130, 132);  // #e78284  Red
 ArxivApp::ArxivApp(const Config& config, ReplayRecorder* recorder)
     : core(config,
            std::make_unique<DatabaseManager>("articles.db"),
-           std::make_unique<Fetcher>(config.get_topics(), config.get_download_dir()))
+           std::make_unique<Fetcher>(config.get_topics(), config.get_download_dir()),
+           AppCore::FetchMode::Async,
+           recorder)
     , key_bindings(config.get_key_mappings())
     , screen(ScreenInteractive::Fullscreen()) {
     m_recorder = recorder;
 
     spdlog::info("ArXiv Application Initialized");
+    if (m_recorder) m_recorder->RecordEvent("app/ctor_after_appcore");
     core.ReloadKeywords();
+    if (m_recorder) m_recorder->RecordEvent("app/setup_ui_begin");
     SetupUI();
+    if (m_recorder) m_recorder->RecordEvent("app/setup_ui_end");
 }
 
 void ArxivApp::UpdateTitleScrollPositions() {
@@ -84,7 +89,7 @@ void ArxivApp::SetupUI() {
                 return true;
             }
             if(key_bindings.matches(event, KeyBindings::Action::CreateProject)) {
-                dialog_depth = 1;
+                dialog_depth = Dialog::NewProject;
                 new_project_name.clear();
                 // If a project is currently selected, new project becomes its child
                 parent_for_new_project = (core.GetFilterView() == AppCore::FilterView::Project)
@@ -132,7 +137,7 @@ void ArxivApp::SetupUI() {
                 return true;
             }
             if(key_bindings.matches(event, KeyBindings::Action::CreateProject)) {
-                dialog_depth = 2;
+                dialog_depth = Dialog::AssignProject;
                 // Initialize project selections
                 auto projects = core.GetProjects();
                 auto articles = core.GetCurrentArticles();
@@ -161,7 +166,7 @@ void ArxivApp::SetupUI() {
                 if (m_recorder) m_recorder->RecordDownloadArticle(article.id());
                 bool success = core.DownloadArticle(article.id());
                 if(!success) {
-                    dialog_depth = 3;
+                    dialog_depth = Dialog::Error;
                     err_msg = fmt::format("Failed to download article: {}", article.id());
                 }
                 return true;
@@ -199,7 +204,7 @@ void ArxivApp::SetupUI() {
         int filter_width = FilterPaneWidth();
         int remaining_width = Terminal::Size().dimx - filter_width - border_size; 
         int articles_width = show_detail ? remaining_width / 2 : remaining_width;
-        visible_rows = Terminal::Size().dimy - 4;  // Account for header, separator, and borders
+        visible_rows = Terminal::Size().dimy - 5;  // Account for header, separator, borders, and footer
 
         // Update visible range
         UpdateVisibleRange();
@@ -212,6 +217,14 @@ void ArxivApp::SetupUI() {
             ++i) {
             const auto& article = articles[i];
             std::string title = article.title;
+
+            // Selection / bookmark prefix. Selection wins so the user can
+            // see at a glance what's queued for the next digest.
+            if (core.IsSelected(article.link)) {
+                title = "[*] " + title;
+            } else if (article.bookmarked) {
+                title = "⭐ " + title;
+            }
 
             // Append predicted score badge for Recommended view
             std::string score_badge;
@@ -315,7 +328,7 @@ void ArxivApp::SetupUI() {
     // Create project dialog components
     project_checkbox_container = Container::Vertical({});
     project_dialog = Renderer([&] {
-        if (dialog_depth != 2) return emptyElement();
+        if (dialog_depth != Dialog::AssignProject) return emptyElement();
         
         auto projects = core.GetProjects();
         if (projects.empty()) {
@@ -370,7 +383,14 @@ void ArxivApp::SetupUI() {
         if (!show_help) return emptyElement();
 
         auto bindings = key_bindings.get_all_bindings();
-        
+
+        // Replace blank-looking keys with explicit names so the help is
+        // readable. Currently only the space character would render as
+        // empty, but the same hook can absorb future additions.
+        for (auto& [_, key] : bindings) {
+            if (key == " ") key = "<space>";
+        }
+
         // Sort bindings by action name
         std::sort(bindings.begin(), bindings.end(),
                  [](const auto& a, const auto& b) { return a.first < b.first; });
@@ -427,7 +447,7 @@ void ArxivApp::SetupUI() {
 
     // Add date range dialog renderer
     date_range_dialog = Renderer([&] {
-        if (dialog_depth != 4) return emptyElement();
+        if (dialog_depth != Dialog::DateRange) return emptyElement();
         
         std::string start_prompt = "Start date (YYYY-MM-DD): " + start_date;
         std::string end_prompt = "End date (YYYY-MM-DD): " + end_date;
@@ -452,7 +472,7 @@ void ArxivApp::SetupUI() {
 
     // Add search dialog renderer
     search_dialog = Renderer([&] {
-        if (dialog_depth != 5) return emptyElement();
+        if (dialog_depth != Dialog::Search) return emptyElement();
         
         std::vector<Element> elements = {
             text("Search Articles") | bold | color(TextColors::primary),
@@ -483,9 +503,9 @@ void ArxivApp::SetupUI() {
         return vbox(elements) | borderStyled(ROUNDED, TextColors::border) | bgcolor(TextColors::surface) | clear_under | center;
     });
 
-    // Rating dialog (dialog_depth == 6)
+    // Rating dialog (dialog_depth == Dialog::Rating)
     rating_dialog = Renderer([&] {
-        if (dialog_depth != 6) return emptyElement();
+        if (dialog_depth != Dialog::Rating) return emptyElement();
 
         auto articles = core.GetCurrentArticles();
         std::string article_title = articles.empty() ? "" :
@@ -523,9 +543,9 @@ void ArxivApp::SetupUI() {
         }) | borderStyled(ROUNDED, TextColors::border) | bgcolor(TextColors::surface) | clear_under | center;
     });
 
-    // Notes editor dialog (dialog_depth == 7)
+    // Notes editor dialog (dialog_depth == Dialog::Notes)
     note_dialog = Renderer([&] {
-        if (dialog_depth != 7) return emptyElement();
+        if (dialog_depth != Dialog::Notes) return emptyElement();
 
         return vbox({
             text("Edit Note") | bold | color(TextColors::primary),
@@ -538,9 +558,9 @@ void ArxivApp::SetupUI() {
         }) | borderStyled(ROUNDED, TextColors::border) | bgcolor(TextColors::surface) | clear_under | center;
     });
 
-    // Export dialog (dialog_depth == 8)
+    // Export dialog (dialog_depth == Dialog::Export)
     export_dialog = Renderer([&] {
-        if (dialog_depth != 8) return emptyElement();
+        if (dialog_depth != Dialog::Export) return emptyElement();
 
         static const char* formats[] = {"Markdown (.md)", "Plain Text (.txt)", "JSON (.json)", "BibTeX (.bib)"};
         Elements items;
@@ -565,9 +585,9 @@ void ArxivApp::SetupUI() {
         }) | borderStyled(ROUNDED, TextColors::border) | bgcolor(TextColors::surface) | clear_under | center;
     });
 
-    // Import dialog (dialog_depth == 9)
+    // Import dialog (dialog_depth == Dialog::Import)
     import_dialog = Renderer([&] {
-        if (dialog_depth != 9) return emptyElement();
+        if (dialog_depth != Dialog::Import) return emptyElement();
 
         return vbox({
             text("Import Project from JSON") | bold | color(TextColors::primary),
@@ -578,9 +598,9 @@ void ArxivApp::SetupUI() {
         }) | borderStyled(ROUNDED, TextColors::border) | bgcolor(TextColors::surface) | clear_under | center;
     });
 
-    // Keyword editor dialog (dialog_depth == 10)
+    // Keyword editor dialog (dialog_depth == Dialog::KeywordEditor)
     keyword_dialog = Renderer([&] {
-        if (dialog_depth != 10) return emptyElement();
+        if (dialog_depth != Dialog::KeywordEditor) return emptyElement();
 
         Elements kw_entries;
         kw_entries.push_back(text("Interest Keywords") | bold | color(TextColors::primary));
@@ -617,6 +637,52 @@ void ArxivApp::SetupUI() {
             | center;
     });
 
+    // Category filter dialog (Dialog::CategoryFilter)
+    category_dialog = Renderer([&] {
+        if (dialog_depth != Dialog::CategoryFilter) return emptyElement();
+
+        const auto& topics = core.GetTopics();
+        Elements rows;
+        rows.push_back(text("Filter by arXiv Category") | bold | color(TextColors::primary));
+        rows.push_back(separator() | color(TextColors::border));
+        if (topics.empty()) {
+            rows.push_back(text("  (no topics configured)") | color(TextColors::subtext));
+        } else {
+            for (int i = 0; i < static_cast<int>(topics.size()); ++i) {
+                const auto& t = topics[static_cast<size_t>(i)];
+                bool active   = core.IsCategoryActive(t);
+                bool selected = (i == category_selected_index);
+                std::string mark = active ? "[x] " : "[ ] ";
+                auto row = text("  " + mark + t);
+                if (selected)
+                    rows.push_back(row | bold | color(TextColors::base) | bgcolor(TextColors::primary));
+                else
+                    rows.push_back(row | color(active ? TextColors::text : TextColors::subtext));
+            }
+        }
+        rows.push_back(separator() | color(TextColors::border));
+        rows.push_back(text("  Showing " + std::to_string(core.GetCurrentArticles().size())
+                            + " article(s)") | color(TextColors::subtext));
+        rows.push_back(separator() | color(TextColors::border));
+        rows.push_back(hbox({
+            text("j/k") | bold | color(TextColors::primary),
+            text(": move  ") | color(TextColors::subtext),
+            text("Space/Enter") | bold | color(TextColors::primary),
+            text(": toggle  ") | color(TextColors::subtext),
+            text("a") | bold | color(TextColors::primary),
+            text(": all  ") | color(TextColors::subtext),
+            text("n") | bold | color(TextColors::primary),
+            text(": none  ") | color(TextColors::subtext),
+            text("Esc") | bold | color(TextColors::primary),
+            text(": close") | color(TextColors::subtext),
+        }));
+        return vbox(std::move(rows))
+            | borderStyled(ROUNDED, TextColors::border)
+            | bgcolor(TextColors::surface)
+            | clear_under
+            | center;
+    });
+
     main_renderer = Renderer(main_container, [&] {
         int filter_width = FilterPaneWidth();
         int remaining_width = Terminal::Size().dimx - filter_width - border_size; 
@@ -631,9 +697,26 @@ void ArxivApp::SetupUI() {
         if(show_detail) {
             panes.push_back(detail_view->Render() | size(WIDTH, EQUAL, detail_width));
         }
-        Element document = hbox(std::move(panes)) | bgcolor(TextColors::base);
+        Element body = hbox(std::move(panes)) | bgcolor(TextColors::base);
 
-        if (dialog_depth == 1) {
+        // Persistent footer with the keys most users need at hand. body is
+        // marked flex so the footer reliably claims its row even when the
+        // panes' internal sizing would otherwise consume the whole screen.
+        auto fmt_key = [](std::string k) { return k == " " ? std::string("<space>") : k; };
+        std::string quit_key = fmt_key(key_bindings.get_key(KeyBindings::Action::Quit));
+        std::string help_key = fmt_key(key_bindings.get_key(KeyBindings::Action::ShowHelp));
+        auto footer = hbox({
+            text(" "),
+            text(quit_key) | bold | color(TextColors::primary),
+            text(" quit  ") | color(TextColors::subtext),
+            text(help_key) | bold | color(TextColors::primary),
+            text(" keybindings ") | color(TextColors::subtext),
+            filler(),
+        }) | bgcolor(TextColors::surface) | size(HEIGHT, EQUAL, 1);
+
+        Element document = vbox({body | flex, footer});
+
+        if (dialog_depth == Dialog::NewProject) {
             Elements new_proj_elements = {
                 text("New Project") | bold | color(TextColors::primary),
                 separator() | color(TextColors::border),
@@ -657,12 +740,12 @@ void ArxivApp::SetupUI() {
                 document,
                 new_project_dialog,
             });
-        } else if (dialog_depth == 2) {
+        } else if (dialog_depth == Dialog::AssignProject) {
             document = dbox({
                 document,
                 project_dialog->Render(),
             });
-        } else if (dialog_depth == 3) {
+        } else if (dialog_depth == Dialog::Error) {
             auto error_dialog = vbox({
                 text("ERROR") | bold | center | color(TextColors::error),
                 separator() | color(TextColors::error),
@@ -673,40 +756,45 @@ void ArxivApp::SetupUI() {
                 document,
                 error_dialog,
             });
-        } else if (dialog_depth == 4) {
+        } else if (dialog_depth == Dialog::DateRange) {
             document = dbox({
                 document,
                 date_range_dialog->Render(),
             });
-        } else if (dialog_depth == 5) {
+        } else if (dialog_depth == Dialog::Search) {
             document = dbox({
                 document,
                 search_dialog->Render(),
             });
-        } else if (dialog_depth == 6) {
+        } else if (dialog_depth == Dialog::Rating) {
             document = dbox({
                 document,
                 rating_dialog->Render(),
             });
-        } else if (dialog_depth == 7) {
+        } else if (dialog_depth == Dialog::Notes) {
             document = dbox({
                 document,
                 note_dialog->Render(),
             });
-        } else if (dialog_depth == 8) {
+        } else if (dialog_depth == Dialog::Export) {
             document = dbox({
                 document,
                 export_dialog->Render(),
             });
-        } else if (dialog_depth == 9) {
+        } else if (dialog_depth == Dialog::Import) {
             document = dbox({
                 document,
                 import_dialog->Render(),
             });
-        } else if (dialog_depth == 10) {
+        } else if (dialog_depth == Dialog::KeywordEditor) {
             document = dbox({
                 document,
                 keyword_dialog->Render(),
+            });
+        } else if (dialog_depth == Dialog::CategoryFilter) {
+            document = dbox({
+                document,
+                category_dialog->Render(),
             });
         }
 
@@ -716,6 +804,32 @@ void ArxivApp::SetupUI() {
                 document,
                 help_dialog->Render(),
             });
+        }
+
+        // Fetching indicator: visible only while the initial network fetch
+        // is in flight. Overlaid via dbox + filler so it sits at the bottom
+        // right of the screen WITHOUT changing the document's outer
+        // dimensions (a vbox would push the panes up by one row each tick).
+        if (core.IsFetching()) {
+            // Animate a dot pulse so it's clear work is ongoing rather than
+            // a stuck splash screen.
+            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                          std::chrono::steady_clock::now().time_since_epoch())
+                          .count();
+            const char* dots[] = {"   ", ".  ", ".. ", "..."};
+            const char* anim = dots[(ms / 400) % 4];
+            auto badge = hbox({
+                text(" Fetching new articles") | color(TextColors::primary) | bold,
+                text(anim) | color(TextColors::primary),
+                text(" "),
+            }) | bgcolor(TextColors::surface);
+
+            // Pin to bottom-right by padding with fillers.
+            auto overlay = vbox({
+                filler(),
+                hbox({filler(), badge}),
+            });
+            document = dbox({document, overlay});
         }
 
         return document;
@@ -739,13 +853,13 @@ void ArxivApp::SetupUI() {
         }
 
         // Handle date range dialog
-        if (dialog_depth == 4) {
+        if (dialog_depth == Dialog::DateRange) {
             if (event == Event::Return) {
                 if (!start_date.empty() && !end_date.empty()) {
                     core.SetDateRange(start_date, end_date);
                     if (m_recorder) m_recorder->RecordSetDateRange(start_date, end_date);
                 }
-                dialog_depth = 0;
+                dialog_depth = Dialog::None;
                 start_date.clear();
                 end_date.clear();
                 return true;
@@ -776,7 +890,7 @@ void ArxivApp::SetupUI() {
                 return true;
             }
             if (event == Event::Escape) {
-                dialog_depth = 0;
+                dialog_depth = Dialog::None;
                 start_date.clear();
                 end_date.clear();
                 return true;
@@ -787,7 +901,7 @@ void ArxivApp::SetupUI() {
         // Handle date range key binding
         if (key_bindings.matches(event, KeyBindings::Action::SetDateRange) &&
             core.GetFilterView() == AppCore::FilterView::Range) {
-            dialog_depth = 4;
+            dialog_depth = Dialog::DateRange;
             date_input_mode = DateInputMode::Start;
             start_date.clear();
             end_date.clear();
@@ -795,7 +909,7 @@ void ArxivApp::SetupUI() {
         }
 
         // Handle search dialog
-        if (dialog_depth == 5) {
+        if (dialog_depth == Dialog::Search) {
             if (event == Event::Return) {
                 if (!search_query.empty()) {
                     bool st = (search_field == AppCore::SearchMode::title);
@@ -808,7 +922,7 @@ void ArxivApp::SetupUI() {
                         m_recorder->RecordSetFilterIndex(static_cast<int>(AppCore::FilterView::Search));
                     }
                 }
-                dialog_depth = 0;
+                dialog_depth = Dialog::None;
                 search_query.clear();
                 selected_search_option = 0;
                 return true;
@@ -839,7 +953,7 @@ void ArxivApp::SetupUI() {
                 return true;
             }
             if (event == Event::Escape) {
-                dialog_depth = 0;
+                dialog_depth = Dialog::None;
                 search_query.clear();
                 selected_search_option = 0;
                 return true;
@@ -849,14 +963,14 @@ void ArxivApp::SetupUI() {
 
         // Handle search key binding
         if (key_bindings.matches(event, KeyBindings::Action::Search)) {
-            dialog_depth = 5;
+            dialog_depth = Dialog::Search;
             search_query.clear();
             selected_search_option = 0;
             return true;
         }
 
         // Handle rating dialog events
-        if (dialog_depth == 6) {
+        if (dialog_depth == Dialog::Rating) {
             if (event == Event::Return) {
                 if (pending_rating >= 1 && pending_rating <= 5) {
                     auto articles = core.GetCurrentArticles();
@@ -866,7 +980,7 @@ void ArxivApp::SetupUI() {
                         if (m_recorder) m_recorder->RecordRateArticle(link, pending_rating);
                     }
                 }
-                dialog_depth = 0;
+                dialog_depth = Dialog::None;
                 pending_rating = 0;
                 return true;
             }
@@ -887,7 +1001,7 @@ void ArxivApp::SetupUI() {
                 return true;
             }
             if (event == Event::Escape) {
-                dialog_depth = 0;
+                dialog_depth = Dialog::None;
                 pending_rating = 0;
                 return true;
             }
@@ -895,11 +1009,11 @@ void ArxivApp::SetupUI() {
         }
 
         // Handle notes dialog
-        if (dialog_depth == 7) {
+        if (dialog_depth == Dialog::Notes) {
             if (event == Event::Return) {
                 core.SetProjectNote(note_project_name, note_article_link, note_edit_text);
                 if (m_recorder) m_recorder->RecordSetProjectNote(note_project_name, note_article_link, note_edit_text);
-                dialog_depth = 0;
+                dialog_depth = Dialog::None;
                 return true;
             }
             if (event == Event::Backspace) {
@@ -907,7 +1021,7 @@ void ArxivApp::SetupUI() {
                 return true;
             }
             if (event == Event::Escape) {
-                dialog_depth = 0;
+                dialog_depth = Dialog::None;
                 return true;
             }
             if (event.is_character()) {
@@ -918,7 +1032,7 @@ void ArxivApp::SetupUI() {
         }
 
         // Handle export dialog
-        if (dialog_depth == 8) {
+        if (dialog_depth == Dialog::Export) {
             if (event == Event::Return) {
                 static const char* exts[] = {"md", "txt", "json", "bib"};
                 std::string path = export_project_name + "." + exts[export_format_index];
@@ -936,9 +1050,9 @@ void ArxivApp::SetupUI() {
                     ok = core.ExportProjectBibTeX(export_project_name, path);
                     if (m_recorder) m_recorder->RecordExportProjectBibTeX(export_project_name, path);
                 }
-                dialog_depth = 0;
+                dialog_depth = Dialog::None;
                 if (!ok) {
-                    dialog_depth = 3;
+                    dialog_depth = Dialog::Error;
                     err_msg = "Export failed: " + path;
                 }
                 return true;
@@ -952,20 +1066,20 @@ void ArxivApp::SetupUI() {
                 return true;
             }
             if (event == Event::Escape) {
-                dialog_depth = 0;
+                dialog_depth = Dialog::None;
                 return true;
             }
             return true;
         }
 
         // Handle import dialog
-        if (dialog_depth == 9) {
+        if (dialog_depth == Dialog::Import) {
             if (event == Event::Return) {
                 if (m_recorder) m_recorder->RecordImportProjectJSON(import_path);
                 bool ok = core.ImportProjectJSON(import_path);
-                dialog_depth = 0;
+                dialog_depth = Dialog::None;
                 if (!ok) {
-                    dialog_depth = 3;
+                    dialog_depth = Dialog::Error;
                     err_msg = "Import failed: " + import_path;
                 }
                 import_path.clear();
@@ -976,7 +1090,7 @@ void ArxivApp::SetupUI() {
                 return true;
             }
             if (event == Event::Escape) {
-                dialog_depth = 0;
+                dialog_depth = Dialog::None;
                 import_path.clear();
                 return true;
             }
@@ -987,8 +1101,42 @@ void ArxivApp::SetupUI() {
             return true;
         }
 
+        // Handle category filter dialog. Toggling a checkbox immediately
+        // triggers FetchArticles in AppCore, which fires NotifyArticleUpdate
+        // → the article list updates live behind the overlay.
+        if (dialog_depth == Dialog::CategoryFilter) {
+            const auto& topics = core.GetTopics();
+            int n = static_cast<int>(topics.size());
+            if (event == Event::Escape) {
+                dialog_depth = Dialog::None;
+                return true;
+            }
+            if (n == 0) return true;
+            if (key_bindings.matches(event, KeyBindings::Action::Next)) {
+                category_selected_index = std::min(category_selected_index + 1, n - 1);
+                return true;
+            }
+            if (key_bindings.matches(event, KeyBindings::Action::Previous)) {
+                category_selected_index = std::max(category_selected_index - 1, 0);
+                return true;
+            }
+            if (event == Event::Return || event == Event::Character(' ')) {
+                core.ToggleCategory(topics[static_cast<size_t>(category_selected_index)]);
+                return true;
+            }
+            if (event == Event::Character('a')) {
+                core.SetActiveCategories(std::set<std::string>(topics.begin(), topics.end()));
+                return true;
+            }
+            if (event == Event::Character('n')) {
+                core.SetActiveCategories({});
+                return true;
+            }
+            return true;
+        }
+
         // Handle keyword editor dialog
-        if (dialog_depth == 10) {
+        if (dialog_depth == Dialog::KeywordEditor) {
             if (event == Event::Return && !keyword_new_entry.empty()) {
                 keyword_edit_list.push_back(keyword_new_entry);
                 keyword_new_entry.clear();
@@ -1020,7 +1168,7 @@ void ArxivApp::SetupUI() {
             }
             if (event == Event::Escape) {
                 core.SaveKeywords(keyword_edit_list);
-                dialog_depth = 0;
+                dialog_depth = Dialog::None;
                 return true;
             }
             if (event.is_character()) {
@@ -1038,7 +1186,7 @@ void ArxivApp::SetupUI() {
                     note_project_name = core.GetProjectNameForFilter(core.GetFilterIndex());
                     note_article_link = articles[static_cast<size_t>(core.GetArticleIndex())].link;
                     note_edit_text = core.GetProjectNote(note_project_name, note_article_link);
-                    dialog_depth = 7;
+                    dialog_depth = Dialog::Notes;
                 }
             }
             return true;
@@ -1061,7 +1209,56 @@ void ArxivApp::SetupUI() {
             keyword_edit_list = core.GetKeywords();
             keyword_new_entry.clear();
             keyword_selected_index = 0;
-            dialog_depth = 10;
+            dialog_depth = Dialog::KeywordEditor;
+            return true;
+        }
+
+        // Open arXiv category filter
+        if (key_bindings.matches(event, KeyBindings::Action::FilterCategories)) {
+            category_selected_index = 0;
+            dialog_depth = Dialog::CategoryFilter;
+            return true;
+        }
+
+        // Toggle selection of the focused article (used by Export Selected Digest).
+        if (key_bindings.matches(event, KeyBindings::Action::ToggleSelection)) {
+            auto articles = core.GetCurrentArticles();
+            if (!articles.empty()) {
+                int idx = core.GetArticleIndex();
+                if (idx >= 0 && idx < static_cast<int>(articles.size())) {
+                    if (m_recorder) m_recorder->RecordEvent(
+                        "app/toggle_selection",
+                        "link=" + articles[static_cast<size_t>(idx)].link);
+                    core.ToggleSelection(articles[static_cast<size_t>(idx)].link);
+                }
+            }
+            return true;
+        }
+
+        // Export selected articles as a markdown digest + bundle their PDFs
+        // into <download_dir>/<YYYY-MM-DD>/. Path is logged via spdlog;
+        // failure surfaces in the Error overlay.
+        if (key_bindings.matches(event, KeyBindings::Action::ExportSelectedDigest)) {
+            std::string dir = core.ExportSelectedDigest();
+            if (dir.empty()) {
+                err_msg = core.GetSelectionCount() == 0
+                              ? "No articles selected (Space to select)"
+                              : "Failed to export digest";
+                dialog_depth = Dialog::Error;
+            }
+            return true;
+        }
+
+        // Export selected articles into the configured Obsidian vault.
+        if (key_bindings.matches(event, KeyBindings::Action::ExportToObsidian)) {
+            std::string path = core.ExportSelectedToObsidian();
+            if (path.empty()) {
+                if (core.GetSelectionCount() == 0)
+                    err_msg = "No articles selected (Space to select)";
+                else
+                    err_msg = "Obsidian export failed — set 'obsidian_vault' in .arxiv-tui.yml";
+                dialog_depth = Dialog::Error;
+            }
             return true;
         }
 
@@ -1082,7 +1279,7 @@ void ArxivApp::SetupUI() {
             if (core.GetFilterView() == AppCore::FilterView::Project) {
                 export_project_name = core.GetProjectNameForFilter(core.GetFilterIndex());
                 export_format_index = 0;
-                dialog_depth = 8;
+                dialog_depth = Dialog::Export;
             }
             return true;
         }
@@ -1090,7 +1287,7 @@ void ArxivApp::SetupUI() {
         // Open import dialog
         if (key_bindings.matches(event, KeyBindings::Action::ImportProject)) {
             import_path.clear();
-            dialog_depth = 9;
+            dialog_depth = Dialog::Import;
             return true;
         }
 
@@ -1105,7 +1302,7 @@ void ArxivApp::SetupUI() {
         if (key_bindings.matches(event, KeyBindings::Action::RateArticle)) {
             auto articles = core.GetCurrentArticles();
             if (!articles.empty()) {
-                dialog_depth = 6;
+                dialog_depth = Dialog::Rating;
                 int existing = core.GetArticleRating(
                     articles[static_cast<size_t>(core.GetArticleIndex())].link);
                 pending_rating = existing > 0 ? existing : 3;
@@ -1130,8 +1327,8 @@ void ArxivApp::SetupUI() {
             return true;
         }
         if(key_bindings.matches(event, KeyBindings::Action::Quit) || event == Event::Escape) {
-            if (dialog_depth > 0) {
-                dialog_depth = 0;
+            if (dialog_depth != Dialog::None) {
+                dialog_depth = Dialog::None;
                 err_msg = "";
                 return true;
             }
@@ -1139,7 +1336,7 @@ void ArxivApp::SetupUI() {
             return true;
         }
 
-        if (dialog_depth == 1) {
+        if (dialog_depth == Dialog::NewProject) {
             if (event == Event::Return) {
                 if (!new_project_name.empty()) {
                     core.AddProject(new_project_name);
@@ -1149,7 +1346,7 @@ void ArxivApp::SetupUI() {
                         if (m_recorder) m_recorder->RecordSetProjectParent(new_project_name, parent_for_new_project);
                     }
                 }
-                dialog_depth = 0;
+                dialog_depth = Dialog::None;
                 return true;
             }
             if (event.is_character()) {
@@ -1162,7 +1359,7 @@ void ArxivApp::SetupUI() {
                 }
                 return true;
             }
-        } else if (dialog_depth == 2) {
+        } else if (dialog_depth == Dialog::AssignProject) {
             if (event == Event::Return) {
                 auto articles = core.GetCurrentArticles();
                 if (!articles.empty()) {
@@ -1177,7 +1374,7 @@ void ArxivApp::SetupUI() {
                         }
                     }
                 }
-                dialog_depth = 0;
+                dialog_depth = Dialog::None;
                 return true;
             }
             if(key_bindings.matches(event, KeyBindings::Action::Next)) {
@@ -1206,10 +1403,15 @@ void ArxivApp::SetupUI() {
     });
 
     // Set up UI refresh callback
-    core.SetArticleUpdateCallback([&]() { RefreshUI(); });
+    core.SetArticleUpdateCallback([&]() {
+        if (m_recorder) m_recorder->RecordEvent("app/article_update_callback");
+        RefreshUI();
+    });
 
     // Setup animation
     refresh_ui = std::thread([&] {
+        if (m_recorder) m_recorder->RecordEvent("app/refresh_thread_started");
+        long long tick = 0;
         while (refresh_ui_continue) {
             using namespace std::chrono_literals;
             std::this_thread::sleep_for(0.05s);
@@ -1218,6 +1420,12 @@ void ArxivApp::SetupUI() {
                 core.TryRefetchIfNeeded();
             });
             screen.Post(Event::Custom);
+            // Sample a tick every ~1s so the log shows the refresh loop is
+            // alive without flooding it.
+            if (m_recorder && (tick++ % 20) == 0) {
+                m_recorder->RecordEvent("app/refresh_tick",
+                                        std::string("fetching=") + (core.IsFetching() ? "1" : "0"));
+            }
         }
     });
 }
