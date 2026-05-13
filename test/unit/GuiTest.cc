@@ -97,7 +97,7 @@ TEST_CASE("format_date formats a UTC timestamp as YYYY-MM-DD", "[gui][format_dat
 TEST_CASE("ArxivGuiApp render does not crash with empty article list", "[gui][smoke]") {
     ImGuiHeadless imgui;
     CoreFixture   fix;
-    ArxivGuiApp   app(fix.core);
+    ArxivGuiApp   app(fix.core, fix.config);
 
     SECTION("single frame") {
         REQUIRE_NOTHROW(imgui.frame([&]{ app.render(); }));
@@ -114,7 +114,7 @@ TEST_CASE("ArxivGuiApp render does not crash with populated article list", "[gui
     CoreFixture   fix;
     fix.db->setArticles(sample_articles);
     fix.core.SetFilterIndex(AppCore::FilterView::All);
-    ArxivGuiApp app(fix.core);
+    ArxivGuiApp app(fix.core, fix.config);
 
     SECTION("single frame") {
         REQUIRE_NOTHROW(imgui.frame([&]{ app.render(); }));
@@ -133,7 +133,7 @@ TEST_CASE("ArxivGuiApp render does not crash with bookmarked articles", "[gui][s
     // sample_articles[1] has bookmarked = true
     fix.db->setBookmarkedArticles({sample_articles[1]});
     fix.core.SetFilterIndex(AppCore::FilterView::Bookmarks);
-    ArxivGuiApp app(fix.core);
+    ArxivGuiApp app(fix.core, fix.config);
 
     REQUIRE_NOTHROW(imgui.frame([&]{ app.render(); }));
 }
@@ -145,7 +145,7 @@ TEST_CASE("ArxivGuiApp render does not crash with bookmarked articles", "[gui][s
 TEST_CASE("ArxivGuiApp detail panel handles out-of-range index gracefully", "[gui]") {
     ImGuiHeadless imgui;
     CoreFixture   fix;
-    ArxivGuiApp   app(fix.core);
+    ArxivGuiApp   app(fix.core, fix.config);
 
     SECTION("index 0 with empty list — shows placeholder, no crash") {
         fix.core.SetArticleIndex(0);
@@ -175,7 +175,7 @@ TEST_CASE("Long titles are truncated to 80 characters", "[gui]") {
 
     fix.db->setArticles({long_title_article});
     fix.core.SetFilterIndex(AppCore::FilterView::All);
-    ArxivGuiApp app(fix.core);
+    ArxivGuiApp app(fix.core, fix.config);
 
     // Rendering must not crash (the substr call is the risk).
     REQUIRE_NOTHROW(imgui.frame([&]{ app.render(); }));
@@ -190,7 +190,7 @@ TEST_CASE("Quit callback is wired up correctly", "[gui]") {
     CoreFixture   fix;
 
     bool called = false;
-    ArxivGuiApp app(fix.core, [&called]{ called = true; });
+    ArxivGuiApp app(fix.core, fix.config, [&called]{ called = true; });
 
     SECTION("callback not triggered by a plain render") {
         imgui.frame([&]{ app.render(); });
@@ -205,7 +205,7 @@ TEST_CASE("Quit callback is wired up correctly", "[gui]") {
 TEST_CASE("ArxivGuiApp reads filter options from AppCore", "[gui]") {
     ImGuiHeadless imgui;
     CoreFixture   fix;
-    ArxivGuiApp   app(fix.core);
+    ArxivGuiApp   app(fix.core, fix.config);
 
     const auto opts = fix.core.GetFilterOptions();
     REQUIRE(!opts.empty());
@@ -227,7 +227,7 @@ TEST_CASE("Article index changes are reflected in AppCore state", "[gui]") {
     CoreFixture   fix;
     fix.db->setArticles(sample_articles);
     fix.core.SetFilterIndex(AppCore::FilterView::All);
-    ArxivGuiApp app(fix.core);
+    ArxivGuiApp app(fix.core, fix.config);
 
     imgui.frame([&]{ app.render(); });
 
@@ -249,7 +249,7 @@ TEST_CASE("Article index changes are reflected in AppCore state", "[gui]") {
 TEST_CASE("SetSearchQuery moves AppCore into search filter state", "[gui]") {
     ImGuiHeadless imgui;
     CoreFixture   fix;
-    ArxivGuiApp   app(fix.core);
+    ArxivGuiApp   app(fix.core, fix.config);
 
     imgui.frame([&]{ app.render(); });
 
@@ -280,7 +280,7 @@ TEST_CASE("ArxivGuiApp renders correctly when a category is toggled off", "[gui]
     CoreFixture   fix;
     fix.db->setArticles(sample_articles);
     fix.core.SetFilterIndex(AppCore::FilterView::All);
-    ArxivGuiApp app(fix.core);
+    ArxivGuiApp app(fix.core, fix.config);
 
     // sample_articles contains cs.AI and math.PR categories
     fix.core.ToggleCategory("cs.AI");

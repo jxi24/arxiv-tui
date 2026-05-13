@@ -68,7 +68,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 330");
 
-    ArxivGuiApp app(core, [window]() {
+    ArxivGuiApp app(core, config, [window]() {
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     });
 
