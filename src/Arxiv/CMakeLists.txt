@@ -7,6 +7,7 @@ add_library(libarxiv-core
     Fetcher.cc
     DatabaseManager.cc
     Config.cc
+    GuiStyle.cc
     KeyBindings.cc
     LatexUtils.cc
     Ranker.cc
