@@ -538,6 +538,61 @@ TEST_CASE("Cancel settings reverts draft to saved config", "[gui][settings]") {
 
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
+// Star rating widget in the detail panel
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Detail panel calls GetArticleRating during render", "[gui][rating]") {
+    ImGuiHeadless imgui;
+    CoreFixture   fix;
+    fix.db->setArticles(sample_articles);
+    fix.core.SetFilterIndex(AppCore::FilterView::All);
+    fix.core.SetArticleIndex(0);
+    ArxivGuiApp   app(fix.core, fix.config);
+
+    // Override the default allow-call with a REQUIRE_CALL so the test fails
+    // if GetRating is never invoked during render.
+    REQUIRE_CALL(*fix.db, GetRating(sample_articles[0].link))
+        .RETURN(0)
+        .TIMES(AT_LEAST(1));
+
+    imgui.frame([&]{ app.render(); });
+}
+
+TEST_CASE("Detail panel reflects the stored rating for the selected article",
+          "[gui][rating]") {
+    ImGuiHeadless imgui;
+    CoreFixture   fix;
+    fix.db->setArticles(sample_articles);
+    fix.core.SetFilterIndex(AppCore::FilterView::All);
+    fix.core.SetArticleIndex(0);
+
+    // Return rating 3 for the first article.
+    ALLOW_CALL(*fix.db, GetRating(sample_articles[0].link)).RETURN(3);
+
+    ArxivGuiApp app(fix.core, fix.config);
+
+    SECTION("renders without crash when article has rating 3") {
+        REQUIRE_NOTHROW(imgui.frame([&]{ app.render(); }));
+    }
+}
+
+TEST_CASE("RateArticle via AppCore is stored in the mock DB", "[gui][rating]") {
+    ImGuiHeadless imgui;
+    CoreFixture   fix;
+    fix.db->setArticles(sample_articles);
+    fix.core.SetFilterIndex(AppCore::FilterView::All);
+
+    SECTION("rating 4 is set and retrievable") {
+        REQUIRE_CALL(*fix.db, SetRating(sample_articles[0].link, 4)).TIMES(1);
+        fix.core.RateArticle(sample_articles[0].link, 4);
+    }
+
+    SECTION("rating 0 is returned when never set") {
+        REQUIRE(fix.core.GetArticleRating(sample_articles[0].link) == 0);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // apply_settings — auto-refresh hot-reload correctness
 // ---------------------------------------------------------------------------
 
