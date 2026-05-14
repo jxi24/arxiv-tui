@@ -655,6 +655,68 @@ TEST_CASE("apply_settings does not restart auto-refresh when interval is unchang
 }
 
 // ---------------------------------------------------------------------------
+// Key bindings wired from Config
+// ---------------------------------------------------------------------------
+
+TEST_CASE("ArxivGuiApp::key_for returns correct ImGuiKey for default bindings",
+          "[gui][keybindings]") {
+    ImGuiHeadless imgui;
+    CoreFixture   fix;
+    // Default config has "next"→"j", "previous"→"k", etc.
+    ArxivGuiApp app(fix.core, fix.config);
+
+    SECTION("next maps to J") {
+        REQUIRE(app.key_for("next") == ImGuiKey_J);
+    }
+    SECTION("previous maps to K") {
+        REQUIRE(app.key_for("previous") == ImGuiKey_K);
+    }
+    SECTION("unknown action returns None") {
+        REQUIRE(app.key_for("nonexistent") == ImGuiKey_None);
+    }
+}
+
+TEST_CASE("ArxivGuiApp::key_for reflects custom key mappings from Config",
+          "[gui][keybindings]") {
+    ImGuiHeadless imgui;
+    CoreFixture   fix;
+
+    fix.config.set_key_mappings({
+        {"next",     "n"},
+        {"previous", "m"},
+        {"bookmark", "x"},
+    });
+    ArxivGuiApp app(fix.core, fix.config);
+
+    SECTION("custom next key maps to N") {
+        REQUIRE(app.key_for("next") == ImGuiKey_N);
+    }
+    SECTION("custom previous key maps to M") {
+        REQUIRE(app.key_for("previous") == ImGuiKey_M);
+    }
+    SECTION("custom bookmark key maps to X") {
+        REQUIRE(app.key_for("bookmark") == ImGuiKey_X);
+    }
+}
+
+TEST_CASE("Render with custom key mappings does not crash", "[gui][keybindings]") {
+    ImGuiHeadless imgui;
+    CoreFixture   fix;
+    fix.config.set_key_mappings({
+        {"next",     "n"},
+        {"previous", "p"},
+        {"bookmark", "b"},
+        {"search",   "f"},
+        {"settings", "s"},
+    });
+    fix.db->setArticles(sample_articles);
+    fix.core.SetFilterIndex(AppCore::FilterView::All);
+    ArxivGuiApp app(fix.core, fix.config);
+
+    REQUIRE_NOTHROW(imgui.frame([&]{ app.render(); }));
+}
+
+// ---------------------------------------------------------------------------
 // Status bar smoke
 // ---------------------------------------------------------------------------
 
