@@ -35,6 +35,10 @@ public:
         m_expectations.push_back(
             NAMED_ALLOW_CALL(*this, GetRating(ANY(std::string)))
                 .RETURN(0));
+        // Default: article belongs to no projects unless overridden
+        m_expectations.push_back(
+            NAMED_ALLOW_CALL(*this, GetProjectsForArticle(ANY(std::string)))
+                .RETURN(std::vector<std::string>{}));
         // Default: all projects are top-level (no parent)
         m_expectations.push_back(
             NAMED_ALLOW_CALL(*this, GetProjectParent(ANY(std::string)))

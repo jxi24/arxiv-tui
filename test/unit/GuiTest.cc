@@ -748,14 +748,7 @@ static void setup_project_fixture(CoreFixture &fix) {
     fix.db->setArticles(sample_articles);
     fix.core.SetFilterIndex(AppCore::FilterView::All);
     fix.core.SetArticleIndex(0);
-
-    // The first sample article belongs to "proj-a".
-    ALLOW_CALL(*fix.db, GetProjectsForArticle(sample_articles[0].link))
-        .RETURN(std::vector<std::string>{"proj-a"});
-    ALLOW_CALL(*fix.db, GetProjectsForArticle(ANY(std::string)))
-        .RETURN(std::vector<std::string>{});
-    ALLOW_CALL(*fix.db, GetProjectNote(ANY(std::string), ANY(std::string)))
-        .RETURN(std::string{});
+    // Mock defaults handle GetProjectsForArticle (→ {}) and GetProjectNote (→ "").
 }
 
 TEST_CASE("Project dialog opens and renders without crash", "[gui][projects]") {

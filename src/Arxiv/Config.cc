@@ -17,16 +17,16 @@ void Config::load_from_file(const std::string &config_file) {
         recommend_threshold_ = 3.5f;
         retrain_interval_    = 5;
         key_mappings_ = {
-            {"next",            "j"},
-            {"previous",        "k"},
-            {"quit",            "q"},
-            {"bookmark",        "b"},
-            {"search",          "/"},
-            {"settings",        ","},
-            {"create_project",  "p"},
-            {"delete_project",  "x"},
-            {"download_article","d"},
-            {"show_detail",     "a"},
+            {"next",             "j"},
+            {"previous",         "k"},
+            {"quit",             "q"},
+            {"bookmark",         "b"},
+            {"search",           "/"},
+            {"settings",         ","},
+            {"manage_projects",  "p"},
+            {"delete_project",   "x"},
+            {"download_article", "d"},
+            {"show_detail",      "a"},
         };
         save_to_file(config_file);
         return;

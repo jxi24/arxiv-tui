@@ -134,8 +134,9 @@ void ArxivGuiApp::render() {
 
     ImGui::End();
 
-    if (m_show_search_dialog) render_search_dialog();
-    if (m_show_settings)      render_settings_panel();
+    if (m_show_search_dialog)  render_search_dialog();
+    if (m_show_project_dialog) render_project_dialog();
+    if (m_show_settings)       render_settings_panel();
 }
 
 // ---------------------------------------------------------------------------
@@ -266,6 +267,24 @@ void ArxivGuiApp::apply_settings() {
 
     if (m_draft_topics != m_core.GetTopics())
         m_core.FetchArticles();
+}
+
+void ArxivGuiApp::open_project_dialog() {
+    const auto articles = m_core.GetCurrentArticles();
+    const int idx = m_core.GetArticleIndex();
+    if (articles.empty() || idx < 0 || idx >= static_cast<int>(articles.size()))
+        return; // no article selected — do not open
+
+    const auto &a = articles[static_cast<size_t>(idx)];
+    m_proj_note_bufs.clear();
+    for (const auto &proj : m_core.GetProjects()) {
+        auto &buf = m_proj_note_bufs[proj];
+        buf.fill(0);
+        const std::string note = m_core.GetProjectNote(proj, a.link);
+        std::strncpy(buf.data(), note.c_str(), 255);
+    }
+    m_new_project_buf[0] = '\0';
+    m_show_project_dialog = true;
 }
 
 void ArxivGuiApp::save_settings() {

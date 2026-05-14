@@ -7,6 +7,7 @@
 #include <Arxiv/Config.hh>
 #include <Arxiv/GuiStyle.hh>
 
+#include <array>
 #include <chrono>
 #include <functional>
 #include <string>
@@ -40,6 +41,10 @@ public:
     void apply_settings();
     void save_settings();
 
+    // Project dialog — open only when an article is selected.
+    // Sets m_show_project_dialog and populates per-project note buffers.
+    void open_project_dialog();
+
     // Returns the ImGuiKey bound to the named action, or ImGuiKey_None.
     ImGuiKey key_for(const std::string &action) const;
 
@@ -56,6 +61,10 @@ public:
     char                                   m_draft_new_topic[64]{};
     std::vector<Arxiv::Config::KeyMapping> m_draft_keys;
     std::string                            m_capturing_action;
+
+    // ---- Project dialog state -------------------------------------------
+    bool m_show_project_dialog{false};
+    char m_new_project_buf[128]{};
 
 private:
     Arxiv::AppCore       &m_core;
@@ -79,11 +88,16 @@ private:
     void render_article_panel(float width, float height);
     void render_detail_panel(float width, float height);
     void render_search_dialog();
+    void render_project_dialog();
     void render_settings_panel();
     void render_settings_appearance();
     void render_settings_articles();
     void render_settings_keybindings();
     void render_status_bar();
+
+    // Per-project note buffers — populated by open_project_dialog(), written
+    // back to AppCore on InputText deactivation inside render_project_dialog().
+    std::unordered_map<std::string, std::array<char, 256>> m_proj_note_bufs;
 
     // ---- Search dialog state --------------------------------------------
     bool m_show_search_dialog{false};

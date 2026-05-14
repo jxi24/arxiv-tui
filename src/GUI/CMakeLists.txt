@@ -36,6 +36,7 @@ add_library(arxiv-gui-lib STATIC
     panels/FilterPanel.cc
     panels/ArticlePanel.cc
     panels/DetailPanel.cc
+    panels/ProjectDialog.cc
     panels/SettingsPanel.cc
 )
 target_include_directories(arxiv-gui-lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

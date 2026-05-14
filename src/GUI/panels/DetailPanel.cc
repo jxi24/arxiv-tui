@@ -72,6 +72,9 @@ void ArxivGuiApp::render_detail_panel(float width, float height) {
     ImGui::SameLine();
     if (ImGui::SmallButton("Copy link"))
         ImGui::SetClipboardText(a.link.c_str());
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Projects\xe2\x80\xa6"))
+        open_project_dialog();
 
     ImGui::EndChild();
 }
