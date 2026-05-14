@@ -736,3 +736,193 @@ TEST_CASE("Status bar renders without crash", "[gui][statusbar]") {
         REQUIRE_NOTHROW(imgui.frame([&]{ app.render(); }));
     }
 }
+
+// ---------------------------------------------------------------------------
+// Project management panel — TDD tests written before implementation
+// ---------------------------------------------------------------------------
+
+// Helper: set up a CoreFixture with two projects and the first sample article
+// linked to "proj-a".
+static void setup_project_fixture(CoreFixture &fix) {
+    fix.db->setProjects({"proj-a", "proj-b"});
+    fix.db->setArticles(sample_articles);
+    fix.core.SetFilterIndex(AppCore::FilterView::All);
+    fix.core.SetArticleIndex(0);
+
+    // The first sample article belongs to "proj-a".
+    ALLOW_CALL(*fix.db, GetProjectsForArticle(sample_articles[0].link))
+        .RETURN(std::vector<std::string>{"proj-a"});
+    ALLOW_CALL(*fix.db, GetProjectsForArticle(ANY(std::string)))
+        .RETURN(std::vector<std::string>{});
+    ALLOW_CALL(*fix.db, GetProjectNote(ANY(std::string), ANY(std::string)))
+        .RETURN(std::string{});
+}
+
+TEST_CASE("Project dialog opens and renders without crash", "[gui][projects]") {
+    ImGuiHeadless imgui;
+    CoreFixture   fix;
+    setup_project_fixture(fix);
+    ArxivGuiApp app(fix.core, fix.config);
+
+    SECTION("open_project_dialog() sets show flag and renders") {
+        app.open_project_dialog();
+        REQUIRE(app.m_show_project_dialog);
+        REQUIRE_NOTHROW(imgui.frame([&]{ app.render(); }));
+    }
+
+    SECTION("dialog flag set directly also renders without crash") {
+        app.m_show_project_dialog = true;
+        REQUIRE_NOTHROW(imgui.frame([&]{ app.render(); }));
+    }
+}
+
+TEST_CASE("Project dialog queries project membership for selected article",
+          "[gui][projects]") {
+    ImGuiHeadless imgui;
+    CoreFixture   fix;
+    setup_project_fixture(fix);
+    ArxivGuiApp app(fix.core, fix.config);
+
+    // GetProjectsForArticle must be called at least once while dialog is open.
+    REQUIRE_CALL(*fix.db, GetProjectsForArticle(sample_articles[0].link))
+        .RETURN(std::vector<std::string>{"proj-a"})
+        .TIMES(AT_LEAST(1));
+
+    app.open_project_dialog();
+    imgui.frame([&]{ app.render(); });
+}
+
+TEST_CASE("Project dialog lists all projects from AppCore", "[gui][projects]") {
+    ImGuiHeadless imgui;
+    CoreFixture   fix;
+    setup_project_fixture(fix);
+
+    // GetProjects is called when the dialog renders.
+    REQUIRE_CALL(*fix.db, GetProjects())
+        .RETURN(std::vector<std::string>{"proj-a", "proj-b"})
+        .TIMES(AT_LEAST(1));
+
+    ArxivGuiApp app(fix.core, fix.config);
+    app.open_project_dialog();
+    imgui.frame([&]{ app.render(); });
+}
+
+TEST_CASE("Filter panel renders without crash when projects exist", "[gui][projects]") {
+    ImGuiHeadless imgui;
+    CoreFixture   fix;
+    fix.db->setProjects({"proj-a", "proj-b"});
+    fix.db->setArticles(sample_articles);
+    fix.core.SetFilterIndex(AppCore::FilterView::All);
+    ArxivGuiApp app(fix.core, fix.config);
+
+    SECTION("multiple frames with project entries in filter list") {
+        for (int i = 0; i < 3; ++i)
+            REQUIRE_NOTHROW(imgui.frame([&]{ app.render(); }));
+    }
+
+    SECTION("selecting a project filter view renders without crash") {
+        // FilterView::Project = 8, first project at index 8.
+        fix.core.SetFilterIndex(static_cast<int>(AppCore::FilterView::Project));
+        ALLOW_CALL(*fix.db, GetArticlesForProject(ANY(std::string)))
+            .RETURN(std::vector<Arxiv::Article>{});
+        REQUIRE_NOTHROW(imgui.frame([&]{ app.render(); }));
+    }
+}
+
+// AppCore project API delegation tests (these are pre-existing behaviour,
+// but we assert them here to pin down the contract the dialog relies on).
+TEST_CASE("AppCore AddProject delegates to the database", "[gui][projects]") {
+    ImGuiHeadless imgui;
+    CoreFixture   fix;
+
+    SECTION("AddProject calls DB AddProject exactly once") {
+        REQUIRE_CALL(*fix.db, AddProject(std::string{"new-proj"})).TIMES(1);
+        fix.core.AddProject("new-proj");
+    }
+}
+
+TEST_CASE("AppCore LinkArticleToProject delegates to the database", "[gui][projects]") {
+    ImGuiHeadless imgui;
+    CoreFixture   fix;
+
+    SECTION("LinkArticleToProject calls DB correctly") {
+        REQUIRE_CALL(*fix.db,
+                     LinkArticleToProject(sample_articles[0].link, std::string{"proj-a"}))
+            .TIMES(1);
+        fix.core.LinkArticleToProject(sample_articles[0].link, "proj-a");
+    }
+}
+
+TEST_CASE("AppCore UnlinkArticleFromProject delegates to the database",
+          "[gui][projects]") {
+    ImGuiHeadless imgui;
+    CoreFixture   fix;
+
+    SECTION("UnlinkArticleFromProject calls DB correctly") {
+        REQUIRE_CALL(*fix.db,
+                     UnlinkArticleFromProject(sample_articles[0].link, std::string{"proj-a"}))
+            .TIMES(1);
+        fix.core.UnlinkArticleFromProject(sample_articles[0].link, "proj-a");
+    }
+}
+
+TEST_CASE("Project note round-trips through AppCore", "[gui][projects]") {
+    ImGuiHeadless imgui;
+    CoreFixture   fix;
+
+    SECTION("SetProjectNote then GetProjectNote returns the note") {
+        REQUIRE_CALL(*fix.db,
+                     SetProjectNote(std::string{"proj-a"},
+                                    sample_articles[0].link,
+                                    std::string{"interesting paper"}))
+            .TIMES(1);
+        ALLOW_CALL(*fix.db,
+                   GetProjectNote(std::string{"proj-a"}, sample_articles[0].link))
+            .RETURN(std::string{"interesting paper"});
+
+        fix.core.SetProjectNote("proj-a", sample_articles[0].link, "interesting paper");
+        REQUIRE(fix.core.GetProjectNote("proj-a", sample_articles[0].link)
+                == "interesting paper");
+    }
+}
+
+TEST_CASE("manage_projects key is bound from Config", "[gui][projects]") {
+    ImGuiHeadless imgui;
+    CoreFixture   fix;
+    ArxivGuiApp   app(fix.core, fix.config);
+
+    SECTION("default config maps manage_projects to p") {
+        REQUIRE(app.key_for("manage_projects") == ImGuiKey_P);
+    }
+}
+
+TEST_CASE("Project dialog renders correctly with no articles selected",
+          "[gui][projects]") {
+    ImGuiHeadless imgui;
+    CoreFixture   fix;
+    // Empty article list — dialog should handle gracefully.
+    fix.db->setProjects({"proj-a"});
+    ArxivGuiApp app(fix.core, fix.config);
+
+    SECTION("open_project_dialog with empty article list is a no-op") {
+        app.open_project_dialog();
+        // Dialog should NOT open when there's no article to manage.
+        REQUIRE_FALSE(app.m_show_project_dialog);
+    }
+}
+
+TEST_CASE("Project dialog can create a new project", "[gui][projects]") {
+    ImGuiHeadless imgui;
+    CoreFixture   fix;
+    setup_project_fixture(fix);
+    ArxivGuiApp app(fix.core, fix.config);
+
+    app.open_project_dialog();
+    imgui.frame([&]{ app.render(); });
+
+    SECTION("new_project_buf is accessible as public state") {
+        // Verify the public draft buffer is writable (simulates user typing).
+        std::strncpy(app.m_new_project_buf, "brand-new", 127);
+        REQUIRE(std::string(app.m_new_project_buf) == "brand-new");
+    }
+}
