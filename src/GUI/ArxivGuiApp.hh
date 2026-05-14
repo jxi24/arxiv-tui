@@ -10,6 +10,7 @@
 #include <chrono>
 #include <functional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 // Exposed so tests can verify date formatting directly.
@@ -39,6 +40,9 @@ public:
     void apply_settings();
     void save_settings();
 
+    // Returns the ImGuiKey bound to the named action, or ImGuiKey_None.
+    ImGuiKey key_for(const std::string &action) const;
+
     // ---- Draft state (written by ImGui widgets; readable by tests) -------
     GuiStyle m_draft_style;
     char     m_draft_download_dir[512]{};
@@ -59,6 +63,7 @@ private:
     std::function<void()> m_quit;
 
     GuiStyle m_style;
+    std::unordered_map<std::string, ImGuiKey> m_key_map;
 
     // ---- Settings panel state -------------------------------------------
     bool m_show_settings{false};

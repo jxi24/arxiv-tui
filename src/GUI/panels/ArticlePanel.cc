@@ -58,15 +58,15 @@ void ArxivGuiApp::render_article_panel(float width, float height) {
 
     if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
         const auto n = static_cast<int>(articles.size());
-        if (ImGui::IsKeyPressed(ImGuiKey_J) && m_core.GetArticleIndex() < n - 1)
+        if (ImGui::IsKeyPressed(key_for("next")) && m_core.GetArticleIndex() < n - 1)
             m_core.SetArticleIndex(m_core.GetArticleIndex() + 1);
-        if (ImGui::IsKeyPressed(ImGuiKey_K) && m_core.GetArticleIndex() > 0)
+        if (ImGui::IsKeyPressed(key_for("previous")) && m_core.GetArticleIndex() > 0)
             m_core.SetArticleIndex(m_core.GetArticleIndex() - 1);
-        if (ImGui::IsKeyPressed(ImGuiKey_B) && !articles.empty())
+        if (ImGui::IsKeyPressed(key_for("bookmark")) && !articles.empty())
             m_core.ToggleBookmark(articles[static_cast<size_t>(m_core.GetArticleIndex())].link);
-        if (ImGui::IsKeyPressed(ImGuiKey_Slash))
+        if (ImGui::IsKeyPressed(key_for("search")))
             m_show_search_dialog = true;
-        if (ImGui::IsKeyPressed(ImGuiKey_Comma) && ImGui::GetIO().KeyCtrl)
+        if (ImGui::IsKeyPressed(key_for("settings")))
             open_settings();
     }
 }

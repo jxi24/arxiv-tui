@@ -53,6 +53,25 @@ void apply_imgui_base_theme(const GuiStyle &style) {
 }
 
 // ---------------------------------------------------------------------------
+// Key string → ImGuiKey
+// ---------------------------------------------------------------------------
+
+static ImGuiKey key_string_to_imgui(const std::string &s) {
+    if (s.size() == 1) {
+        const char c = s[0];
+        if (c >= 'a' && c <= 'z') return static_cast<ImGuiKey>(ImGuiKey_A + (c - 'a'));
+        if (c >= 'A' && c <= 'Z') return static_cast<ImGuiKey>(ImGuiKey_A + (c - 'A'));
+        if (c == '/') return ImGuiKey_Slash;
+        if (c == ',') return ImGuiKey_Comma;
+        if (c == '.') return ImGuiKey_Period;
+        if (c == ';') return ImGuiKey_Semicolon;
+        if (c == '\'') return ImGuiKey_Apostrophe;
+        if (c >= '0' && c <= '9') return static_cast<ImGuiKey>(ImGuiKey_0 + (c - '0'));
+    }
+    return ImGuiKey_None;
+}
+
+// ---------------------------------------------------------------------------
 // Construction
 // ---------------------------------------------------------------------------
 
@@ -65,6 +84,14 @@ ArxivGuiApp::ArxivGuiApp(Arxiv::AppCore &core,
     , m_style(config.get_gui_style())
 {
     apply_imgui_base_theme(m_style);
+
+    for (const auto &km : m_config.get_key_mappings())
+        m_key_map[km.action] = key_string_to_imgui(km.key);
+}
+
+ImGuiKey ArxivGuiApp::key_for(const std::string &action) const {
+    auto it = m_key_map.find(action);
+    return it != m_key_map.end() ? it->second : ImGuiKey_None;
 }
 
 // ---------------------------------------------------------------------------
