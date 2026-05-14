@@ -1,4 +1,5 @@
 build/
+CMakeFiles/
 articles.db
 arxiv_tui.log
 downloads/
