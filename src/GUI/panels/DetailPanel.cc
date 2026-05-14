@@ -45,6 +45,25 @@ void ArxivGuiApp::render_detail_panel(float width, float height) {
     ImGui::Spacing();
     ImGui::Separator();
 
+    // Star rating widget (1–5). Filled stars shown in accent colour.
+    const int current_rating = m_core.GetArticleRating(a.link);
+    ImGui::TextColored(to_imvec4(m_style.disabled_color), "Rating:");
+    ImGui::SameLine();
+    for (int star = 1; star <= 5; ++star) {
+        ImGui::PushID(star);
+        const bool filled = (star <= current_rating);
+        if (filled)
+            ImGui::PushStyleColor(ImGuiCol_Text, to_imvec4(m_style.bookmark_color));
+        if (ImGui::SmallButton(filled ? "\xe2\x98\x85" : "\xe2\x98\x86"))
+            m_core.RateArticle(a.link, (star == current_rating) ? 0 : star);
+        if (filled)
+            ImGui::PopStyleColor();
+        ImGui::SameLine();
+        ImGui::PopID();
+    }
+    ImGui::NewLine();
+
+    ImGui::Spacing();
     if (ImGui::SmallButton(a.bookmarked ? "Remove bookmark" : "Bookmark"))
         m_core.ToggleBookmark(a.link);
     ImGui::SameLine();
