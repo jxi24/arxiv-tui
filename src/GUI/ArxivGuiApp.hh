@@ -34,19 +34,12 @@ public:
 
     void render();
 
-private:
-    Arxiv::AppCore       &m_core;
-    Arxiv::Config        &m_config;
-    std::function<void()> m_quit;
+    // Settings actions — also invocable from tests.
+    void open_settings();
+    void apply_settings();
+    void save_settings();
 
-    // Active visual style (loaded from config on construction).
-    GuiStyle m_style;
-
-    // ---- Settings panel state ----------------------------------------
-    bool     m_show_settings{false};
-    int      m_settings_tab{0};
-
-    // Working copies of every editable setting (populated on open).
+    // ---- Draft state (written by ImGui widgets; readable by tests) -------
     GuiStyle m_draft_style;
     char     m_draft_download_dir[512]{};
     int      m_draft_auto_refresh{0};
@@ -55,21 +48,27 @@ private:
     char     m_draft_keywords[256]{};
     char     m_draft_obsidian[512]{};
     char     m_draft_ranker[256]{};
-    std::vector<std::string>              m_draft_topics;
-    char                                  m_draft_new_topic[64]{};
+    std::vector<std::string>               m_draft_topics;
+    char                                   m_draft_new_topic[64]{};
     std::vector<Arxiv::Config::KeyMapping> m_draft_keys;
-    std::string                           m_capturing_action; // "" = not capturing
+    std::string                            m_capturing_action;
 
-    // ---- Status bar state --------------------------------------------
+private:
+    Arxiv::AppCore       &m_core;
+    Arxiv::Config        &m_config;
+    std::function<void()> m_quit;
+
+    GuiStyle m_style;
+
+    // ---- Settings panel state -------------------------------------------
+    bool m_show_settings{false};
+    int  m_settings_tab{0};
+
+    // ---- Status bar state -----------------------------------------------
     char  m_status_flash[64]{};
     float m_status_flash_timer{0.0f};
 
-    // ---- Helpers ------------------------------------------------------
-    void open_settings();
-    void apply_settings();
-    void save_settings();
-
-    // ---- Render methods ----------------------------------------------
+    // ---- Render methods -------------------------------------------------
     void render_menu_bar();
     void render_filter_panel(float width, float height);
     void render_article_panel(float width, float height);
@@ -81,7 +80,7 @@ private:
     void render_settings_keybindings();
     void render_status_bar();
 
-    // ---- Search dialog state -----------------------------------------
+    // ---- Search dialog state --------------------------------------------
     bool m_show_search_dialog{false};
     char m_search_buf[512]{};
 };

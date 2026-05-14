@@ -31,7 +31,13 @@ target_include_directories(imgui_headless SYSTEM PUBLIC
 
 # ArxivGuiApp logic — no main(), no GLFW/OpenGL.
 # Linked by both the arxiv-gui binary and the gui_tests executable.
-add_library(arxiv-gui-lib STATIC ArxivGuiApp.cc)
+add_library(arxiv-gui-lib STATIC
+    ArxivGuiApp.cc
+    panels/FilterPanel.cc
+    panels/ArticlePanel.cc
+    panels/DetailPanel.cc
+    panels/SettingsPanel.cc
+)
 target_include_directories(arxiv-gui-lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(arxiv-gui-lib
     PUBLIC
