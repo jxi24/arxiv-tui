@@ -537,6 +537,69 @@ TEST_CASE("Cancel settings reverts draft to saved config", "[gui][settings]") {
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// apply_settings — auto-refresh hot-reload correctness
+// ---------------------------------------------------------------------------
+
+TEST_CASE("apply_settings starts auto-refresh when draft changes from 0 to non-zero",
+          "[gui][settings][apply]") {
+    ImGuiHeadless imgui;
+    CoreFixture   fix;
+
+    // Config starts with auto-refresh disabled.
+    fix.config.set_auto_refresh_minutes(0);
+    ArxivGuiApp app(fix.core, fix.config);
+    imgui.frame([&]{ app.render(); });
+
+    // Simulate user opening settings and changing the interval to 5.
+    app.open_settings();
+    app.m_draft_auto_refresh = 5;
+    app.apply_settings();
+
+    // AppCore must now be auto-refreshing.
+    REQUIRE(fix.core.IsAutoRefreshing());
+
+    // Cleanup so the test doesn't leave a background thread dangling.
+    fix.core.StopAutoRefresh();
+}
+
+TEST_CASE("apply_settings stops auto-refresh when draft changes from non-zero to 0",
+          "[gui][settings][apply]") {
+    ImGuiHeadless imgui;
+    CoreFixture   fix;
+
+    fix.config.set_auto_refresh_minutes(5);
+    ArxivGuiApp app(fix.core, fix.config);
+    fix.core.StartAutoRefresh();
+    REQUIRE(fix.core.IsAutoRefreshing());
+    imgui.frame([&]{ app.render(); });
+
+    // User opens settings and clears the interval.
+    app.open_settings();               // copies 5 from config into draft
+    app.m_draft_auto_refresh = 0;     // user changes to 0
+    app.apply_settings();
+
+    REQUIRE_FALSE(fix.core.IsAutoRefreshing());
+}
+
+TEST_CASE("apply_settings does not restart auto-refresh when interval is unchanged",
+          "[gui][settings][apply]") {
+    ImGuiHeadless imgui;
+    CoreFixture   fix;
+
+    fix.config.set_auto_refresh_minutes(0);
+    ArxivGuiApp app(fix.core, fix.config);
+    imgui.frame([&]{ app.render(); });
+
+    app.open_settings();
+    // Draft matches config — no change.
+    app.apply_settings();
+
+    // Should still be off.
+    REQUIRE_FALSE(fix.core.IsAutoRefreshing());
+}
+
+// ---------------------------------------------------------------------------
 // Status bar smoke
 // ---------------------------------------------------------------------------
 
