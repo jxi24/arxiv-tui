@@ -96,24 +96,26 @@ catch_discover_tests(unit_tests)
 catch_discover_tests(integration_tests)
 
 # --- GUI tests (headless ImGui, no display required) ---
-add_executable(gui_tests
-    unit/GuiTest.cc
-)
+if(ARXIV_TUI_BUILD_GUI)
+    add_executable(gui_tests
+        unit/GuiTest.cc
+    )
 
-target_link_libraries(gui_tests PRIVATE
-    Catch2::Catch2WithMain
-    trompeloeil
-    arxiv_tui_options
-    arxiv_tui_warnings
-    arxiv-gui-lib   # ArxivGuiApp + imgui_headless + libarxiv-tui
-)
+    target_link_libraries(gui_tests PRIVATE
+        Catch2::Catch2WithMain
+        trompeloeil
+        arxiv_tui_options
+        arxiv_tui_warnings
+        arxiv-gui-lib
+    )
 
-target_include_directories(gui_tests PRIVATE
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/test
-    ${CMAKE_SOURCE_DIR}/test/mocks
-    ${CMAKE_SOURCE_DIR}/test/fixtures
-    ${CMAKE_SOURCE_DIR}/src/GUI
-)
+    target_include_directories(gui_tests PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/test
+        ${CMAKE_SOURCE_DIR}/test/mocks
+        ${CMAKE_SOURCE_DIR}/test/fixtures
+        ${CMAKE_SOURCE_DIR}/src/GUI
+    )
 
-catch_discover_tests(gui_tests DISCOVERY_MODE PRE_TEST)
+    catch_discover_tests(gui_tests DISCOVERY_MODE PRE_TEST)
+endif()

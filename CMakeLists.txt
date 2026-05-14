@@ -62,6 +62,9 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_SOURCE_DIR}/CMake)
 # Ensure compiler supports filesystem and needed compiler flags
 find_package(Filesystem REQUIRED)
 
+# Build options
+option(ARXIV_TUI_BUILD_GUI "Build the ImGui GUI frontend (requires GLFW and OpenGL)" OFF)
+
 # Add dependencies
 include(CMake/CPM.cmake)
 include(Dependencies.txt)

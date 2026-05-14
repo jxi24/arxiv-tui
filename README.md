@@ -1,6 +1,9 @@
 # arxiv-tui
 
-A keyboard-driven terminal user interface for browsing, managing, and downloading arXiv research papers — built in C++17 with [FTXUI](https://github.com/ArthurSonzogni/FTXUI).
+A keyboard-driven interface for browsing, managing, and downloading arXiv research papers — built in C++17. Two frontends are available:
+
+- **Terminal UI (TUI)** — keyboard-driven, built with [FTXUI](https://github.com/ArthurSonzogni/FTXUI). Works in any terminal without a display server.
+- **GUI** *(optional)* — mouse-friendly window with settings panel and project management dialogs, built with [Dear ImGui](https://github.com/ocornut/imgui) + GLFW + OpenGL 3. Requires a display (X11/Wayland/macOS/Windows).
 
 ---
 
@@ -19,6 +22,7 @@ A keyboard-driven terminal user interface for browsing, managing, and downloadin
 - **Extended project management** — nest projects in a hierarchy, annotate articles with per-project notes, and export/import projects as Markdown, plain text, or JSON
 - **BibTeX export** — generate `.bib` files for individual articles, selections, or entire projects, with automatic InspireHEP lookup and metadata fallback
 - **Replay system and crash handler** — all UI actions are recorded to a JSONL replay log; on a crash, a report with backtrace and full replay is saved for debugging
+- **ImGui GUI** *(optional)* — graphical window with mouse support, inline settings panel, star-rating widget, project management dialogs, and configurable themes (Dark / Light / Catppuccin Frappe)
 
 ---
 
@@ -40,6 +44,8 @@ A keyboard-driven terminal user interface for browsing, managing, and downloadin
 
 ## Requirements
 
+### Terminal UI (always built)
+
 | Dependency | Version | Notes |
 |------------|---------|-------|
 | CMake | ≥ 3.17 | Build system |
@@ -48,9 +54,28 @@ A keyboard-driven terminal user interface for browsing, managing, and downloadin
 | libcurl | any | System package (bundled automatically if absent) |
 | Internet | — | Required on first build for CPM package downloads |
 
+### GUI (optional — `-DARXIV_TUI_BUILD_GUI=ON`)
+
+| Dependency | Version | Notes |
+|------------|---------|-------|
+| GLFW | 3.x | Fetched via CPM; requires system X11/Wayland dev headers on Linux |
+| OpenGL | 3.3+ | System package (`libgl-dev` / `mesa-libGL-devel`) |
+| Dear ImGui | v1.91.9b | Fetched via CPM automatically |
+
+On Debian/Ubuntu install the system prerequisites with:
+```bash
+sudo apt install libgl-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
+```
+On Fedora/RHEL:
+```bash
+sudo dnf install mesa-libGL-devel libX11-devel libXrandr-devel libXinerama-devel libXcursor-devel libXi-devel
+```
+
 ---
 
 ## Building
+
+### Terminal UI
 
 ```bash
 # Clone the repository
@@ -65,10 +90,28 @@ cmake --build build
 ./build/src/Arxiv/arxiv-tui
 ```
 
+### GUI (optional)
+
+```bash
+cmake -B build -DARXIV_TUI_BUILD_GUI=ON
+cmake --build build
+
+# Run the GUI
+./build/src/GUI/arxiv-gui
+```
+
+Both frontends share the same `.arxiv-tui.yml` config and `articles.db` database, so switching between them preserves all your articles, bookmarks, ratings, and projects.
+
 ### Build with tests
 
 ```bash
+# TUI tests only
 cmake -B build -DARXIV_TUI_ENABLE_TESTING=ON
+cmake --build build
+cd build && ctest --output-on-failure
+
+# TUI + GUI tests
+cmake -B build -DARXIV_TUI_ENABLE_TESTING=ON -DARXIV_TUI_BUILD_GUI=ON
 cmake --build build
 cd build && ctest --output-on-failure
 ```
@@ -183,12 +226,24 @@ arxiv-tui/
 │   ├── Config.hh           # YAML config loader/saver
 │   ├── DatabaseManager.hh  # SQLite3 persistence interface
 │   ├── Fetcher.hh          # arXiv RSS fetcher / PDF downloader
+│   ├── GuiStyle.hh         # ImGui theme / layout parameters (no ImGui dep)
 │   ├── KeyBindings.hh      # Keyboard action mapping
 │   ├── Ranker.hh           # TF-IDF + MLP article ranking model
 │   ├── Replay.hh           # JSONL action recorder and player
 │   └── CrashHandler.hh     # Signal-based crash handler with backtrace
-├── src/Arxiv/              # Implementations
+├── src/Arxiv/              # TUI + core implementations
+├── src/GUI/                # ImGui GUI frontend (built with -DARXIV_TUI_BUILD_GUI=ON)
+│   ├── ArxivGuiApp.hh/.cc  # Top-level ImGui application class
+│   ├── main.cc             # GUI entry point
+│   └── panels/             # Per-panel translation units
+│       ├── FilterPanel.cc
+│       ├── ArticlePanel.cc
+│       ├── DetailPanel.cc
+│       ├── ProjectDialog.cc
+│       └── SettingsPanel.cc
 └── test/                   # Catch2 unit tests + trompeloeil mocks
+    ├── unit/GuiTest.cc     # Headless ImGui tests (built with -DARXIV_TUI_BUILD_GUI=ON)
+    └── unit/GuiStyleTest.cc
 ```
 
 ---
@@ -207,8 +262,54 @@ arxiv-tui/
 | [SQLite3](https://sqlite.org) | system | Article persistence |
 | [Catch2](https://github.com/catchorg/Catch2) | 3.5.0 | Test framework |
 | [trompeloeil](https://github.com/rollbear/trompeloeil) | v47 | Mock objects |
+| [Dear ImGui](https://github.com/ocornut/imgui) | v1.91.9b | GUI rendering *(optional)* |
+| [GLFW](https://github.com/glfw/glfw) | 3.4 | Window/input for GUI *(optional)* |
 
-All dependencies except SQLite3 are fetched automatically via [CPM](https://github.com/cpm-cmake/CPM.cmake) on first build.
+All dependencies except SQLite3 are fetched automatically via [CPM](https://github.com/cpm-cmake/CPM.cmake) on first build. GLFW and ImGui are only fetched when `-DARXIV_TUI_BUILD_GUI=ON` is set.
+
+---
+
+## ImGui GUI
+
+The optional GUI frontend (`arxiv-gui`) provides a mouse-friendly graphical window alongside the full keyboard-driven TUI experience.
+
+### Layout
+
+```
+┌─ Filter ──┬──────── Articles ──────────────────────┬──── Detail ────────────┐
+│ All       │ [*] Higgs boson at NLO  Doe et al. 2024│ Higgs boson            │
+│ Bookmarks │     QCD corrections     Smith      2024│ production at NLO      │
+│ Today     │                                         │                        │
+│ Range     │                                         │ J. Doe et al.          │
+│ Search    │                                         │                        │
+│ Recommend.│                                         │ Abstract: ...          │
+│ Followed  │                                         │                        │
+│ New       │                                         │ ★★★☆☆ Rating           │
+│ [projects]│                                         │ [Bookmark] [Download]  │
+└───────────┴─────────────────────────────────────────┴────────────────────────┘
+```
+
+### Key features
+
+- **Mouse support** — click articles, checkboxes, and buttons; scroll lists with the mouse wheel.
+- **Star-rating widget** — click individual stars (☆/★) in the detail panel to rate 1–5; click the current star again to clear the rating.
+- **Project management dialog** — per-article checkbox list of all projects, inline note editor, and a new-project creation field — all in a single modal.
+- **Settings panel** — three tabs (Appearance, Articles, Key Bindings) let you change themes, download paths, ranking thresholds, topic lists, and key mappings without editing YAML by hand.
+- **Theme support** — Dark (default), Light, and Catppuccin Frappe color schemes; layout dimensions are adjustable via sliders.
+- **Config-driven key bindings** — all key bindings read from `.arxiv-tui.yml` at startup; the Key Bindings tab shows conflicts and lets you remap actions interactively.
+
+### Configuration (GUI-specific)
+
+The GUI reads the same `.arxiv-tui.yml` used by the TUI. A few keys are specific to the GUI:
+
+```yaml
+# All standard TUI keys apply plus:
+key_bindings:
+  - action: settings
+    key: ","          # open settings panel
+  - action: manage_projects
+    key: p            # open project management dialog
+```
 
 ---
 
@@ -247,6 +348,7 @@ The ranker is implemented in pure C++17 with no external ML dependencies:
 - **Extended project management** (v0.4) — hierarchical sub-projects, per-article notes scoped to a project, export as Markdown / plain text / JSON, import from JSON
 - **BibTeX export** (v0.5) — generate `.bib` files for individual articles, selections, or entire projects; InspireHEP API lookup with metadata fallback
 - **Replay system and crash handler** (v0.5) — JSONL action recording, `--replay` headless mode, signal-based crash reports with backtrace
+- **ImGui GUI frontend** (v0.6) — optional graphical window with settings panel, project management dialogs, star-rating widget, theme support, and config-driven key bindings; built with `-DARXIV_TUI_BUILD_GUI=ON`
 
 ---
 
