@@ -5,12 +5,32 @@ add_library(libarxiv-tui
     DatabaseManager.cc
     Config.cc
     KeyBindings.cc
+    LatexUtils.cc
+    Ranker.cc
+    Replay.cc
+    CrashHandler.cc
+    Views/FilterPane.cc
+    Views/ArticlePane.cc
+    Views/DetailView.cc
+    Views/HelpDialog.cc
+    Views/AssignProjectDialog.cc
+    Views/DateRangeDialog.cc
+    Views/SearchDialog.cc
+    Views/RatingDialog.cc
+    Views/NotesDialog.cc
+    Views/ExportDialog.cc
+    Views/ImportDialog.cc
+    Views/KeywordEditorDialog.cc
+    Views/CategoryFilterDialog.cc
+    Views/SettingsDialog.cc
+    Views/NewProjectDialog.cc
+    Views/MainRenderer.cc
 )
 target_link_libraries(libarxiv-tui PRIVATE arxiv_tui_options arxiv_tui_warnings
                                     PUBLIC spdlog::spdlog std::filesystem
                                            cpr::cpr ftxui::screen ftxui::dom
                                            ftxui::component SQLite::SQLite3 pugixml::pugixml
-                                           yaml-cpp::yaml-cpp)
+                                           yaml-cpp::yaml-cpp nlohmann_json::nlohmann_json)
 
 add_executable(arxiv-tui
     main.cc

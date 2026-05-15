@@ -231,21 +231,56 @@ Runtime files:
 
 | File | What it tests |
 |------|--------------|
-| `test/unit/DatabaseManagerTest.cc` | Article persistence, bookmarking, project CRUD |
+| `test/unit/DatabaseManagerTest.cc` | Mock-based article/project CRUD contracts |
+| `test/unit/DatabaseManagerRealTest.cc` | Real SQLite behaviour (special chars, search, ratings, hierarchy, notes) |
 | `test/unit/FetcherTest.cc` | RSS parsing, PDF download, error handling |
-| `test/unit/AppTest.cc` | AppCore filtering (category, date, search), project/bookmark logic |
+| `test/unit/AppTest.cc` | AppCore filtering, project/bookmark logic, edge cases |
+| `test/unit/RankerTest.cc` | Vocabulary fitting, training, prediction, persistence |
 
 ### Mocks
-- `test/mocks/DatabaseManagerMock.hh` — mocks all `DatabaseManager` virtual methods
-- `test/mocks/FetcherMock.hh` — mocks `Fetcher` virtual methods
+- `test/mocks/DatabaseManagerMock.hh` — mocks all `DatabaseManager` virtual methods; stores `NAMED_ALLOW_CALL` handles in `m_expectations` so they outlive helper function scopes
+- `test/mocks/FetcherMock.hh` — mocks `Fetcher` virtual methods (same handle-lifetime pattern)
 
 ### Fixtures
 - `test/fixtures/test_data.hh` — sample `Article` objects and a mock RSS XML string used across all tests
 
+### trompeloeil expectation lifetimes
+
+`ALLOW_CALL(obj, method())` stores its expectation handle in a compiler-generated local `auto` variable. **The expectation is destroyed as soon as that variable goes out of scope** (e.g. at the end of a constructor body or helper function). To keep an expectation alive for the lifetime of the mock object, use `NAMED_ALLOW_CALL` and push the returned `std::unique_ptr<trompeloeil::expectation>` into a `std::vector` member:
+
+```cpp
+m_expectations.push_back(
+    NAMED_ALLOW_CALL(*this, MyMethod(ANY(int))).RETURN(0));
+```
+
+Inside test bodies, plain `ALLOW_CALL` is fine because the generated local variable lives until the end of the enclosing `SECTION` or `TEST_CASE` block.
+
+---
+
+## Test-Driven Development (TDD)
+
+**All new behaviour must be developed using TDD.** The cycle is:
+
+1. **Write a failing test** that captures the expected behaviour or exposes the bug.
+2. **Run the test suite** and confirm the new test fails (red).
+3. **Write the minimum production code** needed to make the test pass — no more.
+4. **Run the test suite again** and confirm all tests pass (green).
+5. **Refactor** if needed; keep tests green throughout.
+
+### Rules
+
+- Tests are written *before* the implementation they exercise.
+- A test must fail for the right reason before any implementation is written. Commit the failing tests before the fix if that helps reviewers follow the history.
+- Do not write implementation code that is not covered by a failing test.
+- Do not write tests that trivially pass without any implementation work (those tests are not driving anything).
+- Prefer one assertion per `SECTION`; keep each section focused on a single behaviour.
+
 ### Adding a Test
-1. Write test cases in the appropriate `test/unit/` file using `TEST_CASE` / `SECTION` macros.
-2. Use the existing mocks via trompeloeil `REQUIRE_CALL` / `ALLOW_CALL`.
-3. Rebuild with `-DARXIV_TUI_ENABLE_TESTING=ON` and run `ctest`.
+1. Identify the behaviour to specify (new feature or bug).
+2. Write a `TEST_CASE` / `SECTION` in the appropriate `test/unit/` file.
+3. Rebuild with `-DARXIV_TUI_ENABLE_TESTING=ON` and confirm it **fails**.
+4. Implement the behaviour and confirm it **passes**.
+5. Check that all other tests still pass before committing.
 
 ---
 

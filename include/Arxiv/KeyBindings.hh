@@ -24,6 +24,19 @@ public:
         ShowHelp,
         SetDateRange,
         Search,
+        RateArticle,
+        ForceRetrain,
+        EditNote,
+        ExportProject,
+        ImportProject,
+        ExportBibTeX,
+        EditKeywords,
+        ExportDigest,
+        FilterCategories,
+        ToggleSelection,
+        ExportSelectedDigest,
+        ExportToObsidian,
+        Settings,
         GenerateBibtex
     };
 

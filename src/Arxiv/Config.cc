@@ -13,6 +13,8 @@ void Config::load_from_file(const std::string& config_file) {
         // Create default configuration
         article_settings_.download_dir = "downloads";
         article_settings_.topics = {"hep-ph", "hep-ex", "hep-lat", "hep-th"};
+        recommend_threshold_ = 3.5f;
+        retrain_interval_    = 5;
         
         // Default key mappings
         key_mappings_ = {
@@ -36,6 +38,26 @@ void Config::load_from_file(const std::string& config_file) {
         const auto& ds = config["article_settings"];
         article_settings_.download_dir = ds["download_dir"].as<std::string>();
         article_settings_.topics = ds["topics"].as<std::vector<std::string>>();
+    }
+
+    // Load recommendation threshold
+    if (config["recommend_threshold"]) {
+        recommend_threshold_ = config["recommend_threshold"].as<float>();
+    }
+
+    // Load retrain interval
+    if (config["retrain_interval"]) {
+        retrain_interval_ = config["retrain_interval"].as<int>();
+    }
+
+    // Load auto-refresh interval (optional; 0 = disabled)
+    if (config["auto_refresh_minutes"]) {
+        auto_refresh_minutes_ = config["auto_refresh_minutes"].as<int>();
+    }
+
+    // Load Obsidian vault path (optional; empty = feature disabled)
+    if (config["obsidian_vault"]) {
+        obsidian_vault_ = config["obsidian_vault"].as<std::string>();
     }
 
     // Load key mappings
@@ -68,6 +90,13 @@ void Config::save_to_file(const std::string& config_file) const {
         key_mappings.push_back(mapping_node);
     }
     config["key_mappings"] = key_mappings;
+
+    config["recommend_threshold"]  = recommend_threshold_;
+    config["retrain_interval"]     = retrain_interval_;
+    config["auto_refresh_minutes"] = auto_refresh_minutes_;
+    if (!obsidian_vault_.empty()) {
+        config["obsidian_vault"]   = obsidian_vault_;
+    }
 
     std::ofstream fout(config_file);
     fout << config;

@@ -36,6 +36,9 @@ CPMAddPackage(
     Name ftxui
     GIT_TAG main
     GITHUB_REPOSITORY ArthurSonzogni/FTXUI
+    OPTIONS
+        "FTXUI_BUILD_TESTS OFF"
+        "BUILD_SHARED_LIBS OFF"
 )
 add_library(ftxui::component ALIAS component)
 add_library(ftxui::dom ALIAS dom)
@@ -50,12 +53,40 @@ CPMAddPackage(
 
 CPMAddPackage(
     NAME yaml-cpp
-    VERSION 0.7.0
     GITHUB_REPOSITORY jbeder/yaml-cpp
-    GIT_TAG "yaml-cpp-0.7.0"
+    GIT_TAG a83cd31
     OPTIONS
         "YAML_BUILD_SHARED_LIBS ON"
         "YAML_CPP_BUILD_TESTS OFF"
         "YAML_CPP_BUILD_TOOLS OFF"
 )
 add_library(yaml-cpp::yaml-cpp ALIAS yaml-cpp)
+
+CPMAddPackage(
+    NAME nlohmann_json
+    VERSION 3.11.3
+    GITHUB_REPOSITORY nlohmann/json
+    GIT_TAG "v3.11.3"
+    OPTIONS
+        "JSON_BuildTests OFF"
+        "JSON_Install OFF"
+)
+
+# --- GUI dependencies ---
+
+CPMAddPackage(
+    NAME glfw
+    GIT_TAG 3.4
+    GITHUB_REPOSITORY glfw/glfw
+    OPTIONS
+        "GLFW_BUILD_DOCS OFF"
+        "GLFW_BUILD_TESTS OFF"
+        "GLFW_BUILD_EXAMPLES OFF"
+        "GLFW_INSTALL OFF"
+)
+
+CPMAddPackage(
+    NAME imgui
+    GIT_TAG v1.91.9b
+    GITHUB_REPOSITORY ocornut/imgui
+)

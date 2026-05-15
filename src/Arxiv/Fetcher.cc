@@ -5,11 +5,56 @@
 #include "spdlog/spdlog.h"
 #include "fmt/ranges.h"
 #include "pugixml.hpp"
+#include <nlohmann/json.hpp>
 #include <sstream>
 #include <fstream>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 using Arxiv::Fetcher;
 using Arxiv::Article;
+
+namespace {
+
+// arXiv API endpoint used by FetchSince — pulled out as a constant so a
+// future move (mirror, version pin) is one edit, not a string-search.
+constexpr std::string_view ARXIV_API_URL = "https://export.arxiv.org/api/query";
+
+// arXiv submittedDate query format is YYYYMMDDHHMI.
+constexpr std::string_view ARXIV_QUERY_FROM_FORMAT = "%Y%m%d0000";
+constexpr std::string_view ARXIV_QUERY_TO_FORMAT   = "%Y%m%d2359";
+
+// Apply every (find, replace) entry in `table` to `text` in order, in-place.
+// Both StyleLatex and ReplaceLatexAccents do this exact loop; isolating it
+// removes the duplicate find-and-advance bookkeeping.
+void apply_replacements(std::string& text,
+                        const std::vector<std::pair<std::string, std::string>>& table) {
+    for (const auto& [needle, sub] : table) {
+        size_t pos = 0;
+        while ((pos = text.find(needle, pos)) != std::string::npos) {
+            text.replace(pos, needle.length(), sub);
+            pos += sub.length();
+        }
+    }
+}
+
+// Parse the "YYYY-MM-DD" prefix of an ISO-8601 date string into tm fields.
+// Returns false if the input is too short or non-numeric. Used by both the
+// Atom-feed date parser and the FetchSince date-window builder.
+bool parse_ymd_prefix(const std::string& date, std::tm& out) {
+    if (date.size() < 10) return false;
+    try {
+        out.tm_year = std::stoi(date.substr(0, 4)) - 1900;
+        out.tm_mon  = std::stoi(date.substr(5, 2)) - 1;
+        out.tm_mday = std::stoi(date.substr(8, 2));
+    } catch (...) {
+        return false;
+    }
+    return true;
+}
+
+} // namespace
 
 Fetcher::Fetcher(const std::vector<std::string> &topics, const std::string &_base_path) : m_topics{topics} {
     base_path = _base_path;
@@ -96,23 +141,6 @@ std::string Fetcher::GetPaperAbstract(const std::string &paper_id) {
     }
 }
 
-std::string Fetcher::FetchBibtex(const std::string &arxiv_id) {
-    try {
-        auto url = fmt::format("https://inspirehep.net/api/arxiv/{}?format=bibtex", arxiv_id);
-        auto response = cpr::Get(cpr::Url{url}, cpr::Timeout{5000});
-
-        if(response.status_code == 200) {
-            spdlog::info("[Fetcher]: Successfully fetched BibTeX for {}", arxiv_id);
-            return response.text;
-        } else {
-            spdlog::warn("[Fetcher]: Failed to fetch BibTeX for {}: HTTP {}", arxiv_id, response.status_code);
-            return "";
-        }
-    } catch (const std::exception &e) {
-        spdlog::warn("[Fetcher]: Error fetching BibTeX for {}: {}", arxiv_id, e.what());
-        return "";
-    }
-}
 
 std::string Fetcher::ConstructPaperUrl(const std::string &paper_id, const std::string &format) const {
     return fmt::format("https://arxiv.org/{}/{}", format, paper_id);
@@ -197,6 +225,25 @@ std::vector<Article> Fetcher::ParseFeed(const std::string &xml_content) {
             }
             article.category = categories.str();
 
+            // Replacement detection. arxiv RSS marks replacements either via
+            //   <dc:type>replace</dc:type>  / "Replacement"
+            //   <arxiv:announce_type>replace…</arxiv:announce_type>
+            // or by suffixing the title with " (UPDATED)". Be permissive.
+            std::string dc_type   = item.child_value("dc:type");
+            std::string ann_type  = item.child_value("arxiv:announce_type");
+            auto contains_ci = [](const std::string& hay, const std::string& needle) {
+                auto it = std::search(hay.begin(), hay.end(), needle.begin(), needle.end(),
+                    [](char a, char b) {
+                        return std::tolower(static_cast<unsigned char>(a)) ==
+                               std::tolower(static_cast<unsigned char>(b));
+                    });
+                return it != hay.end();
+            };
+            article.is_replacement =
+                contains_ci(dc_type,  "replace") ||
+                contains_ci(ann_type, "replace") ||
+                contains_ci(article.title, "(UPDATED)");
+
             articles.push_back(article);
         }
     } catch (const pugi::xpath_exception &e) {
@@ -224,8 +271,9 @@ std::optional<Arxiv::time_point> Fetcher::ParseDate(const std::string &date) con
 
 std::string Fetcher::StyleLatex(const std::string& text) const {
     std::string result = text;
-    
-    // Text formatting
+
+    // Text formatting commands whose opening (\cmd{) we strip; the matching
+    // closing brace is removed in the second pass below.
     const std::vector<std::pair<std::string, std::string>> replacements = {
         {"\\textit{", ""}, {"\\textbf{", ""}, {"\\emph{", ""},
         {"\\textsl{", ""}, {"\\textsc{", ""}, {"\\texttt{", ""},
@@ -234,14 +282,7 @@ std::string Fetcher::StyleLatex(const std::string& text) const {
         {"\\underline{", ""}, {"\\overline{", ""}, {"\\st{", ""}
     };
 
-    // First pass: remove opening commands
-    for (const auto& [latex, utf8] : replacements) {
-        size_t pos = 0;
-        while ((pos = result.find(latex, pos)) != std::string::npos) {
-            result.replace(pos, latex.length(), utf8);
-            pos += utf8.length();
-        }
-    }
+    apply_replacements(result, replacements);
 
     // Second pass: remove closing braces that follow formatting commands
     size_t pos = 0;
@@ -336,13 +377,206 @@ std::string Fetcher::ReplaceLatexAccents(const std::string& text) const {
         {"\\ng", "ŋ"}, {"\\NG", "Ŋ"}
     };
 
-    for (const auto& [latex, utf8] : replacements) {
-        size_t pos = 0;
-        while ((pos = result.find(latex, pos)) != std::string::npos) {
-            result.replace(pos, latex.length(), utf8);
-            pos += utf8.length();
-        }
+    apply_replacements(result, replacements);
+    return result;
+}
+
+std::vector<Article> Fetcher::FetchSince(const std::string &utc_date) {
+    // Build date range: from utc_date up to today (inclusive), UTC.
+    // The arXiv <published> field is the date arXiv processed and announced v1
+    // of the paper (the posting date), per the arXiv API user manual:
+    //   "<published> contains the date in which the first version of this
+    //    article was submitted and processed."
+    // This is NOT the peer-reviewed journal publication date (that is the
+    // separate <arxiv:journal_ref> element).  Authors submit to arXiv one
+    // business day before <published>; we start the query window at utc_date
+    // itself so that papers whose <published> date equals utc_date are not
+    // silently dropped.  Duplicates already in the DB are handled by
+    // INSERT OR IGNORE in AddArticle.
+    // arXiv submittedDate query format: YYYYMMDDHHMI (e.g. 202605020000).
+    std::tm from_tm{};
+    parse_ymd_prefix(utc_date, from_tm);
+    timegm(&from_tm);  // normalise
+    char from_buf[16];
+    std::strftime(from_buf, sizeof(from_buf), ARXIV_QUERY_FROM_FORMAT.data(), &from_tm);
+
+    // Today UTC as the end of the range.
+    auto now = std::chrono::system_clock::now();
+    std::time_t now_t = std::chrono::system_clock::to_time_t(now);
+    std::tm to_tm{};
+    gmtime_r(&now_t, &to_tm);
+    char to_buf[16];
+    std::strftime(to_buf, sizeof(to_buf), ARXIV_QUERY_TO_FORMAT.data(), &to_tm);
+
+    if (std::string(from_buf) > std::string(to_buf)) {
+        // utc_date is today or in the future — nothing missed.
+        return {};
     }
 
-    return result;
+    // Build topic query: (cat:hep-ph OR cat:hep-ex)
+    std::string topic_query;
+    for (size_t i = 0; i < m_topics.size(); ++i) {
+        if (i > 0) topic_query += "+OR+";
+        topic_query += "cat:" + m_topics[i];
+    }
+    if (m_topics.size() > 1)
+        topic_query = "(" + topic_query + ")";
+
+    const std::string date_filter =
+        "+AND+submittedDate:[" + std::string(from_buf) + "+TO+" + std::string(to_buf) + "]";
+
+    std::vector<Article> all_articles;
+    int start = 0;
+    const int max_results = 200;
+
+    while (true) {
+        auto url = fmt::format(
+            "{}?search_query={}{}&start={}&max_results={}"
+            "&sortBy=submittedDate&sortOrder=descending",
+            ARXIV_API_URL, topic_query, date_filter, start, max_results);
+
+        spdlog::info("[Fetcher]: FetchSince GET {}", url);
+        cpr::Response resp;
+        try {
+            resp = cpr::Get(cpr::Url{url}, cpr::Timeout{15000});
+        } catch (const std::exception &e) {
+            spdlog::error("[Fetcher]: FetchSince network error: {}", e.what());
+            break;
+        }
+
+        if (resp.status_code != 200) {
+            spdlog::warn("[Fetcher]: FetchSince HTTP {}", resp.status_code);
+            break;
+        }
+
+        auto batch = ParseAtomFeed(resp.text);
+        if (batch.empty()) break;
+        all_articles.insert(all_articles.end(), batch.begin(), batch.end());
+        if (static_cast<int>(batch.size()) < max_results) break;
+        start += max_results;
+    }
+
+    spdlog::info("[Fetcher]: FetchSince got {} articles since {}", all_articles.size(), utc_date);
+    return all_articles;
+}
+
+std::vector<Article> Fetcher::ParseAtomFeed(const std::string &xml_content) {
+    std::vector<Article> articles;
+    pugi::xml_document doc;
+
+    auto result = doc.load_string(xml_content.c_str());
+    if (!result) {
+        spdlog::error("[Fetcher]: Atom XML parse error: {}", result.description());
+        return articles;
+    }
+
+    // Root element is <feed xmlns="http://www.w3.org/2005/Atom">.
+    // pugixml treats element names as raw strings (no namespace processing),
+    // so elements in the default Atom namespace appear with their local names.
+    auto feed = doc.child("feed");
+    if (!feed) {
+        spdlog::error("[Fetcher]: ParseAtomFeed: no <feed> root");
+        return articles;
+    }
+
+    for (auto entry : feed.children("entry")) {
+        Article article;
+
+        // <id> holds the canonical URL, e.g. http://arxiv.org/abs/2605.12345v1
+        article.link = entry.child_value("id");
+
+        article.title    = StyleLatex(ReplaceLatexAccents(entry.child_value("title")));
+        article.abstract = StyleLatex(ReplaceLatexAccents(entry.child_value("summary")));
+
+        // Authors: one or more <author><name>…</name></author>
+        std::string authors_str;
+        for (auto author : entry.children("author")) {
+            if (!authors_str.empty()) authors_str += ", ";
+            authors_str += author.child_value("name");
+        }
+        article.authors = StyleLatex(ReplaceLatexAccents(authors_str));
+
+        // <published> = arXiv processing/announcement date of v1 (the posting date).
+        // Not the peer-reviewed journal date; that is <arxiv:journal_ref>.
+        article.date = ParseAtomDate(entry.child_value("published"))
+                           .value_or(std::chrono::system_clock::now());
+
+        // Primary category: <arxiv:primary_category term="hep-ph" …/>
+        // pugixml sees the element name as "arxiv:primary_category".
+        auto prim_cat = entry.child("arxiv:primary_category");
+        if (prim_cat) {
+            article.category = prim_cat.attribute("term").value();
+        } else {
+            auto cat = entry.child("category");
+            if (cat) article.category = cat.attribute("term").value();
+        }
+
+        // Replacement detection. arxiv's atom output uses
+        //   <arxiv:announce_type>replace</arxiv:announce_type>     (and
+        //   "replace-cross"). Treat the substring "replace" as the signal.
+        // As a fallback the <id> is "<base>v<N>" — anything past v1 is a
+        // replacement when announce_type is missing.
+        std::string ann = entry.child_value("arxiv:announce_type");
+        if (ann.find("replace") != std::string::npos) {
+            article.is_replacement = true;
+        } else if (ann.empty()) {
+            auto v_pos = article.link.rfind('v');
+            if (v_pos != std::string::npos && v_pos + 1 < article.link.size()) {
+                std::string ver = article.link.substr(v_pos + 1);
+                bool all_digits = !ver.empty() &&
+                    std::all_of(ver.begin(), ver.end(), [](char c){ return std::isdigit(c); });
+                if (all_digits && ver != "1") article.is_replacement = true;
+            }
+        }
+
+        articles.push_back(std::move(article));
+    }
+
+    return articles;
+}
+
+std::optional<Arxiv::time_point> Fetcher::ParseAtomDate(const std::string &date) const {
+    // Format: "2026-05-04T00:00:00-04:00" or "2026-05-04T00:00:00Z"
+    // We only need the date portion for day-level granularity.
+    std::tm tm{};
+    if (!parse_ymd_prefix(date, tm)) return std::nullopt;
+    return std::chrono::system_clock::from_time_t(timegm(&tm));
+}
+
+std::string Fetcher::FetchBibTeX(const std::string& paper_id) {
+    // --- 1. Try InspireHEP ---
+    // Query the literature search API for the arXiv eprint.
+    const std::string inspire_search =
+        "https://inspirehep.net/api/literature?q=eprint+" + paper_id
+        + "&fields=texkeys&size=1";
+    try {
+        auto search_resp = cpr::Get(
+            cpr::Url{inspire_search},
+            cpr::Timeout{5000});
+
+        if (search_resp.status_code == 200) {
+            auto js = nlohmann::json::parse(search_resp.text);
+            auto& hits = js.at("hits").at("hits");
+            if (!hits.empty()) {
+                // The hit object carries a links.bibtex URL
+                std::string bibtex_url =
+                    hits[0].at("links").at("bibtex").get<std::string>();
+
+                auto bib_resp = cpr::Get(
+                    cpr::Url{bibtex_url},
+                    cpr::Timeout{5000});
+                if (bib_resp.status_code == 200 && !bib_resp.text.empty()) {
+                    spdlog::info("[Fetcher]: Got InspireHEP BibTeX for {}", paper_id);
+                    return bib_resp.text;
+                }
+            }
+        }
+    } catch (const std::exception& e) {
+        spdlog::warn("[Fetcher]: InspireHEP lookup failed for {}: {}", paper_id, e.what());
+    }
+
+    // --- 2. arXiv fallback ---
+    // Return empty; AppCore will construct BibTeX from its Article struct.
+    spdlog::debug("[Fetcher]: Returning empty BibTeX for {} (no InspireHEP hit)", paper_id);
+    return {};
 }
