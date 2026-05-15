@@ -19,7 +19,7 @@ struct ActionInfo {
 
 using Action = KeyBindings::Action;
 
-constexpr std::array<ActionInfo, 25> kActionTable = {{
+constexpr std::array<ActionInfo, 26> kActionTable = {{
     {Action::Next,            "next",             "j", "Next"},
     {Action::Previous,        "previous",         "k", "Previous"},
     {Action::Quit,            "quit",             "q", "Quit"},
@@ -45,6 +45,7 @@ constexpr std::array<ActionInfo, 25> kActionTable = {{
     {Action::ToggleSelection, "toggle_selection", " ", "Toggle Selection"},
     {Action::ExportSelectedDigest,"export_selected_digest","g","Export Selected Digest"},
     {Action::ExportToObsidian,"export_to_obsidian","o","Export to Obsidian"},
+    {Action::Settings,        "settings",          "S","Settings"},
 }};
 
 const ActionInfo* find_by_config_name(std::string_view name) {

@@ -349,11 +349,17 @@ TEST_CASE("AppCore: same-day restart preserves the New Articles anchor",
                                      trompeloeil::eq(today_str)));
 
     // GetArticlesSince should be called with the day AFTER the anchor (= "2026-05-02"),
-    // not with the day after today.
-    std::string articles_since_arg;
+    // not with the day after today. On a same-day restart articles from the first
+    // run ARE in the DB, so return a non-empty result so the fallback doesn't fire.
+    Arxiv::Article existing;
+    existing.link  = "https://arxiv.org/abs/existing";
+    existing.title = "Existing Paper";
+    existing.date  = std::chrono::system_clock::now();
+
+    std::string first_articles_since_arg;
     ALLOW_CALL(*db_raw, GetArticlesSince(trompeloeil::_))
-        .LR_SIDE_EFFECT(articles_since_arg = _1)
-        .RETURN(std::vector<Arxiv::Article>{});
+        .LR_SIDE_EFFECT(if (first_articles_since_arg.empty()) first_articles_since_arg = _1;)
+        .RETURN(std::vector<Arxiv::Article>{existing});
 
     Arxiv::Config cfg;
     cfg.set_topics({"cs.AI"});
@@ -361,7 +367,7 @@ TEST_CASE("AppCore: same-day restart preserves the New Articles anchor",
     auto core = std::make_unique<Arxiv::AppCore>(cfg, std::move(db_ptr), std::move(fet_ptr));
 
     core->SetFilterIndex(Arxiv::AppCore::FilterView::NewArticles);
-    REQUIRE(articles_since_arg == "2026-05-02");
+    REQUIRE(first_articles_since_arg == "2026-05-02");
 }
 
 TEST_CASE("AppCore: NewArticles excludes replacements (updated papers)",
@@ -401,6 +407,52 @@ TEST_CASE("AppCore: NewArticles excludes replacements (updated papers)",
     auto current = core->GetCurrentArticles();
     REQUIRE(current.size() == 1);
     REQUIRE(current[0].link == original.link);
+}
+
+// ---------------------------------------------------------------------------
+// First-daily-open bug: NewArticles must not be blank while today's articles
+// are not yet in the DB. Falls back to showing anchor-date articles.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("AppCore: NewArticles shows anchor-date articles when today's query returns empty",
+          "[newart][appcore]")
+{
+    // Scenario: first daily open. prev_fetch = 2026-05-01 (yesterday).
+    // DB only holds yesterday's articles (date = 2026-05-01).
+    // The advanced query for 2026-05-02 returns empty.
+    // AppCore must fall back to GetArticlesSince(anchor="2026-05-01")
+    // so the view is not blank.
+    auto db_ptr  = std::make_unique<DatabaseManagerMock>();
+    auto fet_ptr = std::make_unique<FetcherMock>();
+    auto* db_raw = db_ptr.get();
+
+    const std::string prev_fetch   = "2026-05-01";
+    const std::string advanced_date = "2026-05-02";  // anchor + 1
+
+    ALLOW_CALL(*db_raw, GetMetadata(trompeloeil::_)).RETURN(std::string{});
+    ALLOW_CALL(*db_raw, GetMetadata(std::string("last_fetch_date")))
+        .RETURN(prev_fetch);
+
+    Arxiv::Article anchor_article;
+    anchor_article.link  = "https://arxiv.org/abs/yesterday";
+    anchor_article.title = "Yesterday Paper";
+    anchor_article.date  = std::chrono::system_clock::from_time_t(utc_midnight(prev_fetch));
+
+    // Use a side-effecting ALLOW_CALL: return articles for anchor date, empty for advanced.
+    ALLOW_CALL(*db_raw, GetArticlesSince(trompeloeil::_))
+        .LR_RETURN((_1 == advanced_date)
+                   ? std::vector<Arxiv::Article>{}
+                   : std::vector<Arxiv::Article>{anchor_article});
+
+    Arxiv::Config cfg;
+    cfg.set_topics({"cs.AI"});
+    cfg.set_download_dir("/tmp");
+    auto core = std::make_unique<Arxiv::AppCore>(cfg, std::move(db_ptr), std::move(fet_ptr));
+
+    core->SetFilterIndex(Arxiv::AppCore::FilterView::NewArticles);
+    auto articles = core->GetCurrentArticles();
+    REQUIRE_FALSE(articles.empty());
+    REQUIRE(articles[0].link == "https://arxiv.org/abs/yesterday");
 }
 
 TEST_CASE("AppCore: day-boundary crossing advances the New Articles anchor",

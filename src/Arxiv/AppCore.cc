@@ -221,11 +221,17 @@ void AppCore::FetchArticles() {
         break;
     case FilterView::NewArticles: {
         if (m_new_articles_since_date.empty()) {
-            // First run: show today's articles as "new".
-            m_current_articles = m_db->GetRecent(1);
+            // No anchor: first-ever open. Show all articles in the DB.
+            m_current_articles = m_db->GetRecent(-1);
+        } else if (m_fetching.load()) {
+            // Async network fetch still in progress. Today's articles aren't
+            // in the DB yet, so the advanced-date query would return empty.
+            // Fall back to showing the anchor-date articles so the view is
+            // not blank while the user waits for the fetch to complete.
+            m_current_articles = m_db->GetArticlesSince(m_new_articles_since_date);
         } else {
-            // Show articles submitted strictly after the previous session's date.
-            // Advance by one day so the user doesn't re-see the previous day.
+            // Fetch complete (or Sync mode). Show articles strictly after the
+            // previous session's date by advancing the anchor by one day.
             std::tm tm{};
             tm.tm_year = std::stoi(m_new_articles_since_date.substr(0, 4)) - 1900;
             tm.tm_mon  = std::stoi(m_new_articles_since_date.substr(5, 2)) - 1;
@@ -233,7 +239,15 @@ void AppCore::FetchArticles() {
             timegm(&tm); // normalise
             char buf[11];
             std::strftime(buf, sizeof(buf), "%Y-%m-%d", &tm);
-            m_current_articles = m_db->GetArticlesSince(buf);
+            auto advanced_articles = m_db->GetArticlesSince(buf);
+            if (!advanced_articles.empty()) {
+                m_current_articles = std::move(advanced_articles);
+            } else {
+                // Today's articles haven't arrived yet even though the fetch
+                // finished (e.g. arXiv not yet published, or same-day restart
+                // before new content). Show anchor-date articles as fallback.
+                m_current_articles = m_db->GetArticlesSince(m_new_articles_since_date);
+            }
         }
         // Drop replacements (later versions of older submissions) — the
         // New Articles view is meant for truly fresh papers only.
@@ -1192,6 +1206,7 @@ std::string AppCore::ExportSelectedToObsidian() {
             nf << "category: " << yaml_quote(a.category)       << "\n";
         }
         nf << "imported: "  << date_str << "\n";
+        nf << "related-projects: []\n";
         nf << "---\n\n";
         nf << "# " << a.title << "\n\n";
         nf << "**Authors:** " << a.authors << "\n\n";
@@ -1201,6 +1216,10 @@ std::string AppCore::ExportSelectedToObsidian() {
         if (!a.abstract.empty()) {
             nf << "## Abstract\n\n" << a.abstract << "\n";
         }
+        nf << "\n## Reading Notes\n\n"
+           << "**Relevance:**\n\n"
+           << "**Key ideas:**\n\n"
+           << "**Open questions:**\n";
 
         // Download the PDF next to the note. Fetcher writes relative to
         // its own base_path (the configured download_dir), which is *not*

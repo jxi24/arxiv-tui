@@ -50,6 +50,11 @@ void Config::load_from_file(const std::string& config_file) {
         retrain_interval_ = config["retrain_interval"].as<int>();
     }
 
+    // Load auto-refresh interval (optional; 0 = disabled)
+    if (config["auto_refresh_minutes"]) {
+        auto_refresh_minutes_ = config["auto_refresh_minutes"].as<int>();
+    }
+
     // Load Obsidian vault path (optional; empty = feature disabled)
     if (config["obsidian_vault"]) {
         obsidian_vault_ = config["obsidian_vault"].as<std::string>();
@@ -86,10 +91,11 @@ void Config::save_to_file(const std::string& config_file) const {
     }
     config["key_mappings"] = key_mappings;
 
-    config["recommend_threshold"] = recommend_threshold_;
-    config["retrain_interval"]    = retrain_interval_;
+    config["recommend_threshold"]  = recommend_threshold_;
+    config["retrain_interval"]     = retrain_interval_;
+    config["auto_refresh_minutes"] = auto_refresh_minutes_;
     if (!obsidian_vault_.empty()) {
-        config["obsidian_vault"]  = obsidian_vault_;
+        config["obsidian_vault"]   = obsidian_vault_;
     }
 
     std::ofstream fout(config_file);

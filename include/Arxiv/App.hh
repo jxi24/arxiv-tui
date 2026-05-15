@@ -6,6 +6,7 @@
 #include <vector>
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/component/component.hpp>
+#include <ftxui/component/event.hpp>
 #include <ftxui/component/screen_interactive.hpp>
 #include <map>
 #include <set>
@@ -36,22 +37,38 @@ enum class Dialog {
     Import        = 9,
     KeywordEditor = 10,
     CategoryFilter = 11,
-    Success = 12,
+    Success   = 12,
+    Settings  = 13,
 };
 
 class ArxivApp {
 public:
-    explicit ArxivApp(const Config &config, ReplayRecorder* recorder = nullptr);
+    explicit ArxivApp(const Config &config,
+                      const std::string &config_path = "",
+                      ReplayRecorder* recorder = nullptr);
     void Run() { screen.Loop(event_handler); }
     ~ArxivApp() {
         refresh_ui_continue = false;
-        refresh_ui.join();
+        if (refresh_ui.joinable()) refresh_ui.join();
     }
+
+#ifdef TESTING
+    // Test-only constructor: accepts injected DB/Fetcher so mocks can be used.
+    // Does not launch the refresh thread; use GetEventHandler() to drive events.
+    ArxivApp(Config cfg,
+             std::unique_ptr<DatabaseManager> db,
+             std::unique_ptr<Fetcher> fetcher,
+             KeyBindings kb,
+             const std::string& config_path = "");
+    Component GetEventHandler() const { return event_handler; }
+#endif
 
 private:
     // Core application logic
     AppCore core;
     KeyBindings key_bindings;
+    std::string m_config_path;
+    Config m_config;
 
     // UI handling
     ftxui::ScreenInteractive screen;
@@ -121,6 +138,13 @@ private:
     int category_selected_index = 0;
     Component category_dialog;
 
+    // Settings dialog
+    int settings_section = 0;         // 0=General 1=Topics 2=Ranker 3=Export 4=Keys
+    int settings_field_index = 0;     // selected field within section
+    bool settings_editing = false;    // true while text field is being edited
+    std::string settings_edit_buffer; // scratch buffer for the current field
+    Component settings_dialog;
+
     // Article pane scrolling
     int visible_rows = 0;  // Number of rows visible in the article pane
     int top_article_index = 0;  // Index of the article at the top of the visible area
@@ -144,9 +168,43 @@ private:
     void SetupUI();
     void RefreshUI();
     int FilterPaneWidth();
-    void UpdateTitleScrollPositions();  // New function to handle automatic scrolling
-    void UpdateVisibleRange();  // Update visible range based on selected article
-    void ToggleHelp();  // Toggle the help dialog
+    void UpdateTitleScrollPositions();
+    void UpdateVisibleRange();
+    void ToggleHelp();
+
+    // View setup (called from SetupUI)
+    void SetupFilterPane();
+    void SetupArticlePane();
+    void SetupDetailView();
+    void SetupHelpDialog();
+    void SetupAssignProjectDialog();
+    void SetupDateRangeDialog();
+    void SetupSearchDialog();
+    void SetupRatingDialog();
+    void SetupNotesDialog();
+    void SetupExportDialog();
+    void SetupImportDialog();
+    void SetupKeywordEditorDialog();
+    void SetupCategoryFilterDialog();
+    void SetupSettingsDialog();
+    void SetupMainRenderer();
+    void SetupEventHandler();
+
+    // Event handlers (called from SetupEventHandler dispatch or HandleGlobalEvent)
+    bool HandleHelpEvent(ftxui::Event event);
+    ftxui::Element RenderNewProjectDialog();
+    bool HandleNewProjectEvent(ftxui::Event event);
+    bool HandleAssignProjectEvent(ftxui::Event event);
+    bool HandleDateRangeEvent(ftxui::Event event);
+    bool HandleSearchEvent(ftxui::Event event);
+    bool HandleRatingEvent(ftxui::Event event);
+    bool HandleNotesEvent(ftxui::Event event);
+    bool HandleExportEvent(ftxui::Event event);
+    bool HandleImportEvent(ftxui::Event event);
+    bool HandleKeywordEditorEvent(ftxui::Event event);
+    bool HandleCategoryFilterEvent(ftxui::Event event);
+    bool HandleSettingsEvent(ftxui::Event event);
+    bool HandleGlobalEvent(ftxui::Event event);
 };
 
 } // namespace Arxiv

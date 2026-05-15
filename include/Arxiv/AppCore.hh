@@ -207,6 +207,9 @@ public:
     // string if the vault isn't configured / the write fails.
     std::string ExportSelectedToObsidian();
 
+    // Live config access (used by settings dialog)
+    const Config& GetConfig() const { return m_config; }
+
     // Keyword management (cold-start ranking)
     void ReloadKeywords();
     bool SaveKeywords(const std::vector<std::string>& keywords);

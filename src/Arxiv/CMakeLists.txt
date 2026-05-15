@@ -9,6 +9,22 @@ add_library(libarxiv-tui
     Ranker.cc
     Replay.cc
     CrashHandler.cc
+    Views/FilterPane.cc
+    Views/ArticlePane.cc
+    Views/DetailView.cc
+    Views/HelpDialog.cc
+    Views/AssignProjectDialog.cc
+    Views/DateRangeDialog.cc
+    Views/SearchDialog.cc
+    Views/RatingDialog.cc
+    Views/NotesDialog.cc
+    Views/ExportDialog.cc
+    Views/ImportDialog.cc
+    Views/KeywordEditorDialog.cc
+    Views/CategoryFilterDialog.cc
+    Views/SettingsDialog.cc
+    Views/NewProjectDialog.cc
+    Views/MainRenderer.cc
 )
 target_link_libraries(libarxiv-tui PRIVATE arxiv_tui_options arxiv_tui_warnings
                                     PUBLIC spdlog::spdlog std::filesystem

@@ -21,7 +21,7 @@ TEST_CASE("KeyBindings: defaults are populated for every action", "[keybindings]
                    Action::ExportBibTeX, Action::EditKeywords,
                    Action::ExportDigest, Action::FilterCategories,
                    Action::ToggleSelection, Action::ExportSelectedDigest,
-                   Action::ExportToObsidian}) {
+                   Action::ExportToObsidian, Action::Settings}) {
         INFO("action enum value = " << static_cast<int>(a));
         REQUIRE_FALSE(kb.get_key(a).empty());
     }
@@ -112,7 +112,7 @@ TEST_CASE("KeyBindings: get_action_name covers every action", "[keybindings]") {
                    Action::ExportBibTeX, Action::EditKeywords,
                    Action::ExportDigest, Action::FilterCategories,
                    Action::ToggleSelection, Action::ExportSelectedDigest,
-                   Action::ExportToObsidian}) {
+                   Action::ExportToObsidian, Action::Settings}) {
         INFO("action enum value = " << static_cast<int>(a));
         const auto name = KeyBindings::get_action_name(a);
         REQUIRE_FALSE(name.empty());

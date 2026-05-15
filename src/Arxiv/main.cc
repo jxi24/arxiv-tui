@@ -83,7 +83,7 @@ int main(int argc, char* argv[]) {
     Arxiv::ReplayRecorder recorder("replay.jsonl");
     Arxiv::InstallCrashHandler(&recorder, ".");
 
-    Arxiv::ArxivApp app(config, &recorder);
+    Arxiv::ArxivApp app(config, ".arxiv-tui.yml", &recorder);
     recorder.RecordEvent("main/run_loop_start");
     app.Run();
     recorder.RecordEvent("main/run_loop_returned");
