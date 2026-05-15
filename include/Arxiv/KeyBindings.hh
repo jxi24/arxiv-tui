@@ -36,7 +36,8 @@ public:
         ToggleSelection,
         ExportSelectedDigest,
         ExportToObsidian,
-        Settings
+        Settings,
+        GenerateBibtex
     };
 
     KeyBindings() = default;

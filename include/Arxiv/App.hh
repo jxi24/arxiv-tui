@@ -39,6 +39,7 @@ enum class Dialog {
     CategoryFilter = 11,
     Success   = 12,
     Settings  = 13,
+    CitationBibtex = 14,
 };
 
 class ArxivApp {
@@ -88,6 +89,7 @@ private:
     std::thread refresh_ui;
     std::string err_msg = "";
     std::string success_msg = "";
+    std::string bibtex_content;
     static constexpr int arrow_size = 2;
     static constexpr int padding = 4;
     static constexpr int border_size = 3;

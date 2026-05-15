@@ -61,6 +61,7 @@ public:
     void FetchArticles();
     void ToggleBookmark(const std::string& article_link);
     bool DownloadArticle(const std::string& article_id);
+    std::string GetBibtex(const Article& article);
     std::vector<Article> GetCurrentArticles() const;
     std::vector<std::string> GetCurrentTitles() const;
     std::vector<std::string> &GetCurrentTitles();
@@ -305,6 +306,7 @@ private:
     void RefreshTitles();
     void RefreshFilterOptions();
     void NotifyArticleUpdate();
+    std::string ConstructBibtexFromArticle(const Article& article) const;
 };
 
 } // namespace Arxiv

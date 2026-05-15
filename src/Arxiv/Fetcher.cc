@@ -141,6 +141,7 @@ std::string Fetcher::GetPaperAbstract(const std::string &paper_id) {
     }
 }
 
+
 std::string Fetcher::ConstructPaperUrl(const std::string &paper_id, const std::string &format) const {
     return fmt::format("https://arxiv.org/{}/{}", format, paper_id);
 }
