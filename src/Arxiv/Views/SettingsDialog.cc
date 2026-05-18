@@ -40,8 +40,8 @@ void ArxivApp::SetupSettingsDialog() {
                               ? (settings_edit_buffer + "_")
                               : value;
             auto row = hbox({
-                text("  ") | color(TextColors::subtext()),
-                text(std::string(label)) | color(TextColors::subtext()),
+                text(sel ? "  > " : "    ") | color(TextColors::primary()),
+                text(std::string(label)) | color(sel ? TextColors::primary() : TextColors::subtext()),
                 text(" : ") | color(TextColors::border()),
                 text(val) | color(TextColors::text()),
             });
