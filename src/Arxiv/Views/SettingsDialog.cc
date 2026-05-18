@@ -55,6 +55,8 @@ void ArxivApp::SetupSettingsDialog() {
                                      m_config.get_download_dir()));
             rows.push_back(field_row(1, "Auto-refresh  ",
                                      std::to_string(m_config.get_auto_refresh_minutes()) + " min"));
+            rows.push_back(field_row(2, "Scroll margin ",
+                                     std::to_string(m_config.get_scroll_margin()) + " lines"));
 
         } else if (settings_section == 1) {
             const auto& topics = m_config.get_topics();
@@ -133,7 +135,7 @@ bool ArxivApp::HandleSettingsEvent(ftxui::Event event) {
     static constexpr int kNumSections = 5;
 
     auto section_fields = [&]() -> int {
-        if (settings_section == 0) return 2;
+        if (settings_section == 0) return 3;
         if (settings_section == 1) return static_cast<int>(m_config.get_topics().size());
         if (settings_section == 2) return 2;
         if (settings_section == 3) return 1;
@@ -147,6 +149,9 @@ bool ArxivApp::HandleSettingsEvent(ftxui::Event event) {
                 m_config.set_download_dir(settings_edit_buffer);
             else if (settings_field_index == 1) {
                 try { m_config.set_auto_refresh_minutes(std::stoi(settings_edit_buffer)); }
+                catch (...) {}
+            } else if (settings_field_index == 2) {
+                try { m_config.set_scroll_margin(std::stoi(settings_edit_buffer)); }
                 catch (...) {}
             }
         } else if (settings_section == 2) {
@@ -251,9 +256,12 @@ bool ArxivApp::HandleSettingsEvent(ftxui::Event event) {
             settings_edit_buffer.clear();
         } else {
             if (settings_section == 0) {
-                settings_edit_buffer = (settings_field_index == 0)
-                    ? m_config.get_download_dir()
-                    : std::to_string(m_config.get_auto_refresh_minutes());
+                if (settings_field_index == 0)
+                    settings_edit_buffer = m_config.get_download_dir();
+                else if (settings_field_index == 1)
+                    settings_edit_buffer = std::to_string(m_config.get_auto_refresh_minutes());
+                else
+                    settings_edit_buffer = std::to_string(m_config.get_scroll_margin());
             } else if (settings_section == 2) {
                 settings_edit_buffer = (settings_field_index == 0)
                     ? std::to_string(m_config.get_recommend_threshold())

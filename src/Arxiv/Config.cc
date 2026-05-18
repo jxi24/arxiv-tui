@@ -60,6 +60,10 @@ void Config::load_from_file(const std::string& config_file) {
         obsidian_vault_ = config["obsidian_vault"].as<std::string>();
     }
 
+    if (config["scroll_margin"]) {
+        scroll_margin_ = config["scroll_margin"].as<int>();
+    }
+
     // Load key mappings
     if (config["key_mappings"]) {
         key_mappings_.clear();
@@ -94,6 +98,7 @@ void Config::save_to_file(const std::string& config_file) const {
     config["recommend_threshold"]  = recommend_threshold_;
     config["retrain_interval"]     = retrain_interval_;
     config["auto_refresh_minutes"] = auto_refresh_minutes_;
+    config["scroll_margin"]        = scroll_margin_;
     if (!obsidian_vault_.empty()) {
         config["obsidian_vault"]   = obsidian_vault_;
     }

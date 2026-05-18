@@ -27,13 +27,51 @@ void ArxivApp::SetupMainRenderer() {
         auto fmt_key = [](std::string k) { return k == " " ? std::string("<space>") : k; };
         std::string quit_key = fmt_key(key_bindings.get_key(KeyBindings::Action::Quit));
         std::string help_key = fmt_key(key_bindings.get_key(KeyBindings::Action::ShowHelp));
+
+        // Active filter label
+        auto filter_view = core.GetFilterView();
+        std::string filter_label;
+        switch (filter_view) {
+            case AppCore::FilterView::All:            filter_label = "All";            break;
+            case AppCore::FilterView::Bookmarks:      filter_label = "Bookmarks";      break;
+            case AppCore::FilterView::Today:          filter_label = "Today";          break;
+            case AppCore::FilterView::Range:          filter_label = "Date Range";     break;
+            case AppCore::FilterView::Search:         filter_label = "Search";         break;
+            case AppCore::FilterView::Recommended:    filter_label = "Recommended";    break;
+            case AppCore::FilterView::FollowedAuthors:filter_label = "Followed";       break;
+            case AppCore::FilterView::NewArticles:    filter_label = "New Articles";   break;
+            case AppCore::FilterView::Project:
+                filter_label = core.GetProjectNameForFilter(core.GetFilterIndex());    break;
+        }
+
+        // Article position
+        auto articles = core.GetCurrentArticles();
+        int total = static_cast<int>(articles.size());
+        int current = total > 0 ? core.GetArticleIndex() + 1 : 0;
+        std::string position = std::to_string(current) + " / " + std::to_string(total);
+
+        // Topics list (comma-separated)
+        const auto& topics = m_config.get_topics();
+        std::string topics_str;
+        for (size_t i = 0; i < topics.size(); ++i) {
+            if (i > 0) topics_str += ", ";
+            topics_str += topics[i];
+        }
+
         auto footer = hbox({
             text(" "),
             text(quit_key) | bold | color(TextColors::primary()),
             text(" quit  ") | color(TextColors::subtext()),
             text(help_key) | bold | color(TextColors::primary()),
             text(" keybindings ") | color(TextColors::subtext()),
+            text("│") | color(TextColors::border()),
+            text(" filter: ") | color(TextColors::subtext()),
+            text(filter_label) | bold | color(TextColors::primary()),
+            text("  ") | color(TextColors::subtext()),
+            text(position) | color(TextColors::text()),
             filler(),
+            text(topics_str) | color(TextColors::subtext()),
+            text(" "),
         }) | bgcolor(TextColors::surface()) | size(HEIGHT, EQUAL, 1);
 
         Element document = vbox({body | flex, footer});

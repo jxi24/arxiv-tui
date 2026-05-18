@@ -59,11 +59,14 @@ void ArxivApp::UpdateVisibleRange() {
     if(articles.empty()) return;
 
     int current_index = core.GetArticleIndex();
+    int margin = std::min(m_config.get_scroll_margin(), visible_rows / 2);
 
-    if(current_index < top_article_index) {
-        top_article_index = current_index;
-    } else if(current_index >= top_article_index + visible_rows) {
-        top_article_index = current_index - visible_rows + 1;
+    if(current_index < top_article_index + margin) {
+        top_article_index = std::max(0, current_index - margin);
+    } else if(current_index >= top_article_index + visible_rows - margin) {
+        int max_top = static_cast<int>(articles.size()) - visible_rows;
+        top_article_index = std::min(current_index - visible_rows + margin + 1,
+                                     std::max(0, max_top));
     }
 }
 
