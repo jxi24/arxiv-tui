@@ -1,6 +1,8 @@
 #include "Arxiv/App.hh"
 #include "Arxiv/Views/Colors.hh"
 
+#include "spdlog/spdlog.h"
+
 #include <chrono>
 #include <ctime>
 
@@ -264,9 +266,11 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
             bool ok = core.ExportArticleBibTeX(art, path);
             if (m_recorder) m_recorder->RecordExportArticleBibTeX(art.link, path);
             if (ok) {
+                spdlog::info("export_article_bibtex link={} path={}", art.link, path);
                 success_msg = "Exported to " + path;
                 dialog_depth = Dialog::Success;
             } else {
+                spdlog::warn("export_article_bibtex failed link={} path={}", art.link, path);
                 err_msg = "BibTeX export failed: " + path;
                 dialog_depth = Dialog::Error;
             }
@@ -307,10 +311,10 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
         if (!articles.empty()) {
             int idx = core.GetArticleIndex();
             if (idx >= 0 && idx < static_cast<int>(articles.size())) {
-                if (m_recorder) m_recorder->RecordEvent(
-                    "app/toggle_selection",
-                    "link=" + articles[static_cast<size_t>(idx)].link);
-                core.ToggleSelection(articles[static_cast<size_t>(idx)].link);
+                const std::string& link = articles[static_cast<size_t>(idx)].link;
+                if (m_recorder) m_recorder->RecordToggleSelection(link);
+                spdlog::debug("toggle_selection link={}", link);
+                core.ToggleSelection(link);
             }
         }
         return true;
@@ -323,8 +327,11 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
             err_msg = core.GetSelectionCount() == 0
                           ? "No articles selected (Space to select)"
                           : "Failed to export digest";
+            spdlog::warn("export_selected_digest failed: {}", err_msg);
             dialog_depth = Dialog::Error;
         } else {
+            if (m_recorder) m_recorder->RecordExportSelectedDigest(dir);
+            spdlog::info("export_selected_digest path={}", dir);
             success_msg = "Digest exported to " + dir;
             dialog_depth = Dialog::Success;
         }
@@ -339,8 +346,11 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
                 err_msg = "No articles selected (Space to select)";
             else
                 err_msg = "Obsidian export failed — set 'obsidian_vault' in .arxiv-tui.yml";
+            spdlog::warn("export_to_obsidian failed: {}", err_msg);
             dialog_depth = Dialog::Error;
         } else {
+            if (m_recorder) m_recorder->RecordExportToObsidian(path);
+            spdlog::info("export_to_obsidian path={}", path);
             success_msg = "Exported to Obsidian vault: " + path;
             dialog_depth = Dialog::Success;
         }
@@ -356,9 +366,12 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
         char buf[32];
         std::strftime(buf, sizeof(buf), "digest-%Y-%m-%d.md", &tm_val);
         if (core.ExportDailyDigest(buf)) {
+            if (m_recorder) m_recorder->RecordExportDailyDigest(buf);
+            spdlog::info("export_daily_digest path={}", buf);
             success_msg = std::string("Digest exported to ") + buf;
             dialog_depth = Dialog::Success;
         } else {
+            spdlog::warn("export_daily_digest failed path={}", buf);
             err_msg = std::string("Digest export failed: ") + buf;
             dialog_depth = Dialog::Error;
         }
@@ -384,6 +397,7 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
 
     // Force full retrain
     if (key_bindings.matches(event, KeyBindings::Action::ForceRetrain)) {
+        spdlog::info("force_retrain requested");
         core.ForceRetrain();
         if (m_recorder) m_recorder->RecordForceRetrain();
         return true;

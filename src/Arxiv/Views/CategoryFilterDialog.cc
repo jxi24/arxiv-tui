@@ -1,5 +1,6 @@
 #include "Arxiv/App.hh"
 #include "Arxiv/Views/Colors.hh"
+#include "spdlog/spdlog.h"
 
 using namespace ftxui;
 using namespace Arxiv;
@@ -77,14 +78,22 @@ bool ArxivApp::HandleCategoryFilterEvent(ftxui::Event event) {
         return true;
     }
     if (event == Event::Return || event == Event::Character(' ')) {
-        core.ToggleCategory(topics[static_cast<size_t>(category_selected_index)]);
+        const std::string& cat = topics[static_cast<size_t>(category_selected_index)];
+        if (m_recorder) m_recorder->RecordToggleCategory(cat);
+        spdlog::debug("toggle_category cat={}", cat);
+        core.ToggleCategory(cat);
         return true;
     }
     if (event == Event::Character('a')) {
+        std::vector<std::string> all(topics.begin(), topics.end());
+        if (m_recorder) m_recorder->RecordSetActiveCategories(all);
+        spdlog::debug("set_active_categories all={}", all.size());
         core.SetActiveCategories(std::set<std::string>(topics.begin(), topics.end()));
         return true;
     }
     if (event == Event::Character('n')) {
+        if (m_recorder) m_recorder->RecordSetActiveCategories({});
+        spdlog::debug("set_active_categories none");
         core.SetActiveCategories({});
         return true;
     }

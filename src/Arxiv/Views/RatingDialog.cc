@@ -1,5 +1,6 @@
 #include "Arxiv/App.hh"
 #include "Arxiv/Views/Colors.hh"
+#include "spdlog/spdlog.h"
 
 using namespace ftxui;
 using namespace Arxiv;
@@ -49,6 +50,7 @@ bool ArxivApp::HandleRatingEvent(ftxui::Event event) {
             auto articles = core.GetCurrentArticles();
             if (!articles.empty()) {
                 const std::string& link = articles[static_cast<size_t>(core.GetArticleIndex())].link;
+                spdlog::info("rate_article link={} rating={}", link, pending_rating);
                 core.RateArticle(link, pending_rating);
                 if (m_recorder) m_recorder->RecordRateArticle(link, pending_rating);
             }

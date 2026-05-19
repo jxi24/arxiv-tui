@@ -53,6 +53,13 @@ public:
     void RecordExportArticleBibTeX(const std::string& article_link, const std::string& path);
     void RecordExportArticlesBibTeX(const std::string& path);
     void RecordExportProjectBibTeX(const std::string& project, const std::string& path);
+    void RecordToggleSelection(const std::string& article_link);
+    void RecordExportSelectedDigest(const std::string& path);
+    void RecordExportToObsidian(const std::string& path);
+    void RecordExportDailyDigest(const std::string& path);
+    void RecordToggleCategory(const std::string& category);
+    void RecordSetActiveCategories(const std::vector<std::string>& categories);
+    void RecordSaveKeywords(const std::vector<std::string>& keywords);
 
     /// Diagnostic event — does not correspond to a replayable action. Used
     /// for instrumentation (e.g. lifecycle, fetch progress). The replay

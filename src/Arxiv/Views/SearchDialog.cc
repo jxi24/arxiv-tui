@@ -1,5 +1,6 @@
 #include "Arxiv/App.hh"
 #include "Arxiv/Views/Colors.hh"
+#include "spdlog/spdlog.h"
 
 using namespace ftxui;
 using namespace Arxiv;
@@ -41,6 +42,7 @@ bool ArxivApp::HandleSearchEvent(ftxui::Event event) {
             bool st  = (search_field == AppCore::SearchMode::title);
             bool sa  = (search_field == AppCore::SearchMode::authors);
             bool sab = (search_field == AppCore::SearchMode::abstract);
+            spdlog::info("search query=\"{}\" title={} authors={} abstract={}", search_query, st, sa, sab);
             core.SetSearchQuery(search_query, st, sa, sab);
             core.SetFilterIndex(AppCore::FilterView::Search);
             if (m_recorder) {

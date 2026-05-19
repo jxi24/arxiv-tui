@@ -47,6 +47,13 @@ constexpr std::string_view ImportProjectJSON        = "import_project_json";
 constexpr std::string_view ExportProjectBibTeX      = "export_project_bibtex";
 constexpr std::string_view ExportArticleBibTeX      = "export_article_bibtex";
 constexpr std::string_view ExportArticlesBibTeX     = "export_articles_bibtex";
+constexpr std::string_view ToggleSelection          = "toggle_selection";
+constexpr std::string_view ExportSelectedDigest     = "export_selected_digest";
+constexpr std::string_view ExportToObsidian         = "export_to_obsidian";
+constexpr std::string_view ExportDailyDigest        = "export_daily_digest";
+constexpr std::string_view ToggleCategory           = "toggle_category";
+constexpr std::string_view SetActiveCategories      = "set_active_categories";
+constexpr std::string_view SaveKeywords             = "save_keywords";
 } // namespace ActionName
 
 namespace {
@@ -128,6 +135,37 @@ const std::unordered_map<std::string, Handler>& dispatch_table() {
         }},
         {std::string(ActionName::ExportArticlesBibTeX), [](AppCore& c, const json& j) {
             c.ExportArticlesBibTeX(c.GetCurrentArticles(), j.value("path", ""));
+        }},
+        {std::string(ActionName::ToggleSelection), [](AppCore& c, const json& j) {
+            c.ToggleSelection(j.value("article_link", ""));
+        }},
+        {std::string(ActionName::ExportSelectedDigest), [](AppCore& c, const json&) {
+            c.ExportSelectedDigest();
+        }},
+        {std::string(ActionName::ExportToObsidian), [](AppCore& c, const json&) {
+            c.ExportSelectedToObsidian();
+        }},
+        {std::string(ActionName::ExportDailyDigest), [](AppCore& c, const json& j) {
+            c.ExportDailyDigest(j.value("path", ""));
+        }},
+        {std::string(ActionName::ToggleCategory), [](AppCore& c, const json& j) {
+            c.ToggleCategory(j.value("category", ""));
+        }},
+        {std::string(ActionName::SetActiveCategories), [](AppCore& c, const json& j) {
+            std::set<std::string> cats;
+            if (j.contains("categories") && j["categories"].is_array()) {
+                for (const auto& cat : j["categories"])
+                    cats.insert(cat.get<std::string>());
+            }
+            c.SetActiveCategories(cats);
+        }},
+        {std::string(ActionName::SaveKeywords), [](AppCore& c, const json& j) {
+            std::vector<std::string> kws;
+            if (j.contains("keywords") && j["keywords"].is_array()) {
+                for (const auto& kw : j["keywords"])
+                    kws.push_back(kw.get<std::string>());
+            }
+            c.SaveKeywords(kws);
         }},
     };
     return table;
@@ -336,6 +374,48 @@ void ReplayRecorder::RecordExportProjectBibTeX(const std::string& project, const
     auto j = make_entry(ActionName::ExportProjectBibTeX, NowMs());
     j["project"] = project;
     j["path"]    = path;
+    Record(j.dump());
+}
+
+void ReplayRecorder::RecordToggleSelection(const std::string& article_link) {
+    auto j = make_entry(ActionName::ToggleSelection, NowMs());
+    j["article_link"] = article_link;
+    Record(j.dump());
+}
+
+void ReplayRecorder::RecordExportSelectedDigest(const std::string& path) {
+    auto j = make_entry(ActionName::ExportSelectedDigest, NowMs());
+    j["path"] = path;
+    Record(j.dump());
+}
+
+void ReplayRecorder::RecordExportToObsidian(const std::string& path) {
+    auto j = make_entry(ActionName::ExportToObsidian, NowMs());
+    j["path"] = path;
+    Record(j.dump());
+}
+
+void ReplayRecorder::RecordExportDailyDigest(const std::string& path) {
+    auto j = make_entry(ActionName::ExportDailyDigest, NowMs());
+    j["path"] = path;
+    Record(j.dump());
+}
+
+void ReplayRecorder::RecordToggleCategory(const std::string& category) {
+    auto j = make_entry(ActionName::ToggleCategory, NowMs());
+    j["category"] = category;
+    Record(j.dump());
+}
+
+void ReplayRecorder::RecordSetActiveCategories(const std::vector<std::string>& categories) {
+    auto j = make_entry(ActionName::SetActiveCategories, NowMs());
+    j["categories"] = categories;
+    Record(j.dump());
+}
+
+void ReplayRecorder::RecordSaveKeywords(const std::vector<std::string>& keywords) {
+    auto j = make_entry(ActionName::SaveKeywords, NowMs());
+    j["keywords"] = keywords;
     Record(j.dump());
 }
 

@@ -1,5 +1,6 @@
 #include "Arxiv/App.hh"
 #include "Arxiv/Views/Colors.hh"
+#include "spdlog/spdlog.h"
 
 using namespace ftxui;
 using namespace Arxiv;
@@ -75,6 +76,8 @@ bool ArxivApp::HandleKeywordEditorEvent(ftxui::Event event) {
         return true;
     }
     if (event == Event::Escape) {
+        if (m_recorder) m_recorder->RecordSaveKeywords(keyword_edit_list);
+        spdlog::info("save_keywords count={}", keyword_edit_list.size());
         core.SaveKeywords(keyword_edit_list);
         dialog_depth = Dialog::None;
         return true;
