@@ -6,29 +6,47 @@
 #include "Arxiv/Fetcher.hh"
 
 #include "spdlog/spdlog.h"
-#include "spdlog/sinks/basic_file_sink.h"
+#include "spdlog/sinks/rotating_file_sink.h"
 
+#include <chrono>
 #include <cstring>
+#include <ctime>
+#include <unistd.h>
 #include <iostream>
 #include <string>
 
-void CreateLogger(int level, int flush_time) {
-    auto slevel = static_cast<spdlog::level::level_enum>(level);
-    auto logger = spdlog::basic_logger_mt("arxiv", "arxiv_tui.log");
-    logger->set_level(slevel);
-    logger->flush_on(spdlog::level::trace);
+// Timestamp + PID so a replay file and log from the same run can be matched
+// by grepping both for the session ID.
+static std::string MakeSessionId() {
+    auto now = std::chrono::system_clock::now();
+    std::time_t t = std::chrono::system_clock::to_time_t(now);
+    std::tm tm{};
+    gmtime_r(&t, &tm);
+    char buf[32];
+    std::strftime(buf, sizeof(buf), "%Y%m%d-%H%M%S", &tm);
+    return std::string(buf) + "-" + std::to_string(getpid());
+}
+
+// Rotating logger: up to 5 MB per file, keep 3 rotated files.
+// Default level is debug; --trace enables trace-level output.
+void CreateLogger(bool trace_mode) {
+    constexpr std::size_t kMaxBytes = 5 * 1024 * 1024;
+    constexpr std::size_t kMaxFiles = 3;
+    auto logger = spdlog::rotating_logger_mt("arxiv", "arxiv_tui.log",
+                                             kMaxBytes, kMaxFiles);
+    logger->set_level(trace_mode ? spdlog::level::trace : spdlog::level::debug);
+    logger->flush_on(spdlog::level::warn);
     spdlog::set_default_logger(logger);
-    spdlog::flush_every(std::chrono::seconds(flush_time));
-    spdlog::set_pattern("[%^%l%$] %v");
+    spdlog::flush_every(std::chrono::seconds(5));
+    spdlog::set_pattern("[%Y-%m-%d %H:%M:%S] [%^%l%$] %v");
 }
 
 int main(int argc, char* argv[]) {
-    CreateLogger(0, 1);
-
-    // Parse CLI flags
+    // Parse CLI flags before creating the logger so --trace takes effect
     std::string replay_file;
     std::string export_today_path;
     std::string export_yaml_path;
+    bool        trace_mode = false;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--replay") == 0 && i + 1 < argc) {
             replay_file = argv[++i];
@@ -36,8 +54,12 @@ int main(int argc, char* argv[]) {
             export_today_path = argv[++i];
         } else if (std::strcmp(argv[i], "--export-yaml") == 0 && i + 1 < argc) {
             export_yaml_path = argv[++i];
+        } else if (std::strcmp(argv[i], "--trace") == 0) {
+            trace_mode = true;
         }
     }
+
+    CreateLogger(trace_mode);
 
     Arxiv::Config config(".arxiv-tui.yml");
 
@@ -80,7 +102,11 @@ int main(int argc, char* argv[]) {
     }
 
     // Normal TUI mode
+    const std::string session_id = MakeSessionId();
+    spdlog::info("Session {} started", session_id);
+
     Arxiv::ReplayRecorder recorder("replay.jsonl");
+    recorder.RecordEvent("session_start", "id=" + session_id);
     Arxiv::InstallCrashHandler(&recorder, ".");
 
     Arxiv::ArxivApp app(config, ".arxiv-tui.yml", &recorder);

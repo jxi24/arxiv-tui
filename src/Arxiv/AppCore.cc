@@ -285,10 +285,10 @@ void AppCore::FetchArticles() {
     // Apply the global category filter on top of the per-view selection.
     // An article matches if any of its (comma-separated) categories is in
     // the active set. Semantics: ticked = visible. Articles with an empty
-    // category field pass through unconditionally — this keeps rows that
-    // were inserted before the schema migration (which had no category
-    // column) visible until a fresh fetch backfills the column.
-    if (m_active_categories.size() != m_topics.size()) {
+    // category field pass through unconditionally — keeps rows inserted
+    // before the schema migration visible until a fresh fetch backfills them.
+    const std::set<std::string> all_topics(m_topics.begin(), m_topics.end());
+    if (m_active_categories != all_topics) {
         m_current_articles.erase(
             std::remove_if(m_current_articles.begin(), m_current_articles.end(),
                 [this](const Article& a) {

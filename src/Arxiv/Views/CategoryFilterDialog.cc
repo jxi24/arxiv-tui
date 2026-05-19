@@ -28,8 +28,17 @@ void ArxivApp::SetupCategoryFilterDialog() {
             }
         }
         rows.push_back(separator() | color(TextColors::border()));
-        rows.push_back(text("  Showing " + std::to_string(core.GetCurrentArticles().size())
-                            + " article(s)") | color(TextColors::subtext()));
+        {
+            auto all = core.GetCurrentArticles();
+            int uncategorized = 0;
+            for (const auto& a : all) {
+                if (a.category.empty()) ++uncategorized;
+            }
+            std::string count_line = "  Showing " + std::to_string(all.size()) + " article(s)";
+            if (uncategorized > 0)
+                count_line += "  (" + std::to_string(uncategorized) + " uncategorized, always shown)";
+            rows.push_back(text(count_line) | color(TextColors::subtext()));
+        }
         rows.push_back(separator() | color(TextColors::border()));
         rows.push_back(hbox({
             text("j/k") | bold | color(TextColors::primary()),

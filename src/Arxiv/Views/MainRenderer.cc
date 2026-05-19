@@ -28,20 +28,57 @@ void ArxivApp::SetupMainRenderer() {
         std::string quit_key = fmt_key(key_bindings.get_key(KeyBindings::Action::Quit));
         std::string help_key = fmt_key(key_bindings.get_key(KeyBindings::Action::ShowHelp));
 
-        // Active filter label
+        // Active filter label + context
         auto filter_view = core.GetFilterView();
         std::string filter_label;
+        std::string filter_detail;
         switch (filter_view) {
-            case AppCore::FilterView::All:            filter_label = "All";            break;
-            case AppCore::FilterView::Bookmarks:      filter_label = "Bookmarks";      break;
-            case AppCore::FilterView::Today:          filter_label = "Today";          break;
-            case AppCore::FilterView::Range:          filter_label = "Date Range";     break;
-            case AppCore::FilterView::Search:         filter_label = "Search";         break;
-            case AppCore::FilterView::Recommended:    filter_label = "Recommended";    break;
-            case AppCore::FilterView::FollowedAuthors:filter_label = "Followed";       break;
-            case AppCore::FilterView::NewArticles:    filter_label = "New Articles";   break;
+            case AppCore::FilterView::All:
+                filter_label = "All";
+                break;
+            case AppCore::FilterView::Bookmarks:
+                filter_label = "Bookmarks";
+                break;
+            case AppCore::FilterView::Today:
+                filter_label = "Today";
+                break;
+            case AppCore::FilterView::Range: {
+                filter_label = "Date Range";
+                auto [s, e] = core.GetDateRange();
+                if (!s.empty() || !e.empty())
+                    filter_detail = s + " → " + e;
+                break;
+            }
+            case AppCore::FilterView::Search:
+                filter_label = "Search";
+                filter_detail = "\"" + core.GetSearchQuery() + "\"";
+                break;
+            case AppCore::FilterView::Recommended:
+                filter_label = "Recommended";
+                break;
+            case AppCore::FilterView::FollowedAuthors:
+                filter_label = "Followed";
+                break;
+            case AppCore::FilterView::NewArticles:
+                filter_label = "New Articles";
+                break;
             case AppCore::FilterView::Project:
-                filter_label = core.GetProjectNameForFilter(core.GetFilterIndex());    break;
+                filter_label = core.GetProjectNameForFilter(core.GetFilterIndex());
+                break;
+        }
+
+        // Category filter suffix (when not all categories are active)
+        const auto& active_cats = core.GetActiveCategories();
+        const auto& all_topics  = core.GetTopics();
+        const std::set<std::string> all_topics_set(all_topics.begin(), all_topics.end());
+        if (active_cats != all_topics_set && !all_topics.empty()) {
+            std::string cats;
+            for (const auto& c : active_cats) {
+                if (!cats.empty()) cats += ",";
+                cats += c;
+            }
+            filter_detail = (filter_detail.empty() ? "" : filter_detail + "  ") +
+                            "cats:" + (cats.empty() ? "none" : cats);
         }
 
         // Article position
@@ -50,7 +87,7 @@ void ArxivApp::SetupMainRenderer() {
         int current = total > 0 ? core.GetArticleIndex() + 1 : 0;
         std::string position = std::to_string(current) + " / " + std::to_string(total);
 
-        // Topics list (comma-separated)
+        // Topics list (comma-separated, right-aligned)
         const auto& topics = m_config.get_topics();
         std::string topics_str;
         for (size_t i = 0; i < topics.size(); ++i) {
@@ -58,7 +95,7 @@ void ArxivApp::SetupMainRenderer() {
             topics_str += topics[i];
         }
 
-        auto footer = hbox({
+        Elements footer_els = {
             text(" "),
             text(quit_key) | bold | color(TextColors::primary()),
             text(" quit  ") | color(TextColors::subtext()),
@@ -67,12 +104,20 @@ void ArxivApp::SetupMainRenderer() {
             text("│") | color(TextColors::border()),
             text(" filter: ") | color(TextColors::subtext()),
             text(filter_label) | bold | color(TextColors::primary()),
-            text("  ") | color(TextColors::subtext()),
-            text(position) | color(TextColors::text()),
-            filler(),
-            text(topics_str) | color(TextColors::subtext()),
-            text(" "),
-        }) | bgcolor(TextColors::surface()) | size(HEIGHT, EQUAL, 1);
+        };
+        if (!filter_detail.empty()) {
+            footer_els.push_back(text("  ") | color(TextColors::subtext()));
+            footer_els.push_back(text(filter_detail) | color(TextColors::text()));
+        }
+        footer_els.push_back(text("  ") | color(TextColors::subtext()));
+        footer_els.push_back(text(position) | color(TextColors::text()));
+        footer_els.push_back(filler());
+        footer_els.push_back(text(topics_str) | color(TextColors::subtext()));
+        footer_els.push_back(text(" "));
+
+        auto footer = hbox(std::move(footer_els))
+                      | bgcolor(TextColors::surface())
+                      | size(HEIGHT, EQUAL, 1);
 
         Element document = vbox({body | flex, footer});
 
