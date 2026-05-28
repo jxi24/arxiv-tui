@@ -18,7 +18,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y libsqlite3-dev libcurl4-openssl-dev
+          sudo apt-get install -y libsqlite3-dev libcurl4-openssl-dev ccache
 
       - name: Cache CPM packages
         uses: actions/cache@v4
@@ -27,15 +27,32 @@ jobs:
           key: cpm-${{ hashFiles('Dependencies.txt') }}
           restore-keys: cpm-
 
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-build-${{ runner.os }}-${{ github.ref }}-${{ github.sha }}
+          restore-keys: |
+            ccache-build-${{ runner.os }}-${{ github.ref }}-
+            ccache-build-${{ runner.os }}-
+
       - name: Configure
         run: |
           cmake -B build \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DARXIV_TUI_ENABLE_TESTING=ON \
             -DCPM_SOURCE_CACHE=~/.cache/CPM
+        env:
+          CCACHE_MAXSIZE: 500M
 
       - name: Build
         run: cmake --build build -j8
+        env:
+          CCACHE_MAXSIZE: 500M
+
+      - name: ccache stats
+        run: ccache --show-stats
 
       - name: Test
         run: ctest --test-dir build --output-on-failure -j8
