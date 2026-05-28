@@ -1,0 +1,82 @@
+# SPDX-FileCopyrightText: 2024-2026 Josh Isaacson
+#
+# SPDX-License-Identifier: GPL-3.0-only
+
+name: Sanitizers
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  asan-ubsan:
+    name: ASan + UBSan
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y libsqlite3-dev libcurl4-openssl-dev
+
+      - name: Cache CPM packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/CPM
+          key: cpm-${{ hashFiles('Dependencies.txt') }}
+          restore-keys: cpm-
+
+      - name: Configure
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DARXIV_TUI_ENABLE_TESTING=ON \
+            -DENABLE_SANITIZER_ADDRESS=ON \
+            -DENABLE_SANITIZER_UNDEFINED_BEHAVIOR=ON \
+            -DCPM_SOURCE_CACHE=~/.cache/CPM
+
+      - name: Build
+        run: cmake --build build -j8
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure -j8
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+
+  tsan:
+    name: TSan
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y libsqlite3-dev libcurl4-openssl-dev
+
+      - name: Cache CPM packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/CPM
+          key: cpm-${{ hashFiles('Dependencies.txt') }}
+          restore-keys: cpm-
+
+      - name: Configure
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DARXIV_TUI_ENABLE_TESTING=ON \
+            -DENABLE_SANITIZER_THREAD=ON \
+            -DCPM_SOURCE_CACHE=~/.cache/CPM
+
+      - name: Build
+        run: cmake --build build -j8
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure -j8
+        env:
+          TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1

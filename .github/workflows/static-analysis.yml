@@ -1,0 +1,40 @@
+# SPDX-FileCopyrightText: 2024-2026 Josh Isaacson
+#
+# SPDX-License-Identifier: GPL-3.0-only
+
+name: Static Analysis
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  clang-tidy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y libsqlite3-dev libcurl4-openssl-dev clang-tidy
+
+      - name: Cache CPM packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/CPM
+          key: cpm-${{ hashFiles('Dependencies.txt') }}
+          restore-keys: cpm-
+
+      - name: Configure
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DARXIV_TUI_ENABLE_TESTING=ON \
+            -DENABLE_CLANG_TIDY=ON \
+            -DCPM_SOURCE_CACHE=~/.cache/CPM
+
+      - name: Build (runs clang-tidy via CMAKE_CXX_CLANG_TIDY)
+        run: cmake --build build -j8
