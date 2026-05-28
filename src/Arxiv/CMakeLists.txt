@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 
 add_library(libarxiv-tui
+    Paths.cc
     App.cc
     AppCore.cc
     Fetcher.cc
@@ -45,3 +46,26 @@ if(ARXIV_TUI_CLANG_TIDY_COMMAND)
     set_target_properties(libarxiv-tui arxiv-tui PROPERTIES
         CXX_CLANG_TIDY "${ARXIV_TUI_CLANG_TIDY_COMMAND}")
 endif()
+
+# ── Install rules ────────────────────────────────────────────────────────────
+include(GNUInstallDirs)
+
+install(TARGETS arxiv-tui
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+install(TARGETS libarxiv-tui
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+)
+
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/include/Arxiv
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+    FILES_MATCHING PATTERN "*.hh"
+    PATTERN "*.hh.in" EXCLUDE
+)
+
+# Install the generated InstallPaths.hh alongside the source headers.
+install(FILES ${CMAKE_BINARY_DIR}/include/Arxiv/InstallPaths.hh
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/Arxiv
+)

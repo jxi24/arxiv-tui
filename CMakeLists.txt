@@ -84,6 +84,24 @@ include(Dependencies.txt)
 
 find_package(SQLite3 REQUIRED)
 
+# Install layout — must come before configure_file and install() calls.
+include(GNUInstallDirs)
+
+# Bake the resolved install paths into a generated header so Paths.cc can
+# use them as defaults without needing runtime discovery of the prefix.
+set(ARXIV_TUI_INSTALL_DATADIR  "${CMAKE_INSTALL_FULL_DATADIR}")
+set(ARXIV_TUI_INSTALL_STATEDIR "${CMAKE_INSTALL_FULL_LOCALSTATEDIR}")
+configure_file(
+    "${CMAKE_SOURCE_DIR}/include/Arxiv/InstallPaths.hh.in"
+    "${CMAKE_BINARY_DIR}/include/Arxiv/InstallPaths.hh"
+    @ONLY
+)
+
+# Make the generated header visible to all targets via the existing options lib.
+target_include_directories(arxiv_tui_options INTERFACE
+    "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>"
+)
+
 # Testing
 if(ARXIV_TUI_ENABLE_TESTING)
     if(ARXIV_TUI_COVERAGE)

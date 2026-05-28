@@ -13,8 +13,8 @@ Config::Config(const std::string& config_file) { load_from_file(config_file); }
 
 void Config::load_from_file(const std::string& config_file) {
     if (!std::filesystem::exists(config_file)) {
-        // Create default configuration
-        article_settings_.download_dir = "downloads";
+        // Create default configuration; download_dir is left empty so the
+        // caller (main) can fill it in from the resolved XDG/install paths.
         article_settings_.topics = {"hep-ph", "hep-ex", "hep-lat", "hep-th"};
         recommend_threshold_ = 3.5f;
         retrain_interval_ = 5;

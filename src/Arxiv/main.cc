@@ -7,6 +7,7 @@
 #include "Arxiv/CrashHandler.hh"
 #include "Arxiv/DatabaseManager.hh"
 #include "Arxiv/Fetcher.hh"
+#include "Arxiv/Paths.hh"
 #include "Arxiv/Replay.hh"
 
 #include <chrono>
@@ -33,10 +34,10 @@ static std::string MakeSessionId() {
 
 // Rotating logger: up to 5 MB per file, keep 3 rotated files.
 // Default level is debug; --trace enables trace-level output.
-void CreateLogger(bool trace_mode) {
+void CreateLogger(bool trace_mode, const std::filesystem::path& log_path) {
     constexpr std::size_t kMaxBytes = 5 * 1024 * 1024;
     constexpr std::size_t kMaxFiles = 3;
-    auto logger = spdlog::rotating_logger_mt("arxiv", "arxiv_tui.log", kMaxBytes, kMaxFiles);
+    auto logger = spdlog::rotating_logger_mt("arxiv", log_path.string(), kMaxBytes, kMaxFiles);
     logger->set_level(trace_mode ? spdlog::level::trace : spdlog::level::debug);
     logger->flush_on(spdlog::level::warn);
     spdlog::set_default_logger(logger);
@@ -62,15 +63,28 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    CreateLogger(trace_mode);
+    // Resolve all runtime paths from XDG / install prefix before anything else.
+    const Arxiv::Paths paths = Arxiv::Paths::Resolve();
+    std::filesystem::create_directories(paths.config_file.parent_path());
+    std::filesystem::create_directories(paths.data_dir);
+    std::filesystem::create_directories(paths.state_dir);
 
-    Arxiv::Config config(".arxiv-tui.yml");
+    CreateLogger(trace_mode, paths.state_dir / "arxiv_tui.log");
+
+    Arxiv::Config config(paths.config_file.string());
+
+    // Apply resolved defaults for any path that was not explicitly set in the
+    // config file (empty string is the sentinel for "not configured").
+    if (config.get_download_dir().empty())
+        config.set_download_dir((paths.data_dir / "downloads").string());
+    config.set_db_file((paths.data_dir / "articles.db").string());
+    config.set_ranker_file((paths.data_dir / "ranker.bin").string());
 
     // Headless digest export
     if (!export_today_path.empty() || !export_yaml_path.empty()) {
         auto core = std::make_unique<Arxiv::AppCore>(
             config,
-            std::make_unique<Arxiv::DatabaseManager>("articles.db"),
+            std::make_unique<Arxiv::DatabaseManager>(config.get_db_file()),
             std::make_unique<Arxiv::Fetcher>(config.get_topics(), config.get_download_dir()));
 
         if (!export_today_path.empty()) {
@@ -92,11 +106,10 @@ int main(int argc, char* argv[]) {
     }
 
     if (!replay_file.empty()) {
-        // Headless replay mode: no TUI, just dispatch actions to AppCore
         spdlog::info("Replay mode: replaying from {}", replay_file);
         auto core = std::make_unique<Arxiv::AppCore>(
             config,
-            std::make_unique<Arxiv::DatabaseManager>("articles.db"),
+            std::make_unique<Arxiv::DatabaseManager>(config.get_db_file()),
             std::make_unique<Arxiv::Fetcher>(config.get_topics(), config.get_download_dir()));
 
         auto result = Arxiv::ReplayPlayer::FromFile(replay_file, *core);
@@ -113,11 +126,12 @@ int main(int argc, char* argv[]) {
     const std::string session_id = MakeSessionId();
     spdlog::info("Session {} started", session_id);
 
-    Arxiv::ReplayRecorder recorder("replay.jsonl");
+    const std::string replay_path = (paths.state_dir / "replay.jsonl").string();
+    Arxiv::ReplayRecorder recorder(replay_path);
     recorder.RecordEvent("session_start", "id=" + session_id);
-    Arxiv::InstallCrashHandler(&recorder, ".");
+    Arxiv::InstallCrashHandler(&recorder, paths.state_dir.string());
 
-    Arxiv::ArxivApp app(config, ".arxiv-tui.yml", &recorder);
+    Arxiv::ArxivApp app(config, paths.config_file.string(), &recorder);
     recorder.RecordEvent("main/run_loop_start");
     app.Run();
     recorder.RecordEvent("main/run_loop_returned");

@@ -13,7 +13,7 @@ using namespace Arxiv;
 
 ArxivApp::ArxivApp(const Config& config, const std::string& config_path, ReplayRecorder* recorder)
     : core(config,
-           std::make_unique<DatabaseManager>("articles.db"),
+           std::make_unique<DatabaseManager>(config.get_db_file()),
            std::make_unique<Fetcher>(config.get_topics(), config.get_download_dir()),
            AppCore::FetchMode::Async,
            recorder)
