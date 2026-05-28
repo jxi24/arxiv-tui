@@ -2,12 +2,11 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
+#include <Arxiv/Ranker.hh>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers.hpp>
-
-#include <Arxiv/Ranker.hh>
-#include <fixtures/test_data.hh>
 #include <cmath>
+#include <fixtures/test_data.hh>
 #include <fstream>
 
 using namespace Arxiv;
@@ -79,7 +78,7 @@ TEST_CASE("Ranker predictions in valid range", "[ranker]") {
     REQUIRE(ranker.IsTrained());
 
     SECTION("Predicted score for seen article is in [1, 5]") {
-        for (const auto &[article, _] : rated) {
+        for (const auto& [article, _] : rated) {
             float score = ranker.Predict(article);
             REQUIRE(score >= 1.0f);
             REQUIRE(score <= 5.0f);
@@ -206,8 +205,8 @@ static Ranker make_trained_ranker() {
     std::vector<std::pair<Article, int>> rated;
     for (int i = 0; i < 5; ++i) {
         Article a = base;
-        a.link    = "https://arxiv.org/abs/pers." + std::to_string(i);
-        a.title   = "Persistence test article " + std::to_string(i);
+        a.link = "https://arxiv.org/abs/pers." + std::to_string(i);
+        a.title = "Persistence test article " + std::to_string(i);
         a.abstract = "Abstract about topic " + std::to_string(i);
         corpus.push_back(a);
         rated.emplace_back(a, (i % 5) + 1);
@@ -232,8 +231,8 @@ TEST_CASE("Ranker persistence", "[ranker]") {
 
         // Predictions must match within floating-point tolerance
         Article probe = sample_articles[0];
-        probe.link    = "https://arxiv.org/abs/pers.0";
-        probe.title   = "Persistence test article 0";
+        probe.link = "https://arxiv.org/abs/pers.0";
+        probe.title = "Persistence test article 0";
         float original = trained.Predict(probe);
         float reloaded = loaded.Predict(probe);
         REQUIRE(std::abs(original - reloaded) < 0.001f);
@@ -249,7 +248,7 @@ TEST_CASE("Ranker persistence", "[ranker]") {
         const std::string path = "/tmp/arxiv_tui_test_bad_magic.bin";
         {
             std::ofstream f(path, std::ios::binary);
-            f.write("JUNK", 4);  // wrong magic
+            f.write("JUNK", 4); // wrong magic
         }
         Ranker r;
         REQUIRE_FALSE(r.Load(path));

@@ -15,6 +15,6 @@ namespace Arxiv {
 //   2. $...$ inline-math regions   → replaced with a space
 //   3. \cmd{content}               → replaced with a space + content
 //   4. bare \cmd tokens            → replaced with a space
-std::string StripLatex(const std::string &text);
+std::string StripLatex(const std::string& text);
 
 } // namespace Arxiv

@@ -2,14 +2,14 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
+#include <Arxiv/Article.hh>
+#include <Arxiv/DatabaseManager.hh>
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
-#include <Arxiv/DatabaseManager.hh>
-#include <Arxiv/Article.hh>
-#include <fixtures/test_data.hh>
-#include <algorithm>
 #include <chrono>
+#include <fixtures/test_data.hh>
 
 // Tests against the *real* DatabaseManager implementation (in-memory SQLite).
 // No mocking — these verify actual SQL behaviour.
@@ -29,7 +29,7 @@ TEST_CASE("Real DB: article storage", "[database][real]") {
         auto articles = db.GetRecent(-1);
         REQUIRE(articles.size() == 1);
         REQUIRE(articles[0].title == sample_articles[0].title);
-        REQUIRE(articles[0].link  == sample_articles[0].link);
+        REQUIRE(articles[0].link == sample_articles[0].link);
     }
 
     SECTION("AddArticle with same link replaces the existing record") {
@@ -44,18 +44,19 @@ TEST_CASE("Real DB: article storage", "[database][real]") {
 
     SECTION("AddArticle with single quote in title and abstract stores correctly") {
         Article a = sample_articles[0];
-        a.link     = "https://arxiv.org/abs/test.quote";
-        a.title    = "It's a test: O'Brien's paper";
+        a.link = "https://arxiv.org/abs/test.quote";
+        a.title = "It's a test: O'Brien's paper";
         a.abstract = "The author's method yields O(n^2) results";
         db.AddArticle(a);
         auto articles = db.GetRecent(-1);
         REQUIRE(articles.size() == 1);
-        REQUIRE(articles[0].title    == a.title);
+        REQUIRE(articles[0].title == a.title);
         REQUIRE(articles[0].abstract == a.abstract);
     }
 
     SECTION("GetRecent(-1) returns all articles regardless of age") {
-        for (const auto& a : sample_articles) db.AddArticle(a);
+        for (const auto& a : sample_articles)
+            db.AddArticle(a);
         REQUIRE(db.GetRecent(-1).size() == sample_articles.size());
     }
 
@@ -105,8 +106,10 @@ TEST_CASE("Real DB: bookmarking", "[database][real]") {
 // ---------------------------------------------------------------------------
 TEST_CASE("Real DB: SearchArticles", "[database][real]") {
     DatabaseManager db(":memory:");
-    db.AddArticle(sample_articles[0]);  // title: "Sample Article Title",  author: "John Doe, Jane Smith"
-    db.AddArticle(sample_articles[1]);  // title: "Another Test Article",  author: "Alice Johnson, Bob Wilson"
+    db.AddArticle(
+        sample_articles[0]); // title: "Sample Article Title",  author: "John Doe, Jane Smith"
+    db.AddArticle(
+        sample_articles[1]); // title: "Another Test Article",  author: "Alice Johnson, Bob Wilson"
 
     SECTION("Search by title finds matching article") {
         auto results = db.SearchArticles("Sample Article", true, false, false);
@@ -250,7 +253,7 @@ TEST_CASE("Real DB: project notes", "[database][real]") {
     SECTION("RemoveProject cascades to project notes") {
         db.SetProjectNote("Research", sample_articles[0].link, "note");
         db.RemoveProject("Research");
-        db.AddProject("Research");  // recreate
+        db.AddProject("Research"); // recreate
         REQUIRE(db.GetProjectNote("Research", sample_articles[0].link).empty());
     }
 }
@@ -274,7 +277,7 @@ TEST_CASE("Real DB: GetProjectsForArticle", "[database][real]") {
         auto projects = db.GetProjectsForArticle(sample_articles[0].link);
         REQUIRE(projects.size() == 2);
         bool has_alpha = std::find(projects.begin(), projects.end(), "Alpha") != projects.end();
-        bool has_beta  = std::find(projects.begin(), projects.end(), "Beta")  != projects.end();
+        bool has_beta = std::find(projects.begin(), projects.end(), "Beta") != projects.end();
         REQUIRE(has_alpha);
         REQUIRE(has_beta);
     }

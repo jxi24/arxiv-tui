@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: 2024-2026 Josh Isaacson
+#
+# SPDX-License-Identifier: GPL-3.0-only
+
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 100
+
+# Braces
+BreakBeforeBraces: Attach
+
+# Constructor initialiser lists: one member per line, comma before each
+BreakConstructorInitializers: BeforeComma
+ConstructorInitializerIndentWidth: 4
+PackConstructorInitializers: Never
+
+# Function arguments: align continuation with opening paren
+AlignAfterOpenBracket: Align
+BinPackArguments: false
+BinPackParameters: false
+
+# Namespace — don't indent contents
+NamespaceIndentation: None
+
+# Includes
+SortIncludes: CaseSensitive
+IncludeBlocks: Regroup
+IncludeCategories:
+  # Project headers first
+  - Regex: '^"Arxiv/'
+    Priority: 1
+  # Third-party headers
+  - Regex: '^<(fmt|spdlog|ftxui|pugixml|yaml-cpp|nlohmann|cpr).*>'
+    Priority: 2
+  # System headers
+  - Regex: '^<.*>'
+    Priority: 3
+
+# Pointer/reference alignment
+PointerAlignment: Left
+
+# Spaces
+SpaceBeforeParens: ControlStatements
+SpaceAfterCStyleCast: false

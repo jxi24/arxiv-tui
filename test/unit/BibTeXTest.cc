@@ -2,39 +2,36 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
+#include "Arxiv/AppCore.hh"
+#include "Arxiv/Article.hh"
+#include "Arxiv/Config.hh"
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
-
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
 #include <vector>
 
-#include "Arxiv/AppCore.hh"
-#include "Arxiv/Config.hh"
-#include "Arxiv/Article.hh"
-
+#include "fixtures/test_data.hh"
 #include "mocks/DatabaseManagerMock.hh"
 #include "mocks/FetcherMock.hh"
-#include "fixtures/test_data.hh"
 
 using namespace Catch::Matchers;
 using DatabaseManagerMock = arxiv_tui::test::DatabaseManagerMock;
-using FetcherMock         = arxiv_tui::test::FetcherMock;
+using FetcherMock = arxiv_tui::test::FetcherMock;
 namespace fs = std::filesystem;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-static std::unique_ptr<Arxiv::AppCore> make_core(
-    DatabaseManagerMock*& db_out,
-    FetcherMock*&         fetcher_out)
-{
-    auto db_ptr  = std::make_unique<DatabaseManagerMock>();
+static std::unique_ptr<Arxiv::AppCore> make_core(DatabaseManagerMock*& db_out,
+                                                 FetcherMock*& fetcher_out) {
+    auto db_ptr = std::make_unique<DatabaseManagerMock>();
     auto fet_ptr = std::make_unique<FetcherMock>();
-    db_out      = db_ptr.get();
+    db_out = db_ptr.get();
     fetcher_out = fet_ptr.get();
     Arxiv::Config cfg;
     cfg.set_topics({"hep-ph"});
@@ -63,8 +60,7 @@ TEST_CASE("FetcherMock: FetchBibTeX can be mocked", "[bibtex][fetcher]") {
   eprint = {2403.12345},
   archivePrefix = {arXiv},
 })";
-        REQUIRE_CALL(fetcher, FetchBibTeX(std::string("2403.12345")))
-            .RETURN(expected_bib);
+        REQUIRE_CALL(fetcher, FetchBibTeX(std::string("2403.12345"))).RETURN(expected_bib);
 
         std::string bib = fetcher.FetchBibTeX("2403.12345");
         REQUIRE_THAT(bib, ContainsSubstring("@article"));
@@ -72,8 +68,7 @@ TEST_CASE("FetcherMock: FetchBibTeX can be mocked", "[bibtex][fetcher]") {
     }
 
     SECTION("Returns empty string when lookup fails") {
-        REQUIRE_CALL(fetcher, FetchBibTeX(std::string("9999.00000")))
-            .RETURN(std::string{});
+        REQUIRE_CALL(fetcher, FetchBibTeX(std::string("9999.00000"))).RETURN(std::string{});
 
         std::string bib = fetcher.FetchBibTeX("9999.00000");
         REQUIRE(bib.empty());
@@ -85,8 +80,8 @@ TEST_CASE("FetcherMock: FetchBibTeX can be mocked", "[bibtex][fetcher]") {
 // ---------------------------------------------------------------------------
 
 TEST_CASE("AppCore::ExportArticleBibTeX — single article", "[bibtex][appcore]") {
-    DatabaseManagerMock* db_ptr     = nullptr;
-    FetcherMock*         fetcher_ptr = nullptr;
+    DatabaseManagerMock* db_ptr = nullptr;
+    FetcherMock* fetcher_ptr = nullptr;
     auto core = make_core(db_ptr, fetcher_ptr);
 
     fs::path tmp = fs::temp_directory_path() / "bibtex_single_test.bib";
@@ -145,8 +140,8 @@ TEST_CASE("AppCore::ExportArticleBibTeX — single article", "[bibtex][appcore]"
 // ---------------------------------------------------------------------------
 
 TEST_CASE("AppCore::ExportArticlesBibTeX — multiple articles", "[bibtex][appcore]") {
-    DatabaseManagerMock* db_ptr     = nullptr;
-    FetcherMock*         fetcher_ptr = nullptr;
+    DatabaseManagerMock* db_ptr = nullptr;
+    FetcherMock* fetcher_ptr = nullptr;
     auto core = make_core(db_ptr, fetcher_ptr);
 
     fs::path tmp = fs::temp_directory_path() / "bibtex_multi_test.bib";
@@ -155,8 +150,8 @@ TEST_CASE("AppCore::ExportArticlesBibTeX — multiple articles", "[bibtex][appco
     auto articles = arxiv_tui::test::fixtures::sample_articles;
 
     SECTION("writes one entry per article") {
-        fetcher_ptr->setBibTeXResponse("2403.12345", "");  // fallback
-        fetcher_ptr->setBibTeXResponse("2403.12346", "");  // fallback
+        fetcher_ptr->setBibTeXResponse("2403.12345", ""); // fallback
+        fetcher_ptr->setBibTeXResponse("2403.12346", ""); // fallback
 
         bool ok = core->ExportArticlesBibTeX(articles, tmp.string());
         REQUIRE(ok);
@@ -168,7 +163,7 @@ TEST_CASE("AppCore::ExportArticlesBibTeX — multiple articles", "[bibtex][appco
         REQUIRE_THAT(content, ContainsSubstring("2403.12346"));
         // At least two @article entries
         std::size_t count = 0;
-        std::size_t pos   = 0;
+        std::size_t pos = 0;
         while ((pos = content.find("@article", pos)) != std::string::npos) {
             ++count;
             ++pos;
@@ -197,8 +192,8 @@ TEST_CASE("AppCore::ExportArticlesBibTeX — multiple articles", "[bibtex][appco
 // ---------------------------------------------------------------------------
 
 TEST_CASE("AppCore::ExportProjectBibTeX — project articles", "[bibtex][appcore]") {
-    DatabaseManagerMock* db_ptr     = nullptr;
-    FetcherMock*         fetcher_ptr = nullptr;
+    DatabaseManagerMock* db_ptr = nullptr;
+    FetcherMock* fetcher_ptr = nullptr;
     auto core = make_core(db_ptr, fetcher_ptr);
 
     fs::path tmp = fs::temp_directory_path() / "bibtex_project_test.bib";
@@ -207,8 +202,7 @@ TEST_CASE("AppCore::ExportProjectBibTeX — project articles", "[bibtex][appcore
     auto articles = arxiv_tui::test::fixtures::sample_articles;
 
     SECTION("exports all project articles to BibTeX") {
-        ALLOW_CALL(*db_ptr, GetArticlesForProject(std::string("MyProject")))
-            .RETURN(articles);
+        ALLOW_CALL(*db_ptr, GetArticlesForProject(std::string("MyProject"))).RETURN(articles);
         fetcher_ptr->setBibTeXResponse("2403.12345", "");
         fetcher_ptr->setBibTeXResponse("2403.12346", "");
 
@@ -230,8 +224,7 @@ TEST_CASE("AppCore::ExportProjectBibTeX — project articles", "[bibtex][appcore
     }
 
     SECTION("returns false for unwritable path") {
-        ALLOW_CALL(*db_ptr, GetArticlesForProject(std::string("MyProject")))
-            .RETURN(articles);
+        ALLOW_CALL(*db_ptr, GetArticlesForProject(std::string("MyProject"))).RETURN(articles);
 
         bool ok = core->ExportProjectBibTeX("MyProject", "/no_such_dir/out.bib");
         REQUIRE_FALSE(ok);
@@ -245,8 +238,8 @@ TEST_CASE("AppCore::ExportProjectBibTeX — project articles", "[bibtex][appcore
 // ---------------------------------------------------------------------------
 
 TEST_CASE("Fallback BibTeX is well-formed", "[bibtex][fallback]") {
-    DatabaseManagerMock* db_ptr     = nullptr;
-    FetcherMock*         fetcher_ptr = nullptr;
+    DatabaseManagerMock* db_ptr = nullptr;
+    FetcherMock* fetcher_ptr = nullptr;
     auto core = make_core(db_ptr, fetcher_ptr);
 
     fs::path tmp = fs::temp_directory_path() / "bibtex_fallback_test.bib";

@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 #include "Arxiv/App.hh"
+
 #include "Arxiv/Article.hh"
 
 #include "spdlog/spdlog.h"
@@ -23,11 +24,14 @@ ArxivApp::ArxivApp(const Config& config, const std::string& config_path, ReplayR
     m_recorder = recorder;
 
     spdlog::info("ArXiv Application Initialized");
-    if (m_recorder) m_recorder->RecordEvent("app/ctor_after_appcore");
+    if (m_recorder)
+        m_recorder->RecordEvent("app/ctor_after_appcore");
     core.ReloadKeywords();
-    if (m_recorder) m_recorder->RecordEvent("app/setup_ui_begin");
+    if (m_recorder)
+        m_recorder->RecordEvent("app/setup_ui_begin");
     SetupUI();
-    if (m_recorder) m_recorder->RecordEvent("app/setup_ui_end");
+    if (m_recorder)
+        m_recorder->RecordEvent("app/setup_ui_end");
 }
 
 #ifdef TESTING
@@ -47,7 +51,8 @@ ArxivApp::ArxivApp(Config cfg,
 #endif
 
 void ArxivApp::UpdateTitleScrollPositions() {
-    if(focused_pane != 1 || !show_detail) return;
+    if (focused_pane != 1 || !show_detail)
+        return;
     auto now = std::chrono::steady_clock::now();
     auto article = core.GetCurrentArticles()[static_cast<size_t>(core.GetArticleIndex())];
 
@@ -60,34 +65,29 @@ void ArxivApp::UpdateTitleScrollPositions() {
 
 void ArxivApp::UpdateVisibleRange() {
     auto articles = core.GetCurrentArticles();
-    if(articles.empty()) return;
+    if (articles.empty())
+        return;
 
     int current_index = core.GetArticleIndex();
     int margin = std::min(m_config.get_scroll_margin(), visible_rows / 2);
 
-    if(current_index < top_article_index + margin) {
+    if (current_index < top_article_index + margin) {
         top_article_index = std::max(0, current_index - margin);
-    } else if(current_index >= top_article_index + visible_rows - margin) {
+    } else if (current_index >= top_article_index + visible_rows - margin) {
         int max_top = static_cast<int>(articles.size()) - visible_rows;
-        top_article_index = std::min(current_index - visible_rows + margin + 1,
-                                     std::max(0, max_top));
+        top_article_index =
+            std::min(current_index - visible_rows + margin + 1, std::max(0, max_top));
     }
 }
 
-void ArxivApp::ToggleHelp() {
-    show_help = !show_help;
-}
+void ArxivApp::ToggleHelp() { show_help = !show_help; }
 
 void ArxivApp::SetupUI() {
     SetupFilterPane();
     SetupArticlePane();
     SetupDetailView();
 
-    main_container = Container::Tab({
-        filter_pane,
-        article_pane,
-        detail_view
-    }, &focused_pane);
+    main_container = Container::Tab({filter_pane, article_pane, detail_view}, &focused_pane);
 
     SetupAssignProjectDialog();
     SetupHelpDialog();
@@ -105,13 +105,15 @@ void ArxivApp::SetupUI() {
 
     // Article update callback triggers a UI refresh
     core.SetArticleUpdateCallback([&]() {
-        if (m_recorder) m_recorder->RecordEvent("app/article_update_callback");
+        if (m_recorder)
+            m_recorder->RecordEvent("app/article_update_callback");
         RefreshUI();
     });
 
     // Refresh / animation thread
     refresh_ui = std::thread([&] {
-        if (m_recorder) m_recorder->RecordEvent("app/refresh_thread_started");
+        if (m_recorder)
+            m_recorder->RecordEvent("app/refresh_thread_started");
         long long tick = 0;
         while (refresh_ui_continue) {
             using namespace std::chrono_literals;
@@ -129,13 +131,11 @@ void ArxivApp::SetupUI() {
     });
 }
 
-void ArxivApp::RefreshUI() {
-    screen.PostEvent(Event::Custom);
-}
+void ArxivApp::RefreshUI() { screen.PostEvent(Event::Custom); }
 
 int ArxivApp::FilterPaneWidth() {
     int max_length = 0;
-    for(const auto& option : core.GetFilterOptions()) {
+    for (const auto& option : core.GetFilterOptions()) {
         max_length = std::max(max_length, static_cast<int>(option.size()));
     }
     return max_length + padding + arrow_size;

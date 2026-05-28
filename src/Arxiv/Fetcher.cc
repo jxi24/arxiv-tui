@@ -3,21 +3,24 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 #include "Arxiv/Fetcher.hh"
+
 #include "Arxiv/Article.hh"
 
-#include "cpr/cpr.h"
-#include "spdlog/spdlog.h"
-#include "fmt/ranges.h"
-#include "pugixml.hpp"
 #include <nlohmann/json.hpp>
-#include <sstream>
+
 #include <fstream>
+#include <sstream>
 #include <string_view>
 #include <utility>
 #include <vector>
 
-using Arxiv::Fetcher;
+#include "cpr/cpr.h"
+#include "fmt/ranges.h"
+#include "pugixml.hpp"
+#include "spdlog/spdlog.h"
+
 using Arxiv::Article;
+using Arxiv::Fetcher;
 
 namespace {
 
@@ -27,7 +30,7 @@ constexpr std::string_view ARXIV_API_URL = "https://export.arxiv.org/api/query";
 
 // arXiv submittedDate query format is YYYYMMDDHHMI.
 constexpr std::string_view ARXIV_QUERY_FROM_FORMAT = "%Y%m%d0000";
-constexpr std::string_view ARXIV_QUERY_TO_FORMAT   = "%Y%m%d2359";
+constexpr std::string_view ARXIV_QUERY_TO_FORMAT = "%Y%m%d2359";
 
 // Apply every (find, replace) entry in `table` to `text` in order, in-place.
 // Both StyleLatex and ReplaceLatexAccents do this exact loop; isolating it
@@ -47,10 +50,11 @@ void apply_replacements(std::string& text,
 // Returns false if the input is too short or non-numeric. Used by both the
 // Atom-feed date parser and the FetchSince date-window builder.
 bool parse_ymd_prefix(const std::string& date, std::tm& out) {
-    if (date.size() < 10) return false;
+    if (date.size() < 10)
+        return false;
     try {
         out.tm_year = std::stoi(date.substr(0, 4)) - 1900;
-        out.tm_mon  = std::stoi(date.substr(5, 2)) - 1;
+        out.tm_mon = std::stoi(date.substr(5, 2)) - 1;
         out.tm_mday = std::stoi(date.substr(8, 2));
     } catch (...) {
         return false;
@@ -60,11 +64,12 @@ bool parse_ymd_prefix(const std::string& date, std::tm& out) {
 
 } // namespace
 
-Fetcher::Fetcher(const std::vector<std::string> &topics, const std::string &_base_path) : m_topics{topics} {
+Fetcher::Fetcher(const std::vector<std::string>& topics, const std::string& _base_path)
+    : m_topics{topics} {
     base_path = _base_path;
-    if(!std::filesystem::exists(base_path)) {
+    if (!std::filesystem::exists(base_path)) {
         std::filesystem::create_directory(base_path);
-    } else if(!std::filesystem::is_directory(base_path)) {
+    } else if (!std::filesystem::is_directory(base_path)) {
         throw std::logic_error(fmt::format("[Fetcher]: {} already exists and is not a directory!",
                                            base_path.string()));
     }
@@ -73,7 +78,7 @@ Fetcher::Fetcher(const std::vector<std::string> &topics, const std::string &_bas
 std::vector<Article> Fetcher::Fetch() {
     std::vector<Article> all_articles;
     auto response = FetchFeeds();
-    if(response) {
+    if (response) {
         all_articles = ParseFeed(response.value());
     }
 
@@ -87,8 +92,8 @@ std::vector<Article> Fetcher::FetchToday() {
     return Fetch();
 }
 
-bool Fetcher::DownloadPaper(const std::string &paper_id, const std::string &output_path) {
-    if(testing) {
+bool Fetcher::DownloadPaper(const std::string& paper_id, const std::string& output_path) {
+    if (testing) {
         // In testing mode, just create an empty file
         std::ofstream file(output_path);
         return file.good();
@@ -98,29 +103,32 @@ bool Fetcher::DownloadPaper(const std::string &paper_id, const std::string &outp
         auto url = ConstructPaperUrl(paper_id, "pdf");
         auto response = cpr::Get(cpr::Url{url});
 
-        if(response.status_code == 200) {
+        if (response.status_code == 200) {
             std::ofstream file(base_path / output_path, std::ios::binary);
             if (file.is_open()) {
-                file.write(response.text.c_str(), static_cast<std::streamsize>(response.text.size()));
+                file.write(response.text.c_str(),
+                           static_cast<std::streamsize>(response.text.size()));
                 file.close();
-                spdlog::info("[Fetcher]: Successfully downloaded paper {} to {}", paper_id, output_path);
+                spdlog::info(
+                    "[Fetcher]: Successfully downloaded paper {} to {}", paper_id, output_path);
                 return true;
             } else {
                 spdlog::error("[Fetcher]: Failed to open output file {}", output_path);
                 return false;
             }
         } else {
-            spdlog::error("[Fetcher]: Failed to download paper {}: HTTP {}", paper_id, response.status_code);
+            spdlog::error(
+                "[Fetcher]: Failed to download paper {}: HTTP {}", paper_id, response.status_code);
             return false;
         }
-    } catch (const std::exception &e) {
+    } catch (const std::exception& e) {
         spdlog::error("[Fetcher]: Error downloading paper {}: {}", paper_id, e.what());
         return false;
     }
 }
 
-std::string Fetcher::GetPaperAbstract(const std::string &paper_id) {
-    if(testing) {
+std::string Fetcher::GetPaperAbstract(const std::string& paper_id) {
+    if (testing) {
         return "Sample abstract for testing purposes.";
     }
 
@@ -128,63 +136,63 @@ std::string Fetcher::GetPaperAbstract(const std::string &paper_id) {
         auto url = ConstructPaperUrl(paper_id, "abs");
         auto response = cpr::Get(cpr::Url{url});
 
-        if(response.status_code == 200) {
+        if (response.status_code == 200) {
             pugi::xml_document doc;
-            if(doc.load_string(response.text.c_str())) {
+            if (doc.load_string(response.text.c_str())) {
                 auto abstract_node = doc.select_node("//div[@class='abstract']");
-                if(abstract_node) {
+                if (abstract_node) {
                     return abstract_node.node().text().get();
                 }
             }
         }
-        spdlog::error("[Fetcher]: Failed to fetch abstract for paper {}: HTTP {}", paper_id, response.status_code);
+        spdlog::error("[Fetcher]: Failed to fetch abstract for paper {}: HTTP {}",
+                      paper_id,
+                      response.status_code);
         return "";
-    } catch (const std::exception &e) {
+    } catch (const std::exception& e) {
         spdlog::error("[Fetcher]: Error fetching abstract for paper {}: {}", paper_id, e.what());
         return "";
     }
 }
 
-
-std::string Fetcher::ConstructPaperUrl(const std::string &paper_id, const std::string &format) const {
+std::string Fetcher::ConstructPaperUrl(const std::string& paper_id,
+                                       const std::string& format) const {
     return fmt::format("https://arxiv.org/{}/{}", format, paper_id);
 }
 
 std::optional<std::string> Fetcher::FetchFeeds() {
-    if(testing) {
+    if (testing) {
         std::ifstream rss("hep-ph+hep-ex.rss");
         std::stringstream buffer;
         buffer << rss.rdbuf();
         return buffer.str();
     }
-    spdlog::trace("[Fetcher]: Fetching articles for topics [{}]",
-                  fmt::join(m_topics, ", "));
+    spdlog::trace("[Fetcher]: Fetching articles for topics [{}]", fmt::join(m_topics, ", "));
     try {
-        auto url = fmt::format("http://rss.arxiv.org/rss/{}",
-                               fmt::join(m_topics, "+"));
+        auto url = fmt::format("http://rss.arxiv.org/rss/{}", fmt::join(m_topics, "+"));
 
         auto response = cpr::Get(cpr::Url{url});
 
-        if(response.status_code == 200) {
+        if (response.status_code == 200) {
             return response.text;
         } else {
             spdlog::warn("[Fetcher]: Failed to fetch RSS");
             return std::nullopt;
         }
 
-    } catch (const std::exception &e) {
+    } catch (const std::exception& e) {
         spdlog::error("[Fetcher]: Error fetching RSS {}", e.what());
         return std::nullopt;
     }
 }
 
-std::vector<Article> Fetcher::ParseFeed(const std::string &xml_content) {
+std::vector<Article> Fetcher::ParseFeed(const std::string& xml_content) {
     std::vector<Article> articles;
     pugi::xml_document doc;
 
     // Parse XML content
     auto result = doc.load_string(xml_content.c_str());
-    if(!result) {
+    if (!result) {
         spdlog::error("[Fetcher]: XML parsing error {}", result.description());
         return articles;
     }
@@ -192,13 +200,13 @@ std::vector<Article> Fetcher::ParseFeed(const std::string &xml_content) {
     try {
         // Navigate to channel
         auto channel = doc.select_node("//channel").node();
-        if(!channel) {
+        if (!channel) {
             spdlog::error("[Fetcher]: Could not find channel node");
             return articles;
         }
 
         // Iterate through items
-        for(auto item : channel.children("item")) {
+        for (auto item : channel.children("item")) {
             Article article;
 
             // Extract basic fields using node values
@@ -208,22 +216,25 @@ std::vector<Article> Fetcher::ParseFeed(const std::string &xml_content) {
             // Find the position of "Abstract:" and remove everything up to and including it
             size_t abstract_pos = abstract_text.find("Abstract:");
             if (abstract_pos != std::string::npos) {
-                abstract_text = abstract_text.substr(abstract_pos + 10); // 10 is length of "Abstract: "
+                abstract_text =
+                    abstract_text.substr(abstract_pos + 10); // 10 is length of "Abstract: "
             }
             article.abstract = StyleLatex(ReplaceLatexAccents(abstract_text));
-            
+
             // Parse date
             auto date_str = item.child_value("pubDate");
             article.date = ParseDate(date_str).value_or(std::chrono::system_clock::now());
 
             // Extract authors (dc.creator)
-            article.authors = StyleLatex(ReplaceLatexAccents(item.child("dc:creator").text().get()));
+            article.authors =
+                StyleLatex(ReplaceLatexAccents(item.child("dc:creator").text().get()));
 
             // Collect all categories
             std::stringstream categories;
             bool first = true;
-            for(auto category : item.children("category")) {
-                if(!first) categories << ", ";
+            for (auto category : item.children("category")) {
+                if (!first)
+                    categories << ", ";
                 categories << category.text().get();
                 first = false;
             }
@@ -233,38 +244,37 @@ std::vector<Article> Fetcher::ParseFeed(const std::string &xml_content) {
             //   <dc:type>replace</dc:type>  / "Replacement"
             //   <arxiv:announce_type>replace…</arxiv:announce_type>
             // or by suffixing the title with " (UPDATED)". Be permissive.
-            std::string dc_type   = item.child_value("dc:type");
-            std::string ann_type  = item.child_value("arxiv:announce_type");
+            std::string dc_type = item.child_value("dc:type");
+            std::string ann_type = item.child_value("arxiv:announce_type");
             auto contains_ci = [](const std::string& hay, const std::string& needle) {
-                auto it = std::search(hay.begin(), hay.end(), needle.begin(), needle.end(),
-                    [](char a, char b) {
+                auto it = std::search(
+                    hay.begin(), hay.end(), needle.begin(), needle.end(), [](char a, char b) {
                         return std::tolower(static_cast<unsigned char>(a)) ==
                                std::tolower(static_cast<unsigned char>(b));
                     });
                 return it != hay.end();
             };
-            article.is_replacement =
-                contains_ci(dc_type,  "replace") ||
-                contains_ci(ann_type, "replace") ||
-                contains_ci(article.title, "(UPDATED)");
+            article.is_replacement = contains_ci(dc_type, "replace") ||
+                                     contains_ci(ann_type, "replace") ||
+                                     contains_ci(article.title, "(UPDATED)");
 
             articles.push_back(article);
         }
-    } catch (const pugi::xpath_exception &e) {
+    } catch (const pugi::xpath_exception& e) {
         spdlog::error("[Fetcher] XPath error {}", e.what());
-    } catch (const std::exception &e) {
+    } catch (const std::exception& e) {
         spdlog::error("[Fetcher] Error parsing RSS {}", e.what());
     }
 
     return articles;
 }
 
-std::optional<Arxiv::time_point> Fetcher::ParseDate(const std::string &date) const {
+std::optional<Arxiv::time_point> Fetcher::ParseDate(const std::string& date) const {
     std::istringstream ss(date);
     std::tm tm = {};
     ss >> std::get_time(&tm, "%Y-%m-%dT%H:%M:%S");
 
-    if(ss.fail()) {
+    if (ss.fail()) {
         return std::nullopt;
     }
 
@@ -278,13 +288,21 @@ std::string Fetcher::StyleLatex(const std::string& text) const {
 
     // Text formatting commands whose opening (\cmd{) we strip; the matching
     // closing brace is removed in the second pass below.
-    const std::vector<std::pair<std::string, std::string>> replacements = {
-        {"\\textit{", ""}, {"\\textbf{", ""}, {"\\emph{", ""},
-        {"\\textsl{", ""}, {"\\textsc{", ""}, {"\\texttt{", ""},
-        {"\\textnormal{", ""}, {"\\textrm{", ""}, {"\\textsf{", ""},
-        {"\\textmd{", ""}, {"\\textup{", ""}, {"\\textdown{", ""},
-        {"\\underline{", ""}, {"\\overline{", ""}, {"\\st{", ""}
-    };
+    const std::vector<std::pair<std::string, std::string>> replacements = {{"\\textit{", ""},
+                                                                           {"\\textbf{", ""},
+                                                                           {"\\emph{", ""},
+                                                                           {"\\textsl{", ""},
+                                                                           {"\\textsc{", ""},
+                                                                           {"\\texttt{", ""},
+                                                                           {"\\textnormal{", ""},
+                                                                           {"\\textrm{", ""},
+                                                                           {"\\textsf{", ""},
+                                                                           {"\\textmd{", ""},
+                                                                           {"\\textup{", ""},
+                                                                           {"\\textdown{", ""},
+                                                                           {"\\underline{", ""},
+                                                                           {"\\overline{", ""},
+                                                                           {"\\st{", ""}};
 
     apply_replacements(result, replacements);
 
@@ -305,7 +323,7 @@ std::string Fetcher::StyleLatex(const std::string& text) const {
                 }
             }
         }
-        
+
         if (is_formatting_brace) {
             result.erase(pos, 1);
         } else {
@@ -318,74 +336,178 @@ std::string Fetcher::StyleLatex(const std::string& text) const {
 
 std::string Fetcher::ReplaceLatexAccents(const std::string& text) const {
     std::string result = text;
-    
+
     // Accent replacements
-    const std::vector<std::pair<std::string, std::string>> replacements = {
-        // Acute accent
-        {"\\'a", "á"}, {"\\'e", "é"}, {"\\'i", "í"}, {"\\'o", "ó"}, {"\\'u", "ú"},
-        {"\\'y", "ý"}, {"\\'A", "Á"}, {"\\'E", "É"}, {"\\'I", "Í"}, {"\\'O", "Ó"},
-        {"\\'U", "Ú"}, {"\\'Y", "Ý"},
-        
-        // Grave accent
-        {"\\`a", "à"}, {"\\`e", "è"}, {"\\`i", "ì"}, {"\\`o", "ò"}, {"\\`u", "ù"},
-        {"\\`A", "À"}, {"\\`E", "È"}, {"\\`I", "Ì"}, {"\\`O", "Ò"}, {"\\`U", "Ù"},
-        
-        // Circumflex
-        {"\\^a", "â"}, {"\\^e", "ê"}, {"\\^i", "î"}, {"\\^o", "ô"}, {"\\^u", "û"},
-        {"\\^A", "Â"}, {"\\^E", "Ê"}, {"\\^I", "Î"}, {"\\^O", "Ô"}, {"\\^U", "Û"},
-        
-        // Tilde
-        {"\\~a", "ã"}, {"\\~n", "ñ"}, {"\\~o", "õ"}, {"\\~A", "Ã"}, {"\\~N", "Ñ"},
-        {"\\~O", "Õ"},
-        
-        // Umlaut/diaeresis
-        {"\\\"a", "ä"}, {"\\\"e", "ë"}, {"\\\"i", "ï"}, {"\\\"o", "ö"}, {"\\\"u", "ü"},
-        {"\\\"y", "ÿ"}, {"\\\"A", "Ä"}, {"\\\"E", "Ë"}, {"\\\"I", "Ï"}, {"\\\"O", "Ö"},
-        {"\\\"U", "Ü"}, {"\\\"Y", "Ÿ"},
-        
-        // Ring
-        {"\\r{a}", "å"}, {"\\r{A}", "Å"},
-        
-        // Cedilla
-        {"\\c{c}", "ç"}, {"\\c{C}", "Ç"},
-        
-        // Caron (háček)
-        {"\\v{a}", "ǎ"}, {"\\v{c}", "č"}, {"\\v{d}", "ď"}, {"\\v{e}", "ě"}, {"\\v{g}", "ğ"},
-        {"\\v{h}", "ȟ"}, {"\\v{i}", "ǐ"}, {"\\v{j}", "ǰ"}, {"\\v{k}", "ǩ"}, {"\\v{l}", "ľ"},
-        {"\\v{n}", "ň"}, {"\\v{o}", "ǒ"}, {"\\v{r}", "ř"}, {"\\v{s}", "š"}, {"\\v{t}", "ť"},
-        {"\\v{u}", "ǔ"}, {"\\v{z}", "ž"},
-        {"\\v{A}", "Ǎ"}, {"\\v{C}", "Č"}, {"\\v{D}", "Ď"}, {"\\v{E}", "Ě"}, {"\\v{G}", "Ğ"},
-        {"\\v{H}", "Ȟ"}, {"\\v{I}", "Ǐ"}, {"\\v{K}", "Ǩ"}, {"\\v{L}", "Ľ"}, {"\\v{N}", "Ň"},
-        {"\\v{O}", "Ǒ"}, {"\\v{R}", "Ř"}, {"\\v{S}", "Š"}, {"\\v{T}", "Ť"}, {"\\v{U}", "Ǔ"},
-        {"\\v{Z}", "Ž"},
-        
-        // Dot above
-        {"\\.a", "ȧ"}, {"\\.b", "ḃ"}, {"\\.c", "ċ"}, {"\\.d", "ḋ"}, {"\\.e", "ė"},
-        {"\\.f", "ḟ"}, {"\\.g", "ġ"}, {"\\.h", "ḣ"}, {"\\.i", "ı"}, {"\\.m", "ṁ"},
-        {"\\.n", "ṅ"}, {"\\.o", "ȯ"}, {"\\.p", "ṗ"}, {"\\.r", "ṙ"}, {"\\.s", "ṡ"},
-        {"\\.t", "ṫ"}, {"\\.w", "ẇ"}, {"\\.x", "ẋ"}, {"\\.y", "ẏ"}, {"\\.z", "ż"},
-        {"\\.A", "Ȧ"}, {"\\.B", "Ḃ"}, {"\\.C", "Ċ"}, {"\\.D", "Ḋ"}, {"\\.E", "Ė"},
-        {"\\.F", "Ḟ"}, {"\\.G", "Ġ"}, {"\\.H", "Ḣ"}, {"\\.I", "İ"}, {"\\.M", "Ṁ"},
-        {"\\.N", "Ṅ"}, {"\\.O", "Ȯ"}, {"\\.P", "Ṗ"}, {"\\.R", "Ṙ"}, {"\\.S", "Ṡ"},
-        {"\\.T", "Ṫ"}, {"\\.W", "Ẇ"}, {"\\.X", "Ẋ"}, {"\\.Y", "Ẏ"}, {"\\.Z", "Ż"},
-        
-        // Special characters
-        {"\\ss", "ß"}, {"\\SS", "ẞ"},
-        {"\\ae", "æ"}, {"\\AE", "Æ"},
-        {"\\oe", "œ"}, {"\\OE", "Œ"},
-        {"\\o", "ø"}, {"\\O", "Ø"},
-        {"\\l", "ł"}, {"\\L", "Ł"},
-        {"\\i", "ı"}, {"\\j", "ȷ"},
-        {"\\th", "þ"}, {"\\TH", "Þ"},
-        {"\\dh", "ð"}, {"\\DH", "Ð"},
-        {"\\ng", "ŋ"}, {"\\NG", "Ŋ"}
-    };
+    const std::vector<std::pair<std::string, std::string>> replacements = {// Acute accent
+                                                                           {"\\'a", "á"},
+                                                                           {"\\'e", "é"},
+                                                                           {"\\'i", "í"},
+                                                                           {"\\'o", "ó"},
+                                                                           {"\\'u", "ú"},
+                                                                           {"\\'y", "ý"},
+                                                                           {"\\'A", "Á"},
+                                                                           {"\\'E", "É"},
+                                                                           {"\\'I", "Í"},
+                                                                           {"\\'O", "Ó"},
+                                                                           {"\\'U", "Ú"},
+                                                                           {"\\'Y", "Ý"},
+
+                                                                           // Grave accent
+                                                                           {"\\`a", "à"},
+                                                                           {"\\`e", "è"},
+                                                                           {"\\`i", "ì"},
+                                                                           {"\\`o", "ò"},
+                                                                           {"\\`u", "ù"},
+                                                                           {"\\`A", "À"},
+                                                                           {"\\`E", "È"},
+                                                                           {"\\`I", "Ì"},
+                                                                           {"\\`O", "Ò"},
+                                                                           {"\\`U", "Ù"},
+
+                                                                           // Circumflex
+                                                                           {"\\^a", "â"},
+                                                                           {"\\^e", "ê"},
+                                                                           {"\\^i", "î"},
+                                                                           {"\\^o", "ô"},
+                                                                           {"\\^u", "û"},
+                                                                           {"\\^A", "Â"},
+                                                                           {"\\^E", "Ê"},
+                                                                           {"\\^I", "Î"},
+                                                                           {"\\^O", "Ô"},
+                                                                           {"\\^U", "Û"},
+
+                                                                           // Tilde
+                                                                           {"\\~a", "ã"},
+                                                                           {"\\~n", "ñ"},
+                                                                           {"\\~o", "õ"},
+                                                                           {"\\~A", "Ã"},
+                                                                           {"\\~N", "Ñ"},
+                                                                           {"\\~O", "Õ"},
+
+                                                                           // Umlaut/diaeresis
+                                                                           {"\\\"a", "ä"},
+                                                                           {"\\\"e", "ë"},
+                                                                           {"\\\"i", "ï"},
+                                                                           {"\\\"o", "ö"},
+                                                                           {"\\\"u", "ü"},
+                                                                           {"\\\"y", "ÿ"},
+                                                                           {"\\\"A", "Ä"},
+                                                                           {"\\\"E", "Ë"},
+                                                                           {"\\\"I", "Ï"},
+                                                                           {"\\\"O", "Ö"},
+                                                                           {"\\\"U", "Ü"},
+                                                                           {"\\\"Y", "Ÿ"},
+
+                                                                           // Ring
+                                                                           {"\\r{a}", "å"},
+                                                                           {"\\r{A}", "Å"},
+
+                                                                           // Cedilla
+                                                                           {"\\c{c}", "ç"},
+                                                                           {"\\c{C}", "Ç"},
+
+                                                                           // Caron (háček)
+                                                                           {"\\v{a}", "ǎ"},
+                                                                           {"\\v{c}", "č"},
+                                                                           {"\\v{d}", "ď"},
+                                                                           {"\\v{e}", "ě"},
+                                                                           {"\\v{g}", "ğ"},
+                                                                           {"\\v{h}", "ȟ"},
+                                                                           {"\\v{i}", "ǐ"},
+                                                                           {"\\v{j}", "ǰ"},
+                                                                           {"\\v{k}", "ǩ"},
+                                                                           {"\\v{l}", "ľ"},
+                                                                           {"\\v{n}", "ň"},
+                                                                           {"\\v{o}", "ǒ"},
+                                                                           {"\\v{r}", "ř"},
+                                                                           {"\\v{s}", "š"},
+                                                                           {"\\v{t}", "ť"},
+                                                                           {"\\v{u}", "ǔ"},
+                                                                           {"\\v{z}", "ž"},
+                                                                           {"\\v{A}", "Ǎ"},
+                                                                           {"\\v{C}", "Č"},
+                                                                           {"\\v{D}", "Ď"},
+                                                                           {"\\v{E}", "Ě"},
+                                                                           {"\\v{G}", "Ğ"},
+                                                                           {"\\v{H}", "Ȟ"},
+                                                                           {"\\v{I}", "Ǐ"},
+                                                                           {"\\v{K}", "Ǩ"},
+                                                                           {"\\v{L}", "Ľ"},
+                                                                           {"\\v{N}", "Ň"},
+                                                                           {"\\v{O}", "Ǒ"},
+                                                                           {"\\v{R}", "Ř"},
+                                                                           {"\\v{S}", "Š"},
+                                                                           {"\\v{T}", "Ť"},
+                                                                           {"\\v{U}", "Ǔ"},
+                                                                           {"\\v{Z}", "Ž"},
+
+                                                                           // Dot above
+                                                                           {"\\.a", "ȧ"},
+                                                                           {"\\.b", "ḃ"},
+                                                                           {"\\.c", "ċ"},
+                                                                           {"\\.d", "ḋ"},
+                                                                           {"\\.e", "ė"},
+                                                                           {"\\.f", "ḟ"},
+                                                                           {"\\.g", "ġ"},
+                                                                           {"\\.h", "ḣ"},
+                                                                           {"\\.i", "ı"},
+                                                                           {"\\.m", "ṁ"},
+                                                                           {"\\.n", "ṅ"},
+                                                                           {"\\.o", "ȯ"},
+                                                                           {"\\.p", "ṗ"},
+                                                                           {"\\.r", "ṙ"},
+                                                                           {"\\.s", "ṡ"},
+                                                                           {"\\.t", "ṫ"},
+                                                                           {"\\.w", "ẇ"},
+                                                                           {"\\.x", "ẋ"},
+                                                                           {"\\.y", "ẏ"},
+                                                                           {"\\.z", "ż"},
+                                                                           {"\\.A", "Ȧ"},
+                                                                           {"\\.B", "Ḃ"},
+                                                                           {"\\.C", "Ċ"},
+                                                                           {"\\.D", "Ḋ"},
+                                                                           {"\\.E", "Ė"},
+                                                                           {"\\.F", "Ḟ"},
+                                                                           {"\\.G", "Ġ"},
+                                                                           {"\\.H", "Ḣ"},
+                                                                           {"\\.I", "İ"},
+                                                                           {"\\.M", "Ṁ"},
+                                                                           {"\\.N", "Ṅ"},
+                                                                           {"\\.O", "Ȯ"},
+                                                                           {"\\.P", "Ṗ"},
+                                                                           {"\\.R", "Ṙ"},
+                                                                           {"\\.S", "Ṡ"},
+                                                                           {"\\.T", "Ṫ"},
+                                                                           {"\\.W", "Ẇ"},
+                                                                           {"\\.X", "Ẋ"},
+                                                                           {"\\.Y", "Ẏ"},
+                                                                           {"\\.Z", "Ż"},
+
+                                                                           // Special characters
+                                                                           {"\\ss", "ß"},
+                                                                           {"\\SS", "ẞ"},
+                                                                           {"\\ae", "æ"},
+                                                                           {"\\AE", "Æ"},
+                                                                           {"\\oe", "œ"},
+                                                                           {"\\OE", "Œ"},
+                                                                           {"\\o", "ø"},
+                                                                           {"\\O", "Ø"},
+                                                                           {"\\l", "ł"},
+                                                                           {"\\L", "Ł"},
+                                                                           {"\\i", "ı"},
+                                                                           {"\\j", "ȷ"},
+                                                                           {"\\th", "þ"},
+                                                                           {"\\TH", "Þ"},
+                                                                           {"\\dh", "ð"},
+                                                                           {"\\DH", "Ð"},
+                                                                           {"\\ng", "ŋ"},
+                                                                           {"\\NG", "Ŋ"}};
 
     apply_replacements(result, replacements);
     return result;
 }
 
-std::vector<Article> Fetcher::FetchSince(const std::string &utc_date) {
+std::vector<Article> Fetcher::FetchSince(const std::string& utc_date) {
     // Build date range: from utc_date up to today (inclusive), UTC.
     // The arXiv <published> field is the date arXiv processed and announced v1
     // of the paper (the posting date), per the arXiv API user manual:
@@ -400,7 +522,7 @@ std::vector<Article> Fetcher::FetchSince(const std::string &utc_date) {
     // arXiv submittedDate query format: YYYYMMDDHHMI (e.g. 202605020000).
     std::tm from_tm{};
     parse_ymd_prefix(utc_date, from_tm);
-    timegm(&from_tm);  // normalise
+    timegm(&from_tm); // normalise
     char from_buf[16];
     std::strftime(from_buf, sizeof(from_buf), ARXIV_QUERY_FROM_FORMAT.data(), &from_tm);
 
@@ -420,7 +542,8 @@ std::vector<Article> Fetcher::FetchSince(const std::string &utc_date) {
     // Build topic query: (cat:hep-ph OR cat:hep-ex)
     std::string topic_query;
     for (size_t i = 0; i < m_topics.size(); ++i) {
-        if (i > 0) topic_query += "+OR+";
+        if (i > 0)
+            topic_query += "+OR+";
         topic_query += "cat:" + m_topics[i];
     }
     if (m_topics.size() > 1)
@@ -434,16 +557,19 @@ std::vector<Article> Fetcher::FetchSince(const std::string &utc_date) {
     const int max_results = 200;
 
     while (true) {
-        auto url = fmt::format(
-            "{}?search_query={}{}&start={}&max_results={}"
-            "&sortBy=submittedDate&sortOrder=descending",
-            ARXIV_API_URL, topic_query, date_filter, start, max_results);
+        auto url = fmt::format("{}?search_query={}{}&start={}&max_results={}"
+                               "&sortBy=submittedDate&sortOrder=descending",
+                               ARXIV_API_URL,
+                               topic_query,
+                               date_filter,
+                               start,
+                               max_results);
 
         spdlog::info("[Fetcher]: FetchSince GET {}", url);
         cpr::Response resp;
         try {
             resp = cpr::Get(cpr::Url{url}, cpr::Timeout{15000});
-        } catch (const std::exception &e) {
+        } catch (const std::exception& e) {
             spdlog::error("[Fetcher]: FetchSince network error: {}", e.what());
             break;
         }
@@ -454,9 +580,11 @@ std::vector<Article> Fetcher::FetchSince(const std::string &utc_date) {
         }
 
         auto batch = ParseAtomFeed(resp.text);
-        if (batch.empty()) break;
+        if (batch.empty())
+            break;
         all_articles.insert(all_articles.end(), batch.begin(), batch.end());
-        if (static_cast<int>(batch.size()) < max_results) break;
+        if (static_cast<int>(batch.size()) < max_results)
+            break;
         start += max_results;
     }
 
@@ -464,7 +592,7 @@ std::vector<Article> Fetcher::FetchSince(const std::string &utc_date) {
     return all_articles;
 }
 
-std::vector<Article> Fetcher::ParseAtomFeed(const std::string &xml_content) {
+std::vector<Article> Fetcher::ParseAtomFeed(const std::string& xml_content) {
     std::vector<Article> articles;
     pugi::xml_document doc;
 
@@ -489,13 +617,14 @@ std::vector<Article> Fetcher::ParseAtomFeed(const std::string &xml_content) {
         // <id> holds the canonical URL, e.g. http://arxiv.org/abs/2605.12345v1
         article.link = entry.child_value("id");
 
-        article.title    = StyleLatex(ReplaceLatexAccents(entry.child_value("title")));
+        article.title = StyleLatex(ReplaceLatexAccents(entry.child_value("title")));
         article.abstract = StyleLatex(ReplaceLatexAccents(entry.child_value("summary")));
 
         // Authors: one or more <author><name>…</name></author>
         std::string authors_str;
         for (auto author : entry.children("author")) {
-            if (!authors_str.empty()) authors_str += ", ";
+            if (!authors_str.empty())
+                authors_str += ", ";
             authors_str += author.child_value("name");
         }
         article.authors = StyleLatex(ReplaceLatexAccents(authors_str));
@@ -512,7 +641,8 @@ std::vector<Article> Fetcher::ParseAtomFeed(const std::string &xml_content) {
             article.category = prim_cat.attribute("term").value();
         } else {
             auto cat = entry.child("category");
-            if (cat) article.category = cat.attribute("term").value();
+            if (cat)
+                article.category = cat.attribute("term").value();
         }
 
         // Replacement detection. arxiv's atom output uses
@@ -527,9 +657,11 @@ std::vector<Article> Fetcher::ParseAtomFeed(const std::string &xml_content) {
             auto v_pos = article.link.rfind('v');
             if (v_pos != std::string::npos && v_pos + 1 < article.link.size()) {
                 std::string ver = article.link.substr(v_pos + 1);
-                bool all_digits = !ver.empty() &&
-                    std::all_of(ver.begin(), ver.end(), [](char c){ return std::isdigit(c); });
-                if (all_digits && ver != "1") article.is_replacement = true;
+                bool all_digits = !ver.empty() && std::all_of(ver.begin(), ver.end(), [](char c) {
+                    return std::isdigit(c);
+                });
+                if (all_digits && ver != "1")
+                    article.is_replacement = true;
             }
         }
 
@@ -539,11 +671,12 @@ std::vector<Article> Fetcher::ParseAtomFeed(const std::string &xml_content) {
     return articles;
 }
 
-std::optional<Arxiv::time_point> Fetcher::ParseAtomDate(const std::string &date) const {
+std::optional<Arxiv::time_point> Fetcher::ParseAtomDate(const std::string& date) const {
     // Format: "2026-05-04T00:00:00-04:00" or "2026-05-04T00:00:00Z"
     // We only need the date portion for day-level granularity.
     std::tm tm{};
-    if (!parse_ymd_prefix(date, tm)) return std::nullopt;
+    if (!parse_ymd_prefix(date, tm))
+        return std::nullopt;
     return std::chrono::system_clock::from_time_t(timegm(&tm));
 }
 
@@ -551,24 +684,18 @@ std::string Fetcher::FetchBibTeX(const std::string& paper_id) {
     // --- 1. Try InspireHEP ---
     // Query the literature search API for the arXiv eprint.
     const std::string inspire_search =
-        "https://inspirehep.net/api/literature?q=eprint+" + paper_id
-        + "&fields=texkeys&size=1";
+        "https://inspirehep.net/api/literature?q=eprint+" + paper_id + "&fields=texkeys&size=1";
     try {
-        auto search_resp = cpr::Get(
-            cpr::Url{inspire_search},
-            cpr::Timeout{5000});
+        auto search_resp = cpr::Get(cpr::Url{inspire_search}, cpr::Timeout{5000});
 
         if (search_resp.status_code == 200) {
             auto js = nlohmann::json::parse(search_resp.text);
             auto& hits = js.at("hits").at("hits");
             if (!hits.empty()) {
                 // The hit object carries a links.bibtex URL
-                std::string bibtex_url =
-                    hits[0].at("links").at("bibtex").get<std::string>();
+                std::string bibtex_url = hits[0].at("links").at("bibtex").get<std::string>();
 
-                auto bib_resp = cpr::Get(
-                    cpr::Url{bibtex_url},
-                    cpr::Timeout{5000});
+                auto bib_resp = cpr::Get(cpr::Url{bibtex_url}, cpr::Timeout{5000});
                 if (bib_resp.status_code == 200 && !bib_resp.text.empty()) {
                     spdlog::info("[Fetcher]: Got InspireHEP BibTeX for {}", paper_id);
                     return bib_resp.text;

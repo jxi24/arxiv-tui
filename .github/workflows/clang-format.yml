@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2024-2026 Josh Isaacson
+#
+# SPDX-License-Identifier: GPL-3.0-only
+
+name: clang-format
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  clang-format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DoozyX/clang-format-lint-action@v0.20
+        with:
+          source: 'src include test'
+          extensions: 'cc,hh'
+          clangFormatVersion: 18
+          style: file

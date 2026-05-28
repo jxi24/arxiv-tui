@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 #include "Arxiv/CrashHandler.hh"
+
 #include "Arxiv/Replay.hh"
 
 #include <csignal>
@@ -22,18 +23,25 @@ namespace {
 
 // Global state for the signal handler (signal handlers must use only
 // async-signal-safe operations; the recorder pointer is read-only here).
-static ReplayRecorder* g_recorder  = nullptr;
-static char            g_crash_dir[4096] = ".";
+static ReplayRecorder* g_recorder = nullptr;
+static char g_crash_dir[4096] = ".";
 
 const char* SignalName(int signum) {
     switch (signum) {
-        case SIGSEGV: return "SIGSEGV";
-        case SIGABRT: return "SIGABRT";
-        case SIGFPE:  return "SIGFPE";
-        case SIGILL:  return "SIGILL";
-        case SIGBUS:  return "SIGBUS";
-        case SIGTERM: return "SIGTERM";
-        default:      return "UNKNOWN";
+    case SIGSEGV:
+        return "SIGSEGV";
+    case SIGABRT:
+        return "SIGABRT";
+    case SIGFPE:
+        return "SIGFPE";
+    case SIGILL:
+        return "SIGILL";
+    case SIGBUS:
+        return "SIGBUS";
+    case SIGTERM:
+        return "SIGTERM";
+    default:
+        return "UNKNOWN";
     }
 }
 
@@ -55,15 +63,16 @@ void InstallCrashHandler(ReplayRecorder* recorder, const std::string& crash_dir)
     g_recorder = recorder;
     // Copy crash_dir into static buffer (signal handlers cannot use std::string)
     std::size_t n = crash_dir.size();
-    if (n >= sizeof(g_crash_dir)) n = sizeof(g_crash_dir) - 1;
+    if (n >= sizeof(g_crash_dir))
+        n = sizeof(g_crash_dir) - 1;
     crash_dir.copy(g_crash_dir, n);
     g_crash_dir[n] = '\0';
 
     signal(SIGSEGV, SignalHandler);
     signal(SIGABRT, SignalHandler);
-    signal(SIGFPE,  SignalHandler);
-    signal(SIGILL,  SignalHandler);
-    signal(SIGBUS,  SignalHandler);
+    signal(SIGFPE, SignalHandler);
+    signal(SIGILL, SignalHandler);
+    signal(SIGBUS, SignalHandler);
     signal(SIGTERM, SignalHandler);
 }
 
@@ -81,7 +90,8 @@ std::string WriteCrashReport(int signum, ReplayRecorder* recorder, const std::st
         // Try current directory as fallback
         path = std::string("./crash_") + ts_buf + "_" + SignalName(signum) + ".txt";
         f.open(path);
-        if (!f.is_open()) return "";
+        if (!f.is_open())
+            return "";
     }
 
     f << "=== arxiv-tui Crash Report ===\n";
@@ -92,7 +102,7 @@ std::string WriteCrashReport(int signum, ReplayRecorder* recorder, const std::st
     f << "--- Backtrace ---\n";
 #ifdef __linux__
     void* bt_buf[64];
-    int   bt_size = backtrace(bt_buf, 64);
+    int bt_size = backtrace(bt_buf, 64);
     char** bt_syms = backtrace_symbols(bt_buf, bt_size);
     if (bt_syms) {
         for (int i = 0; i < bt_size; ++i) {

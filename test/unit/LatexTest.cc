@@ -2,13 +2,12 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
+#include "Arxiv/LatexUtils.hh"
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
-
 #include <string>
 #include <vector>
-
-#include "Arxiv/LatexUtils.hh"
 
 using namespace Catch::Matchers;
 

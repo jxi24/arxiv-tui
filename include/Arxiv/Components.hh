@@ -5,12 +5,12 @@
 #ifndef ARXIV_UI_MANAGER
 #define ARXIV_UI_MANAGER
 
+#include "Arxiv/DatabaseManager.hh"
+#include "Arxiv/Fetcher.hh"
+
 #include <vector>
 
-#include "Arxiv/DatabaseManager.hh"
 #include "ftxui/component/component.hpp"
-
-#include "Arxiv/Fetcher.hh"
 
 namespace Arxiv {
 
@@ -18,11 +18,10 @@ class ArticleListComponent : public ftxui::ComponentBase {
   public:
     using BookmarkCallback = std::function<void(size_t)>;
 
-    ArticleListComponent(const std::vector<Article> &articles,
-                         BookmarkCallback on_bookmark);
+    ArticleListComponent(const std::vector<Article>& articles, BookmarkCallback on_bookmark);
 
     bool OnEvent(ftxui::Event event) override;
-    void Refresh(const std::vector<Article> &articles);
+    void Refresh(const std::vector<Article>& articles);
     ftxui::Element Render() override;
 
   private:
@@ -41,6 +40,6 @@ class ArticleListComponent : public ftxui::ComponentBase {
     bool PageDown();
 };
 
-}
+} // namespace Arxiv
 
 #endif

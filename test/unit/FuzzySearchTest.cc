@@ -2,24 +2,23 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
+#include "Arxiv/AppCore.hh"
+#include "Arxiv/Article.hh"
+#include "Arxiv/Config.hh"
+#include "Arxiv/FuzzyMatch.hh"
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
-
 #include <string>
 #include <vector>
 
-#include "Arxiv/AppCore.hh"
-#include "Arxiv/Config.hh"
-#include "Arxiv/Article.hh"
-#include "Arxiv/FuzzyMatch.hh"
-
+#include "fixtures/test_data.hh"
 #include "mocks/DatabaseManagerMock.hh"
 #include "mocks/FetcherMock.hh"
-#include "fixtures/test_data.hh"
 
 using namespace Catch::Matchers;
 using DatabaseManagerMock = arxiv_tui::test::DatabaseManagerMock;
-using FetcherMock         = arxiv_tui::test::FetcherMock;
+using FetcherMock = arxiv_tui::test::FetcherMock;
 
 // ---------------------------------------------------------------------------
 // FuzzyMatch::Similarity unit tests
@@ -63,13 +62,11 @@ TEST_CASE("FuzzyMatch::Similarity: case-insensitive", "[fuzzy]") {
 // AppCore::FuzzySearchArticles
 // ---------------------------------------------------------------------------
 
-static std::unique_ptr<Arxiv::AppCore> make_core(
-    DatabaseManagerMock*& db_out,
-    FetcherMock*&         fetcher_out)
-{
-    auto db_ptr  = std::make_unique<DatabaseManagerMock>();
+static std::unique_ptr<Arxiv::AppCore> make_core(DatabaseManagerMock*& db_out,
+                                                 FetcherMock*& fetcher_out) {
+    auto db_ptr = std::make_unique<DatabaseManagerMock>();
     auto fet_ptr = std::make_unique<FetcherMock>();
-    db_out      = db_ptr.get();
+    db_out = db_ptr.get();
     fetcher_out = fet_ptr.get();
     Arxiv::Config cfg;
     cfg.set_topics({"cs.AI"});
@@ -78,8 +75,8 @@ static std::unique_ptr<Arxiv::AppCore> make_core(
 }
 
 TEST_CASE("AppCore::FuzzySearchArticles: returns exact matches", "[fuzzy][appcore]") {
-    DatabaseManagerMock* db     = nullptr;
-    FetcherMock*         fetcher = nullptr;
+    DatabaseManagerMock* db = nullptr;
+    FetcherMock* fetcher = nullptr;
     auto core = make_core(db, fetcher);
 
     auto articles = arxiv_tui::test::fixtures::sample_articles;
@@ -92,8 +89,8 @@ TEST_CASE("AppCore::FuzzySearchArticles: returns exact matches", "[fuzzy][appcor
 }
 
 TEST_CASE("AppCore::FuzzySearchArticles: returns near-match with one typo", "[fuzzy][appcore]") {
-    DatabaseManagerMock* db     = nullptr;
-    FetcherMock*         fetcher = nullptr;
+    DatabaseManagerMock* db = nullptr;
+    FetcherMock* fetcher = nullptr;
     auto core = make_core(db, fetcher);
 
     auto articles = arxiv_tui::test::fixtures::sample_articles;
@@ -104,9 +101,10 @@ TEST_CASE("AppCore::FuzzySearchArticles: returns near-match with one typo", "[fu
     REQUIRE(!results.empty());
 }
 
-TEST_CASE("AppCore::FuzzySearchArticles: high threshold filters out weak matches", "[fuzzy][appcore]") {
-    DatabaseManagerMock* db     = nullptr;
-    FetcherMock*         fetcher = nullptr;
+TEST_CASE("AppCore::FuzzySearchArticles: high threshold filters out weak matches",
+          "[fuzzy][appcore]") {
+    DatabaseManagerMock* db = nullptr;
+    FetcherMock* fetcher = nullptr;
     auto core = make_core(db, fetcher);
 
     auto articles = arxiv_tui::test::fixtures::sample_articles;
@@ -121,8 +119,8 @@ TEST_CASE("AppCore::FuzzySearchArticles: high threshold filters out weak matches
 }
 
 TEST_CASE("AppCore::FuzzySearchArticles: empty corpus returns empty", "[fuzzy][appcore]") {
-    DatabaseManagerMock* db     = nullptr;
-    FetcherMock*         fetcher = nullptr;
+    DatabaseManagerMock* db = nullptr;
+    FetcherMock* fetcher = nullptr;
     auto core = make_core(db, fetcher);
 
     ALLOW_CALL(*db, GetRecent(ANY(int))).RETURN(std::vector<Arxiv::Article>{});

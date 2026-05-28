@@ -6,23 +6,24 @@
 // Components can receive events and render to a fixed-size screen without
 // a real terminal, enabling verification of dialog state and output.
 
-#include <catch2/catch_test_macros.hpp>
-#include <catch2/matchers/catch_matchers_string.hpp>
+#include "Arxiv/App.hh"
+#include "Arxiv/Config.hh"
+#include "Arxiv/KeyBindings.hh"
 
 #include <ftxui/component/event.hpp>
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/screen.hpp>
 
-#include "Arxiv/App.hh"
-#include "Arxiv/Config.hh"
-#include "Arxiv/KeyBindings.hh"
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
+
 #include "mocks/DatabaseManagerMock.hh"
 #include "mocks/FetcherMock.hh"
 
 using namespace ftxui;
 using namespace Arxiv;
 using DatabaseManagerMock = arxiv_tui::test::DatabaseManagerMock;
-using FetcherMock         = arxiv_tui::test::FetcherMock;
+using FetcherMock = arxiv_tui::test::FetcherMock;
 
 // ---------------------------------------------------------------------------
 // Helper: build an ArxivApp with mock dependencies.
@@ -36,11 +37,11 @@ static Config make_test_config() {
 }
 
 static std::unique_ptr<ArxivApp> make_app(Config cfg = make_test_config()) {
-    auto db      = std::make_unique<DatabaseManagerMock>();
+    auto db = std::make_unique<DatabaseManagerMock>();
     auto fetcher = std::make_unique<FetcherMock>();
     KeyBindings kb{std::vector<Config::KeyMapping>{}};
-    return std::make_unique<ArxivApp>(std::move(cfg), std::move(db),
-                                     std::move(fetcher), std::move(kb));
+    return std::make_unique<ArxivApp>(
+        std::move(cfg), std::move(db), std::move(fetcher), std::move(kb));
 }
 
 // Render the event_handler component to a string at a fixed 120×40 size.
@@ -81,8 +82,8 @@ TEST_CASE("ArxivApp: pressing Esc closes the settings dialog", "[tui][settings]"
     auto app = make_app();
     auto handler = app->GetEventHandler();
 
-    handler->OnEvent(Event::Character("S"));   // open
-    handler->OnEvent(Event::Escape);            // close
+    handler->OnEvent(Event::Character("S")); // open
+    handler->OnEvent(Event::Escape);         // close
 
     std::string output = render(*app);
     // After closing, "Settings" header should not appear in the modal overlay.
@@ -130,7 +131,7 @@ TEST_CASE("ArxivApp: settings dialog Topics section shows configured topics", "[
     auto app = make_app(cfg);
     auto handler = app->GetEventHandler();
 
-    handler->OnEvent(Event::Character("S"));   // open settings
+    handler->OnEvent(Event::Character("S")); // open settings
     // Navigate to Topics section (Tab moves to next section)
     handler->OnEvent(Event::Tab);
 

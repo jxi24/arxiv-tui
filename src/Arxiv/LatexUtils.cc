@@ -9,7 +9,7 @@
 
 namespace Arxiv {
 
-std::string StripLatex(const std::string &text) {
+std::string StripLatex(const std::string& text) {
     std::string out;
     out.reserve(text.size());
 
@@ -47,11 +47,13 @@ std::string StripLatex(const std::string &text) {
             while (j < n && std::isalpha(static_cast<unsigned char>(text[j])))
                 ++j;
             // Check if followed by an optional star (e.g. \textbf*)
-            if (j < n && text[j] == '*') ++j;
+            if (j < n && text[j] == '*')
+                ++j;
 
             // Skip optional whitespace before '{'
             std::size_t k = j;
-            while (k < n && text[k] == ' ') ++k;
+            while (k < n && text[k] == ' ')
+                ++k;
 
             if (k < n && text[k] == '{') {
                 // Rule 3: \cmd{content} — replace with ' ' + content (brace-aware)
@@ -61,10 +63,12 @@ std::string StripLatex(const std::string &text) {
                 while (k < n && depth > 0) {
                     if (text[k] == '{') {
                         ++depth;
-                        if (depth > 1) out += text[k]; // keep inner { for nested
+                        if (depth > 1)
+                            out += text[k]; // keep inner { for nested
                     } else if (text[k] == '}') {
                         --depth;
-                        if (depth > 0) out += text[k];
+                        if (depth > 0)
+                            out += text[k];
                     } else {
                         out += text[k];
                     }

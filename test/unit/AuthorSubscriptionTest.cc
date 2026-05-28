@@ -2,24 +2,23 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
+#include "Arxiv/AppCore.hh"
+#include "Arxiv/Article.hh"
+#include "Arxiv/Config.hh"
+#include "Arxiv/DatabaseManager.hh"
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
-
 #include <string>
 #include <vector>
 
-#include "Arxiv/DatabaseManager.hh"
-#include "Arxiv/AppCore.hh"
-#include "Arxiv/Config.hh"
-#include "Arxiv/Article.hh"
-
+#include "fixtures/test_data.hh"
 #include "mocks/DatabaseManagerMock.hh"
 #include "mocks/FetcherMock.hh"
-#include "fixtures/test_data.hh"
 
 using namespace Catch::Matchers;
 using DatabaseManagerMock = arxiv_tui::test::DatabaseManagerMock;
-using FetcherMock         = arxiv_tui::test::FetcherMock;
+using FetcherMock = arxiv_tui::test::FetcherMock;
 
 // ---------------------------------------------------------------------------
 // DatabaseManager: followed_authors table
@@ -28,9 +27,7 @@ using FetcherMock         = arxiv_tui::test::FetcherMock;
 TEST_CASE("DatabaseManager::FollowAuthor / IsFollowingAuthor round-trip", "[author][db]") {
     Arxiv::DatabaseManager db(":memory:");
 
-    SECTION("author not followed by default") {
-        REQUIRE_FALSE(db.IsFollowingAuthor("Doe, John"));
-    }
+    SECTION("author not followed by default") { REQUIRE_FALSE(db.IsFollowingAuthor("Doe, John")); }
 
     SECTION("FollowAuthor makes IsFollowingAuthor return true") {
         db.FollowAuthor("Hébert, Rémi");
@@ -79,13 +76,11 @@ TEST_CASE("DatabaseManager::FollowAuthor is idempotent", "[author][db]") {
 // AppCore: follow / unfollow / list
 // ---------------------------------------------------------------------------
 
-static std::unique_ptr<Arxiv::AppCore> make_core(
-    DatabaseManagerMock*& db_out,
-    FetcherMock*&         fetcher_out)
-{
-    auto db_ptr  = std::make_unique<DatabaseManagerMock>();
+static std::unique_ptr<Arxiv::AppCore> make_core(DatabaseManagerMock*& db_out,
+                                                 FetcherMock*& fetcher_out) {
+    auto db_ptr = std::make_unique<DatabaseManagerMock>();
     auto fet_ptr = std::make_unique<FetcherMock>();
-    db_out      = db_ptr.get();
+    db_out = db_ptr.get();
     fetcher_out = fet_ptr.get();
     Arxiv::Config cfg;
     cfg.set_topics({"cs.AI"});
@@ -94,8 +89,8 @@ static std::unique_ptr<Arxiv::AppCore> make_core(
 }
 
 TEST_CASE("AppCore::FollowAuthor / UnfollowAuthor dispatches to DB", "[author][appcore]") {
-    DatabaseManagerMock* db     = nullptr;
-    FetcherMock*         fetcher = nullptr;
+    DatabaseManagerMock* db = nullptr;
+    FetcherMock* fetcher = nullptr;
     auto core = make_core(db, fetcher);
 
     SECTION("FollowAuthor calls DB") {
@@ -110,12 +105,11 @@ TEST_CASE("AppCore::FollowAuthor / UnfollowAuthor dispatches to DB", "[author][a
 }
 
 TEST_CASE("AppCore::GetFollowedAuthors delegates to DB", "[author][appcore]") {
-    DatabaseManagerMock* db     = nullptr;
-    FetcherMock*         fetcher = nullptr;
+    DatabaseManagerMock* db = nullptr;
+    FetcherMock* fetcher = nullptr;
     auto core = make_core(db, fetcher);
 
-    ALLOW_CALL(*db, GetFollowedAuthors())
-        .RETURN(std::vector<std::string>{"Author A", "Author B"});
+    ALLOW_CALL(*db, GetFollowedAuthors()).RETURN(std::vector<std::string>{"Author A", "Author B"});
 
     auto authors = core->GetFollowedAuthors();
     REQUIRE(authors.size() == 2);
@@ -123,14 +117,13 @@ TEST_CASE("AppCore::GetFollowedAuthors delegates to DB", "[author][appcore]") {
 
 TEST_CASE("AppCore::GetArticlesForFollowedAuthors returns articles matching any followed author",
           "[author][appcore]") {
-    DatabaseManagerMock* db     = nullptr;
-    FetcherMock*         fetcher = nullptr;
+    DatabaseManagerMock* db = nullptr;
+    FetcherMock* fetcher = nullptr;
     auto core = make_core(db, fetcher);
 
     auto articles = arxiv_tui::test::fixtures::sample_articles;
     // sample_articles[0].authors = "John Doe, Jane Smith"
-    ALLOW_CALL(*db, GetFollowedAuthors())
-        .RETURN(std::vector<std::string>{"John Doe"});
+    ALLOW_CALL(*db, GetFollowedAuthors()).RETURN(std::vector<std::string>{"John Doe"});
     ALLOW_CALL(*db, GetRecent(ANY(int))).RETURN(articles);
 
     auto results = core->GetArticlesForFollowedAuthors();
@@ -143,12 +136,11 @@ TEST_CASE("AppCore::GetArticlesForFollowedAuthors returns articles matching any 
 
 TEST_CASE("AppCore::GetArticlesForFollowedAuthors returns empty when no followed authors",
           "[author][appcore]") {
-    DatabaseManagerMock* db     = nullptr;
-    FetcherMock*         fetcher = nullptr;
+    DatabaseManagerMock* db = nullptr;
+    FetcherMock* fetcher = nullptr;
     auto core = make_core(db, fetcher);
 
-    ALLOW_CALL(*db, GetFollowedAuthors())
-        .RETURN(std::vector<std::string>{});
+    ALLOW_CALL(*db, GetFollowedAuthors()).RETURN(std::vector<std::string>{});
     ALLOW_CALL(*db, GetRecent(ANY(int))).RETURN(arxiv_tui::test::fixtures::sample_articles);
 
     auto results = core->GetArticlesForFollowedAuthors();
@@ -160,13 +152,14 @@ TEST_CASE("AppCore::GetArticlesForFollowedAuthors returns empty when no followed
 // ---------------------------------------------------------------------------
 
 TEST_CASE("AppCore filter options include 'Followed Authors'", "[author][appcore]") {
-    DatabaseManagerMock* db     = nullptr;
-    FetcherMock*         fetcher = nullptr;
+    DatabaseManagerMock* db = nullptr;
+    FetcherMock* fetcher = nullptr;
     auto core = make_core(db, fetcher);
 
     auto filters = core->GetFilterOptions();
     bool found = false;
     for (const auto& f : filters)
-        if (f.find("Followed") != std::string::npos) found = true;
+        if (f.find("Followed") != std::string::npos)
+            found = true;
     REQUIRE(found);
 }

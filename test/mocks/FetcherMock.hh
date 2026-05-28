@@ -5,24 +5,23 @@
 #pragma once
 
 #include <Arxiv/Fetcher.hh>
+#include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
-#include <catch2/catch_test_macros.hpp>
 #include <catch2/trompeloeil.hpp>
 
 namespace arxiv_tui {
 namespace test {
 
 class FetcherMock : public Arxiv::Fetcher {
-public:
+  public:
     // Constructor
-    FetcherMock() : Arxiv::Fetcher({}) {
+    FetcherMock()
+        : Arxiv::Fetcher({}) {
         m_expectations.push_back(
-            NAMED_ALLOW_CALL(*this, Fetch())
-                .RETURN(std::vector<Arxiv::Article>{}));
-        m_expectations.push_back(
-            NAMED_ALLOW_CALL(*this, FetchSince(ANY(std::string)))
-                .RETURN(std::vector<Arxiv::Article>{}));
+            NAMED_ALLOW_CALL(*this, Fetch()).RETURN(std::vector<Arxiv::Article>{}));
+        m_expectations.push_back(NAMED_ALLOW_CALL(*this, FetchSince(ANY(std::string)))
+                                     .RETURN(std::vector<Arxiv::Article>{}));
     }
 
     // Mock methods using trompeloeil
@@ -35,27 +34,21 @@ public:
 
     // Helper methods for testing
     void setFetchResponse(const std::vector<Arxiv::Article>& articles) {
-        m_expectations.push_back(
-            NAMED_ALLOW_CALL(*this, Fetch())
-                .RETURN(articles));
+        m_expectations.push_back(NAMED_ALLOW_CALL(*this, Fetch()).RETURN(articles));
     }
 
     void setFetchTodayResponse(const std::vector<Arxiv::Article>& articles) {
-        m_expectations.push_back(
-            NAMED_ALLOW_CALL(*this, FetchToday())
-                .RETURN(articles));
+        m_expectations.push_back(NAMED_ALLOW_CALL(*this, FetchToday()).RETURN(articles));
     }
 
     void setDownloadPaperResponse(bool success) {
         m_expectations.push_back(
-            NAMED_ALLOW_CALL(*this, DownloadPaper(trompeloeil::_, trompeloeil::_))
-                .RETURN(success));
+            NAMED_ALLOW_CALL(*this, DownloadPaper(trompeloeil::_, trompeloeil::_)).RETURN(success));
     }
 
     void setGetPaperAbstractResponse(const std::string& abstract) {
         m_expectations.push_back(
-            NAMED_ALLOW_CALL(*this, GetPaperAbstract(trompeloeil::_))
-                .RETURN(abstract));
+            NAMED_ALLOW_CALL(*this, GetPaperAbstract(trompeloeil::_)).RETURN(abstract));
     }
 
     /// Set the BibTeX response for a specific paper_id, or for any ID when
@@ -63,16 +56,13 @@ public:
     void setBibTeXResponse(const std::string& paper_id, const std::string& bibtex) {
         if (paper_id.empty()) {
             m_expectations.push_back(
-                NAMED_ALLOW_CALL(*this, FetchBibTeX(trompeloeil::_))
-                    .RETURN(bibtex));
+                NAMED_ALLOW_CALL(*this, FetchBibTeX(trompeloeil::_)).RETURN(bibtex));
         } else {
-            m_expectations.push_back(
-                NAMED_ALLOW_CALL(*this, FetchBibTeX(paper_id))
-                    .RETURN(bibtex));
+            m_expectations.push_back(NAMED_ALLOW_CALL(*this, FetchBibTeX(paper_id)).RETURN(bibtex));
         }
     }
 
-private:
+  private:
     std::vector<std::unique_ptr<trompeloeil::expectation>> m_expectations;
 };
 

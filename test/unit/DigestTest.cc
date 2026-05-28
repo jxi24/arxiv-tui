@@ -2,9 +2,12 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
+#include "Arxiv/AppCore.hh"
+#include "Arxiv/Article.hh"
+#include "Arxiv/Config.hh"
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
-
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -12,30 +15,24 @@
 #include <string>
 #include <vector>
 
-#include "Arxiv/AppCore.hh"
-#include "Arxiv/Config.hh"
-#include "Arxiv/Article.hh"
-
+#include "fixtures/test_data.hh"
 #include "mocks/DatabaseManagerMock.hh"
 #include "mocks/FetcherMock.hh"
-#include "fixtures/test_data.hh"
 
 using namespace Catch::Matchers;
 using DatabaseManagerMock = arxiv_tui::test::DatabaseManagerMock;
-using FetcherMock         = arxiv_tui::test::FetcherMock;
+using FetcherMock = arxiv_tui::test::FetcherMock;
 namespace fs = std::filesystem;
 
 // ---------------------------------------------------------------------------
 // Helper
 // ---------------------------------------------------------------------------
 
-static std::unique_ptr<Arxiv::AppCore> make_core(
-    DatabaseManagerMock*& db_out,
-    FetcherMock*&         fetcher_out)
-{
-    auto db_ptr  = std::make_unique<DatabaseManagerMock>();
+static std::unique_ptr<Arxiv::AppCore> make_core(DatabaseManagerMock*& db_out,
+                                                 FetcherMock*& fetcher_out) {
+    auto db_ptr = std::make_unique<DatabaseManagerMock>();
     auto fet_ptr = std::make_unique<FetcherMock>();
-    db_out      = db_ptr.get();
+    db_out = db_ptr.get();
     fetcher_out = fet_ptr.get();
     Arxiv::Config cfg;
     cfg.set_topics({"cs.AI"});
@@ -55,8 +52,8 @@ static std::string read_file(const fs::path& p) {
 // ---------------------------------------------------------------------------
 
 TEST_CASE("AppCore::ExportDailyDigest writes Markdown with article titles", "[digest]") {
-    DatabaseManagerMock* db_ptr     = nullptr;
-    FetcherMock*         fetcher_ptr = nullptr;
+    DatabaseManagerMock* db_ptr = nullptr;
+    FetcherMock* fetcher_ptr = nullptr;
     auto core = make_core(db_ptr, fetcher_ptr);
 
     fs::path tmp = fs::temp_directory_path() / "digest_test.md";
@@ -77,8 +74,8 @@ TEST_CASE("AppCore::ExportDailyDigest writes Markdown with article titles", "[di
 }
 
 TEST_CASE("AppCore::ExportDailyDigest includes date header", "[digest]") {
-    DatabaseManagerMock* db_ptr     = nullptr;
-    FetcherMock*         fetcher_ptr = nullptr;
+    DatabaseManagerMock* db_ptr = nullptr;
+    FetcherMock* fetcher_ptr = nullptr;
     auto core = make_core(db_ptr, fetcher_ptr);
 
     fs::path tmp = fs::temp_directory_path() / "digest_header_test.md";
@@ -97,8 +94,8 @@ TEST_CASE("AppCore::ExportDailyDigest includes date header", "[digest]") {
 }
 
 TEST_CASE("AppCore::ExportDailyDigest with empty articles writes only header", "[digest]") {
-    DatabaseManagerMock* db_ptr     = nullptr;
-    FetcherMock*         fetcher_ptr = nullptr;
+    DatabaseManagerMock* db_ptr = nullptr;
+    FetcherMock* fetcher_ptr = nullptr;
     auto core = make_core(db_ptr, fetcher_ptr);
 
     fs::path tmp = fs::temp_directory_path() / "digest_empty_test.md";
@@ -115,8 +112,8 @@ TEST_CASE("AppCore::ExportDailyDigest with empty articles writes only header", "
 }
 
 TEST_CASE("AppCore::ExportDailyDigest returns false for unwritable path", "[digest]") {
-    DatabaseManagerMock* db_ptr     = nullptr;
-    FetcherMock*         fetcher_ptr = nullptr;
+    DatabaseManagerMock* db_ptr = nullptr;
+    FetcherMock* fetcher_ptr = nullptr;
     auto core = make_core(db_ptr, fetcher_ptr);
 
     ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(std::vector<Arxiv::Article>{});
@@ -130,8 +127,8 @@ TEST_CASE("AppCore::ExportDailyDigest returns false for unwritable path", "[dige
 // ---------------------------------------------------------------------------
 
 TEST_CASE("AppCore::ExportDailyDigestYAML writes YAML with article data", "[digest]") {
-    DatabaseManagerMock* db_ptr     = nullptr;
-    FetcherMock*         fetcher_ptr = nullptr;
+    DatabaseManagerMock* db_ptr = nullptr;
+    FetcherMock* fetcher_ptr = nullptr;
     auto core = make_core(db_ptr, fetcher_ptr);
 
     fs::path tmp = fs::temp_directory_path() / "digest_test.yaml";
@@ -153,8 +150,8 @@ TEST_CASE("AppCore::ExportDailyDigestYAML writes YAML with article data", "[dige
 }
 
 TEST_CASE("AppCore::ExportDailyDigestYAML returns false for unwritable path", "[digest]") {
-    DatabaseManagerMock* db_ptr     = nullptr;
-    FetcherMock*         fetcher_ptr = nullptr;
+    DatabaseManagerMock* db_ptr = nullptr;
+    FetcherMock* fetcher_ptr = nullptr;
     auto core = make_core(db_ptr, fetcher_ptr);
 
     ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(std::vector<Arxiv::Article>{});

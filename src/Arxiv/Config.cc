@@ -3,14 +3,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 #include "Arxiv/Config.hh"
+
 #include <filesystem>
 #include <fstream>
 
 namespace Arxiv {
 
-Config::Config(const std::string& config_file) {
-    load_from_file(config_file);
-}
+Config::Config(const std::string& config_file) { load_from_file(config_file); }
 
 void Config::load_from_file(const std::string& config_file) {
     if (!std::filesystem::exists(config_file)) {
@@ -18,8 +17,8 @@ void Config::load_from_file(const std::string& config_file) {
         article_settings_.download_dir = "downloads";
         article_settings_.topics = {"hep-ph", "hep-ex", "hep-lat", "hep-th"};
         recommend_threshold_ = 3.5f;
-        retrain_interval_    = 5;
-        
+        retrain_interval_ = 5;
+
         // Default key mappings
         key_mappings_ = {
             {"next", "j"},
@@ -27,10 +26,10 @@ void Config::load_from_file(const std::string& config_file) {
             {"quit", "q"},
             {"create_project", "p"},
             {"delete_project", "x"},
-            {"download_article", "d"},  
+            {"download_article", "d"},
             {"show_detail", "a"},
         };
-        
+
         save_to_file(config_file);
         return;
     }
@@ -99,16 +98,16 @@ void Config::save_to_file(const std::string& config_file) const {
     }
     config["key_mappings"] = key_mappings;
 
-    config["recommend_threshold"]  = recommend_threshold_;
-    config["retrain_interval"]     = retrain_interval_;
+    config["recommend_threshold"] = recommend_threshold_;
+    config["retrain_interval"] = retrain_interval_;
     config["auto_refresh_minutes"] = auto_refresh_minutes_;
-    config["scroll_margin"]        = scroll_margin_;
+    config["scroll_margin"] = scroll_margin_;
     if (!obsidian_vault_.empty()) {
-        config["obsidian_vault"]   = obsidian_vault_;
+        config["obsidian_vault"] = obsidian_vault_;
     }
 
     std::ofstream fout(config_file);
     fout << config;
 }
 
-} // namespace arxiv_tui 
+} // namespace Arxiv

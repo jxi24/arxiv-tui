@@ -2,37 +2,34 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
+#include "Arxiv/AppCore.hh"
+#include "Arxiv/Config.hh"
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
-
 #include <filesystem>
 #include <fstream>
 #include <string>
 #include <vector>
-
-#include "Arxiv/AppCore.hh"
-#include "Arxiv/Config.hh"
 
 #include "mocks/DatabaseManagerMock.hh"
 #include "mocks/FetcherMock.hh"
 
 using namespace Catch::Matchers;
 using DatabaseManagerMock = arxiv_tui::test::DatabaseManagerMock;
-using FetcherMock         = arxiv_tui::test::FetcherMock;
+using FetcherMock = arxiv_tui::test::FetcherMock;
 namespace fs = std::filesystem;
 
 // ---------------------------------------------------------------------------
 // Helper
 // ---------------------------------------------------------------------------
 
-static std::unique_ptr<Arxiv::AppCore> make_core_with_kw_file(
-    const std::string& kw_path,
-    DatabaseManagerMock*& db_out,
-    FetcherMock*& fetcher_out)
-{
-    auto db_ptr  = std::make_unique<DatabaseManagerMock>();
+static std::unique_ptr<Arxiv::AppCore> make_core_with_kw_file(const std::string& kw_path,
+                                                              DatabaseManagerMock*& db_out,
+                                                              FetcherMock*& fetcher_out) {
+    auto db_ptr = std::make_unique<DatabaseManagerMock>();
     auto fet_ptr = std::make_unique<FetcherMock>();
-    db_out      = db_ptr.get();
+    db_out = db_ptr.get();
     fetcher_out = fet_ptr.get();
     Arxiv::Config cfg;
     cfg.set_topics({"cs.AI"});
@@ -45,13 +42,14 @@ static std::unique_ptr<Arxiv::AppCore> make_core_with_kw_file(
 // AppCore::ReloadKeywords
 // ---------------------------------------------------------------------------
 
-TEST_CASE("AppCore::ReloadKeywords: GetKeywords returns empty when no file set", "[keyword][editor][appcore]") {
-    DatabaseManagerMock* db     = nullptr;
-    FetcherMock*         fetcher = nullptr;
+TEST_CASE("AppCore::ReloadKeywords: GetKeywords returns empty when no file set",
+          "[keyword][editor][appcore]") {
+    DatabaseManagerMock* db = nullptr;
+    FetcherMock* fetcher = nullptr;
 
-    auto db_ptr  = std::make_unique<DatabaseManagerMock>();
+    auto db_ptr = std::make_unique<DatabaseManagerMock>();
     auto fet_ptr = std::make_unique<FetcherMock>();
-    db      = db_ptr.get();
+    db = db_ptr.get();
     fetcher = fet_ptr.get();
     (void)fetcher;
     (void)db;
@@ -75,8 +73,8 @@ TEST_CASE("AppCore::ReloadKeywords: loads keywords from file", "[keyword][editor
         f << "\n"; // blank line — should be ignored
     }
 
-    DatabaseManagerMock* db     = nullptr;
-    FetcherMock*         fetcher = nullptr;
+    DatabaseManagerMock* db = nullptr;
+    FetcherMock* fetcher = nullptr;
     auto core = make_core_with_kw_file(tmp.string(), db, fetcher);
     core->ReloadKeywords();
 
@@ -89,9 +87,10 @@ TEST_CASE("AppCore::ReloadKeywords: loads keywords from file", "[keyword][editor
     fs::remove(tmp);
 }
 
-TEST_CASE("AppCore::ReloadKeywords: silently ignores nonexistent file", "[keyword][editor][appcore]") {
-    DatabaseManagerMock* db     = nullptr;
-    FetcherMock*         fetcher = nullptr;
+TEST_CASE("AppCore::ReloadKeywords: silently ignores nonexistent file",
+          "[keyword][editor][appcore]") {
+    DatabaseManagerMock* db = nullptr;
+    FetcherMock* fetcher = nullptr;
     auto core = make_core_with_kw_file("/nonexistent/path/keywords.txt", db, fetcher);
 
     REQUIRE_NOTHROW(core->ReloadKeywords());
@@ -106,8 +105,8 @@ TEST_CASE("AppCore::SaveKeywords: writes keywords to file", "[keyword][editor][a
     fs::path tmp = fs::temp_directory_path() / "test_save_keywords.txt";
     fs::remove(tmp);
 
-    DatabaseManagerMock* db     = nullptr;
-    FetcherMock*         fetcher = nullptr;
+    DatabaseManagerMock* db = nullptr;
+    FetcherMock* fetcher = nullptr;
     auto core = make_core_with_kw_file(tmp.string(), db, fetcher);
 
     core->SaveKeywords({"machine learning", "transformer", "attention"});
@@ -117,7 +116,8 @@ TEST_CASE("AppCore::SaveKeywords: writes keywords to file", "[keyword][editor][a
     std::string line;
     std::vector<std::string> lines;
     while (std::getline(f, line))
-        if (!line.empty()) lines.push_back(line);
+        if (!line.empty())
+            lines.push_back(line);
 
     REQUIRE(lines.size() == 3);
     REQUIRE(std::find(lines.begin(), lines.end(), "machine learning") != lines.end());
@@ -130,8 +130,8 @@ TEST_CASE("AppCore::SaveKeywords: updates GetKeywords immediately", "[keyword][e
     fs::path tmp = fs::temp_directory_path() / "test_update_keywords.txt";
     fs::remove(tmp);
 
-    DatabaseManagerMock* db     = nullptr;
-    FetcherMock*         fetcher = nullptr;
+    DatabaseManagerMock* db = nullptr;
+    FetcherMock* fetcher = nullptr;
     auto core = make_core_with_kw_file(tmp.string(), db, fetcher);
 
     core->SaveKeywords({"diffusion", "generative"});
@@ -142,9 +142,10 @@ TEST_CASE("AppCore::SaveKeywords: updates GetKeywords immediately", "[keyword][e
     fs::remove(tmp);
 }
 
-TEST_CASE("AppCore::SaveKeywords: returns false when path is unwritable", "[keyword][editor][appcore]") {
-    DatabaseManagerMock* db     = nullptr;
-    FetcherMock*         fetcher = nullptr;
+TEST_CASE("AppCore::SaveKeywords: returns false when path is unwritable",
+          "[keyword][editor][appcore]") {
+    DatabaseManagerMock* db = nullptr;
+    FetcherMock* fetcher = nullptr;
     auto core = make_core_with_kw_file("/no_such_dir/kw.txt", db, fetcher);
 
     bool ok = core->SaveKeywords({"word"});

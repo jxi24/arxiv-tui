@@ -3,11 +3,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 #include "Arxiv/AppCore.hh"
+
 #include "Arxiv/FuzzyMatch.hh"
 #include "Arxiv/Replay.hh"
-#include "spdlog/spdlog.h"
+
 #include <nlohmann/json.hpp>
-#include "fmt/format.h"
 
 #include <algorithm>
 #include <chrono>
@@ -17,6 +17,9 @@
 #include <functional>
 #include <map>
 #include <string_view>
+
+#include "fmt/format.h"
+#include "spdlog/spdlog.h"
 
 namespace Arxiv {
 
@@ -46,15 +49,16 @@ AppCore::AppCore(const Config& config,
     , m_recorder(recorder) {
 
     spdlog::info("ArxivAppCore Initialized");
-    if (m_recorder) m_recorder->RecordEvent("appcore/ctor_begin");
+    if (m_recorder)
+        m_recorder->RecordEvent("appcore/ctor_begin");
 
     // Show every configured topic by default; user toggles via the filter
     // dialog.
     m_active_categories.insert(m_topics.begin(), m_topics.end());
 
-    const std::string today      = today_utc_string();
+    const std::string today = today_utc_string();
     const std::string prev_fetch = m_db->GetMetadata("last_fetch_date");
-    std::string anchor           = m_db->GetMetadata("new_articles_anchor");
+    std::string anchor = m_db->GetMetadata("new_articles_anchor");
 
     // The "New Articles" anchor only advances on a real day-boundary
     // crossing. A same-day restart must NOT collapse the anchor to today —
@@ -67,14 +71,16 @@ AppCore::AppCore(const Config& config,
     m_new_articles_since_date = anchor;
     m_db->SetMetadata("last_fetch_date", today);
 
-    if (m_recorder) m_recorder->RecordEvent("appcore/metadata_loaded",
-                                            "prev_fetch=" + prev_fetch + " anchor=" + anchor);
+    if (m_recorder)
+        m_recorder->RecordEvent("appcore/metadata_loaded",
+                                "prev_fetch=" + prev_fetch + " anchor=" + anchor);
 
     // Show whatever is already in the local DB immediately.
     RefreshFilterOptions();
     FetchArticles();
-    if (m_recorder) m_recorder->RecordEvent("appcore/initial_fetcharticles_done",
-                                            "count=" + std::to_string(m_current_articles.size()));
+    if (m_recorder)
+        m_recorder->RecordEvent("appcore/initial_fetcharticles_done",
+                                "count=" + std::to_string(m_current_articles.size()));
 
     // Try to restore a previously saved model; fall back to training if absent.
     if (!m_ranker.Load(m_ranker_path)) {
@@ -86,8 +92,9 @@ AppCore::AppCore(const Config& config,
             m_ranker.Save(m_ranker_path);
         }
     }
-    if (m_recorder) m_recorder->RecordEvent("appcore/ranker_loaded",
-                                            std::string("trained=") + (m_ranker.IsTrained() ? "1" : "0"));
+    if (m_recorder)
+        m_recorder->RecordEvent("appcore/ranker_loaded",
+                                std::string("trained=") + (m_ranker.IsTrained() ? "1" : "0"));
 
     // Network fetch. In Async mode it runs on a background thread so the TUI
     // launches immediately; IsFetching() reports its state. In Sync mode
@@ -100,23 +107,28 @@ AppCore::AppCore(const Config& config,
     // avoids racing with UI-thread reads and avoids invoking the callback
     // before App's SetupUI() has installed it.
     auto do_fetch = [this, prev_fetch, today, fetch_mode]() {
-        if (m_recorder) m_recorder->RecordEvent("appcore/bg_fetch_begin",
-                                                "mode=" + std::string(fetch_mode == FetchMode::Async ? "async" : "sync"));
+        if (m_recorder)
+            m_recorder->RecordEvent(
+                "appcore/bg_fetch_begin",
+                "mode=" + std::string(fetch_mode == FetchMode::Async ? "async" : "sync"));
         std::vector<Article> articles;
         if (!prev_fetch.empty() && prev_fetch < today) {
             articles = m_fetcher->FetchSince(prev_fetch);
         } else {
             articles = m_fetcher->Fetch();
         }
-        if (m_recorder) m_recorder->RecordEvent("appcore/bg_fetch_returned",
-                                                "n=" + std::to_string(articles.size()));
+        if (m_recorder)
+            m_recorder->RecordEvent("appcore/bg_fetch_returned",
+                                    "n=" + std::to_string(articles.size()));
 
         // Wrap the bulk insert in a single transaction. Without this each
         // AddArticle is its own commit (ms-scale fsync each); the UI-thread
         // DB read could block for the entire window.
-        if (m_recorder) m_recorder->RecordEvent("appcore/bg_db_insert_begin");
+        if (m_recorder)
+            m_recorder->RecordEvent("appcore/bg_db_insert_begin");
         m_db->AddArticles(articles);
-        if (m_recorder) m_recorder->RecordEvent("appcore/bg_db_insert_end");
+        if (m_recorder)
+            m_recorder->RecordEvent("appcore/bg_db_insert_end");
 
         if (fetch_mode == FetchMode::Sync) {
             // Sync callers expect m_current_articles to reflect the fetch
@@ -127,29 +139,34 @@ AppCore::AppCore(const Config& config,
             m_needs_refetch.store(true);
         }
         m_fetching.store(false);
-        if (m_recorder) m_recorder->RecordEvent("appcore/bg_fetch_done");
+        if (m_recorder)
+            m_recorder->RecordEvent("appcore/bg_fetch_done");
     };
 
     m_fetching.store(true);
     if (fetch_mode == FetchMode::Async) {
-        if (m_recorder) m_recorder->RecordEvent("appcore/fetch_thread_spawning");
+        if (m_recorder)
+            m_recorder->RecordEvent("appcore/fetch_thread_spawning");
         m_initial_fetch_thread = std::thread(std::move(do_fetch));
     } else {
         do_fetch();
     }
-    if (m_recorder) m_recorder->RecordEvent("appcore/ctor_end");
+    if (m_recorder)
+        m_recorder->RecordEvent("appcore/ctor_end");
 }
 
 AppCore::~AppCore() {
-    if (m_recorder) m_recorder->RecordEvent("appcore/dtor_begin",
-                                            std::string("fetching=") + (m_fetching.load() ? "1" : "0"));
+    if (m_recorder)
+        m_recorder->RecordEvent("appcore/dtor_begin",
+                                std::string("fetching=") + (m_fetching.load() ? "1" : "0"));
     StopAutoRefresh();
     WaitForInitialFetch();
     // Ensure the background training thread has finished before destruction.
     if (m_train_thread.joinable()) {
         m_train_thread.join();
     }
-    if (m_recorder) m_recorder->RecordEvent("appcore/dtor_end");
+    if (m_recorder)
+        m_recorder->RecordEvent("appcore/dtor_end");
 }
 
 void AppCore::WaitForInitialFetch() {
@@ -159,8 +176,10 @@ void AppCore::WaitForInitialFetch() {
 }
 
 void AppCore::ToggleCategory(const std::string& cat) {
-    if (m_active_categories.count(cat)) m_active_categories.erase(cat);
-    else                                m_active_categories.insert(cat);
+    if (m_active_categories.count(cat))
+        m_active_categories.erase(cat);
+    else
+        m_active_categories.insert(cat);
     FetchArticles();
 }
 
@@ -170,8 +189,9 @@ void AppCore::SetActiveCategories(const std::set<std::string>& cats) {
 }
 
 void AppCore::FetchArticles() {
-    if (m_recorder) m_recorder->RecordEvent("appcore/fetcharticles_begin",
-                                            "view=" + std::to_string(static_cast<int>(GetFilterView())));
+    if (m_recorder)
+        m_recorder->RecordEvent("appcore/fetcharticles_begin",
+                                "view=" + std::to_string(static_cast<int>(GetFilterView())));
     m_current_articles.clear();
 
     switch (GetFilterView()) {
@@ -186,18 +206,19 @@ void AppCore::FetchArticles() {
         break;
     case FilterView::Range:
         if (m_date_range.active) {
-            m_current_articles = m_db->GetArticlesForDateRange(m_date_range.start, m_date_range.end);
+            m_current_articles =
+                m_db->GetArticlesForDateRange(m_date_range.start, m_date_range.end);
         } else {
             m_current_articles = m_db->GetRecent(-1);
         }
         break;
     case FilterView::Search:
         if (m_search.active) {
-            bool search_title    = (m_search.mode == SearchMode::title);
-            bool search_authors  = (m_search.mode == SearchMode::authors);
+            bool search_title = (m_search.mode == SearchMode::title);
+            bool search_authors = (m_search.mode == SearchMode::authors);
             bool search_abstract = (m_search.mode == SearchMode::abstract);
-            m_current_articles = m_db->SearchArticles(m_search.query, search_title,
-                                                      search_authors, search_abstract);
+            m_current_articles =
+                m_db->SearchArticles(m_search.query, search_title, search_authors, search_abstract);
         } else {
             m_current_articles = m_db->GetRecent(-1);
         }
@@ -207,14 +228,15 @@ void AppCore::FetchArticles() {
         if (m_ranker.IsTrained()) {
             std::vector<std::pair<float, Article>> scored;
             scored.reserve(today_articles.size());
-            for (const auto &a : today_articles) {
+            for (const auto& a : today_articles) {
                 float score = m_ranker.Predict(a);
                 if (score >= m_recommend_threshold)
                     scored.emplace_back(score, a);
             }
-            std::sort(scored.begin(), scored.end(),
-                      [](const auto &lhs, const auto &rhs) { return lhs.first > rhs.first; });
-            for (auto &[score, article] : scored)
+            std::sort(scored.begin(), scored.end(), [](const auto& lhs, const auto& rhs) {
+                return lhs.first > rhs.first;
+            });
+            for (auto& [score, article] : scored)
                 m_current_articles.push_back(std::move(article));
         } else {
             m_current_articles = today_articles;
@@ -239,7 +261,7 @@ void AppCore::FetchArticles() {
             // previous session's date by advancing the anchor by one day.
             std::tm tm{};
             tm.tm_year = std::stoi(m_new_articles_since_date.substr(0, 4)) - 1900;
-            tm.tm_mon  = std::stoi(m_new_articles_since_date.substr(5, 2)) - 1;
+            tm.tm_mon = std::stoi(m_new_articles_since_date.substr(5, 2)) - 1;
             tm.tm_mday = std::stoi(m_new_articles_since_date.substr(8, 2)) + 1;
             timegm(&tm); // normalise
             char buf[11];
@@ -256,10 +278,10 @@ void AppCore::FetchArticles() {
         }
         // Drop replacements (later versions of older submissions) — the
         // New Articles view is meant for truly fresh papers only.
-        m_current_articles.erase(
-            std::remove_if(m_current_articles.begin(), m_current_articles.end(),
-                [](const Article& a) { return a.is_replacement; }),
-            m_current_articles.end());
+        m_current_articles.erase(std::remove_if(m_current_articles.begin(),
+                                                m_current_articles.end(),
+                                                [](const Article& a) { return a.is_replacement; }),
+                                 m_current_articles.end());
         // If a trained ranker is available, surface the most relevant new
         // articles first. No threshold is applied — the user wants to see
         // *every* new paper, just in priority order. Predict is called
@@ -274,10 +296,12 @@ void AppCore::FetchArticles() {
                     scored.emplace_back(m_ranker.Predict(a), std::move(a));
                 }
             }
-            std::sort(scored.begin(), scored.end(),
-                      [](const auto& l, const auto& r) { return l.first > r.first; });
+            std::sort(scored.begin(), scored.end(), [](const auto& l, const auto& r) {
+                return l.first > r.first;
+            });
             m_current_articles.clear();
-            for (auto& [s, a] : scored) m_current_articles.push_back(std::move(a));
+            for (auto& [s, a] : scored)
+                m_current_articles.push_back(std::move(a));
         }
         break;
     }
@@ -293,30 +317,35 @@ void AppCore::FetchArticles() {
     // before the schema migration visible until a fresh fetch backfills them.
     const std::set<std::string> all_topics(m_topics.begin(), m_topics.end());
     if (m_active_categories != all_topics) {
-        m_current_articles.erase(
-            std::remove_if(m_current_articles.begin(), m_current_articles.end(),
-                [this](const Article& a) {
-                    if (a.category.empty()) return false;
-                    for (const auto& cat : m_active_categories) {
-                        if (a.category.find(cat) != std::string::npos) return false;
-                    }
-                    return true;
-                }),
-            m_current_articles.end());
+        m_current_articles.erase(std::remove_if(m_current_articles.begin(),
+                                                m_current_articles.end(),
+                                                [this](const Article& a) {
+                                                    if (a.category.empty())
+                                                        return false;
+                                                    for (const auto& cat : m_active_categories) {
+                                                        if (a.category.find(cat) !=
+                                                            std::string::npos)
+                                                            return false;
+                                                    }
+                                                    return true;
+                                                }),
+                                 m_current_articles.end());
     }
 
     RefreshTitles();
     m_article_index = 0;
-    if (m_recorder) m_recorder->RecordEvent("appcore/fetcharticles_end",
-                                            "count=" + std::to_string(m_current_articles.size()));
+    if (m_recorder)
+        m_recorder->RecordEvent("appcore/fetcharticles_end",
+                                "count=" + std::to_string(m_current_articles.size()));
     NotifyArticleUpdate();
 }
 
 void AppCore::ToggleBookmark(const std::string& article_link) {
-    auto it = std::find_if(m_current_articles.begin(), m_current_articles.end(),
-                          [&](const Article& a) { return a.link == article_link; });
-    
-    if(it != m_current_articles.end()) {
+    auto it = std::find_if(m_current_articles.begin(),
+                           m_current_articles.end(),
+                           [&](const Article& a) { return a.link == article_link; });
+
+    if (it != m_current_articles.end()) {
         it->bookmarked = !it->bookmarked;
         m_db->ToggleBookmark(article_link, it->bookmarked);
         RefreshTitles();
@@ -324,16 +353,17 @@ void AppCore::ToggleBookmark(const std::string& article_link) {
     }
 }
 
-bool AppCore::DownloadArticle(const std::string &article_id) {
+bool AppCore::DownloadArticle(const std::string& article_id) {
     return m_fetcher->DownloadPaper(article_id, article_id + ".pdf");
 }
 
 std::string AppCore::GetBibtex(const Article& article) {
     std::string arxiv_id = article.id();
-    if(arxiv_id.empty()) return "";
+    if (arxiv_id.empty())
+        return "";
 
     std::string bibtex = m_fetcher->FetchBibTeX(arxiv_id);
-    if(!bibtex.empty()) {
+    if (!bibtex.empty()) {
         return bibtex;
     }
 
@@ -342,18 +372,19 @@ std::string AppCore::GetBibtex(const Article& article) {
 
 std::string AppCore::ConstructBibtexFromArticle(const Article& article) const {
     std::string arxiv_id = article.id();
-    if(arxiv_id.empty()) return "";
+    if (arxiv_id.empty())
+        return "";
 
     // Extract first author's last name for the cite key
     std::string first_author_last;
     std::string authors_str = article.authors;
     size_t comma_pos = authors_str.find(',');
-    std::string first_author = (comma_pos != std::string::npos)
-        ? authors_str.substr(0, comma_pos) : authors_str;
+    std::string first_author =
+        (comma_pos != std::string::npos) ? authors_str.substr(0, comma_pos) : authors_str;
 
     // Get last name (last word of the first author)
     size_t last_space = first_author.rfind(' ');
-    if(last_space != std::string::npos) {
+    if (last_space != std::string::npos) {
         first_author_last = first_author.substr(last_space + 1);
     } else {
         first_author_last = first_author;
@@ -368,60 +399,61 @@ std::string AppCore::ConstructBibtexFromArticle(const Article& article) const {
     // Extract primary class from category (first one)
     std::string primary_class = article.category;
     size_t cat_comma = primary_class.find(',');
-    if(cat_comma != std::string::npos) {
+    if (cat_comma != std::string::npos) {
         primary_class = primary_class.substr(0, cat_comma);
     }
     // Trim whitespace
-    while(!primary_class.empty() && primary_class.back() == ' ') primary_class.pop_back();
+    while (!primary_class.empty() && primary_class.back() == ' ')
+        primary_class.pop_back();
 
     // Format authors for BibTeX (replace ", " with " and ")
     std::string bibtex_authors = article.authors;
     std::string search = ", ";
     std::string replace = " and ";
     size_t pos = 0;
-    while((pos = bibtex_authors.find(search, pos)) != std::string::npos) {
+    while ((pos = bibtex_authors.find(search, pos)) != std::string::npos) {
         bibtex_authors.replace(pos, search.length(), replace);
         pos += replace.length();
     }
 
-    return fmt::format(
-        "@article{{{0}:{1},\n"
-        "    author = \"{2}\",\n"
-        "    title = \"{{{3}}}\",\n"
-        "    eprint = \"{1}\",\n"
-        "    archivePrefix = \"arXiv\",\n"
-        "    primaryClass = \"{4}\",\n"
-        "    year = \"{5}\",\n"
-        "    month = \"{6}\"\n"
-        "}}",
-        first_author_last, arxiv_id, bibtex_authors, article.title,
-        primary_class, year, month);
+    return fmt::format("@article{{{0}:{1},\n"
+                       "    author = \"{2}\",\n"
+                       "    title = \"{{{3}}}\",\n"
+                       "    eprint = \"{1}\",\n"
+                       "    archivePrefix = \"arXiv\",\n"
+                       "    primaryClass = \"{4}\",\n"
+                       "    year = \"{5}\",\n"
+                       "    month = \"{6}\"\n"
+                       "}}",
+                       first_author_last,
+                       arxiv_id,
+                       bibtex_authors,
+                       article.title,
+                       primary_class,
+                       year,
+                       month);
 }
 
-std::vector<Article> AppCore::GetCurrentArticles() const {
-    return m_current_articles;
-}
+std::vector<Article> AppCore::GetCurrentArticles() const { return m_current_articles; }
 
-std::vector<std::string> AppCore::GetCurrentTitles() const {
-    return m_current_titles;
-}
+std::vector<std::string> AppCore::GetCurrentTitles() const { return m_current_titles; }
 
-std::vector<std::string> &AppCore::GetCurrentTitles() {
-    return m_current_titles;
-}
+std::vector<std::string>& AppCore::GetCurrentTitles() { return m_current_titles; }
 
 void AppCore::AddProject(const std::string& project_name) {
     // Trim leading/trailing whitespace; reject if result is empty.
     std::string trimmed = project_name;
     trimmed.erase(0, trimmed.find_first_not_of(" \t\n\r"));
     auto last = trimmed.find_last_not_of(" \t\n\r");
-    if (last == std::string::npos) trimmed.clear();
-    else trimmed.erase(last + 1);
+    if (last == std::string::npos)
+        trimmed.clear();
+    else
+        trimmed.erase(last + 1);
 
     if (!trimmed.empty()) {
         m_db->AddProject(trimmed);
         RefreshFilterOptions();
-        if(m_project_update_callback) {
+        if (m_project_update_callback) {
             m_project_update_callback();
         }
         NotifyArticleUpdate();
@@ -431,37 +463,33 @@ void AppCore::AddProject(const std::string& project_name) {
 void AppCore::RemoveProject(const std::string& project_name) {
     m_db->RemoveProject(project_name);
     RefreshFilterOptions();
-    if(m_project_update_callback) {
+    if (m_project_update_callback) {
         m_project_update_callback();
     }
     NotifyArticleUpdate();
 }
 
-void AppCore::LinkArticleToProject(const std::string& article_link, const std::string& project_name) {
+void AppCore::LinkArticleToProject(const std::string& article_link,
+                                   const std::string& project_name) {
     m_db->LinkArticleToProject(article_link, project_name);
     NotifyArticleUpdate();
 }
 
-void AppCore::UnlinkArticleFromProject(const std::string& article_link, const std::string& project_name) {
+void AppCore::UnlinkArticleFromProject(const std::string& article_link,
+                                       const std::string& project_name) {
     m_db->UnlinkArticleFromProject(article_link, project_name);
     NotifyArticleUpdate();
 }
 
-std::vector<std::string> AppCore::GetProjects() const {
-    return m_db->GetProjects();
-}
+std::vector<std::string> AppCore::GetProjects() const { return m_db->GetProjects(); }
 
 std::vector<Article> AppCore::GetArticlesForProject(const std::string& project_name) const {
     return m_db->GetArticlesForProject(project_name);
 }
 
-std::vector<std::string> AppCore::GetFilterOptions() const {
-    return m_filter_options;
-}
+std::vector<std::string> AppCore::GetFilterOptions() const { return m_filter_options; }
 
-std::vector<std::string> &AppCore::GetFilterOptions() {
-    return m_filter_options;
-}
+std::vector<std::string>& AppCore::GetFilterOptions() { return m_filter_options; }
 
 void AppCore::SetFilterIndex(int index) {
     // Clamp to the valid range so callers cannot reach an unhandled branch.
@@ -471,19 +499,15 @@ void AppCore::SetFilterIndex(int index) {
     } else {
         index = 0;
     }
-    if(index != m_filter_index) {
+    if (index != m_filter_index) {
         m_filter_index = index;
         FetchArticles();
     }
 }
 
-int AppCore::GetFilterIndex() const {
-    return m_filter_index;
-}
+int AppCore::GetFilterIndex() const { return m_filter_index; }
 
-int &AppCore::GetFilterIndex() {
-    return m_filter_index;
-}
+int& AppCore::GetFilterIndex() { return m_filter_index; }
 
 AppCore::FilterView AppCore::GetFilterView() const {
     if (m_filter_index >= static_cast<int>(FilterView::Project))
@@ -491,28 +515,23 @@ AppCore::FilterView AppCore::GetFilterView() const {
     return static_cast<FilterView>(m_filter_index);
 }
 
-void AppCore::SetFilterIndex(FilterView view) {
-    SetFilterIndex(static_cast<int>(view));
-}
+void AppCore::SetFilterIndex(FilterView view) { SetFilterIndex(static_cast<int>(view)); }
 
 void AppCore::SetArticleIndex(int index) {
-    if(index != m_article_index) {
+    if (index != m_article_index) {
         m_article_index = index;
         NotifyArticleUpdate();
     }
 }
 
-int AppCore::GetArticleIndex() const {
-    return m_article_index;
-}
+int AppCore::GetArticleIndex() const { return m_article_index; }
 
-int &AppCore::GetArticleIndex() {
-    return m_article_index;
-}
+int& AppCore::GetArticleIndex() { return m_article_index; }
 
 bool AppCore::IsArticleBookmarked(const std::string& article_link) const {
-    auto it = std::find_if(m_current_articles.begin(), m_current_articles.end(),
-                          [&](const Article& a) { return a.link == article_link; });
+    auto it = std::find_if(m_current_articles.begin(),
+                           m_current_articles.end(),
+                           [&](const Article& a) { return a.link == article_link; });
     return it != m_current_articles.end() && it->bookmarked;
 }
 
@@ -526,7 +545,7 @@ void AppCore::SetProjectUpdateCallback(ArticleUpdateCallback callback) {
 
 void AppCore::RefreshTitles() {
     m_current_titles.clear();
-    for(const auto& article : m_current_articles) {
+    for (const auto& article : m_current_articles) {
         std::string display_title = article.title;
         if (m_selected_links.count(article.link)) {
             display_title = "[*] " + display_title;
@@ -538,7 +557,14 @@ void AppCore::RefreshTitles() {
 }
 
 void AppCore::RefreshFilterOptions() {
-    m_filter_options = {"All Articles", "Bookmarks", "Today", "Range", "Search", "Recommended", "Followed Authors", "New Articles"};
+    m_filter_options = {"All Articles",
+                        "Bookmarks",
+                        "Today",
+                        "Range",
+                        "Search",
+                        "Recommended",
+                        "Followed Authors",
+                        "New Articles"};
     m_filter_project_names.clear();
 
     // Build hierarchy from projects table
@@ -561,8 +587,8 @@ void AppCore::RefreshFilterOptions() {
         auto it = children.find(proj);
         if (it != children.end()) {
             for (const auto& child : it->second) {
-                m_filter_options.push_back("  " + child);  // indented display
-                m_filter_project_names.push_back(child);    // actual name
+                m_filter_options.push_back("  " + child); // indented display
+                m_filter_project_names.push_back(child);  // actual name
             }
         }
     }
@@ -578,12 +604,17 @@ void AppCore::ClearDateRange() {
     FetchArticles();
 }
 
-void AppCore::SetSearchQuery(const std::string& query, bool _search_title,
-                             bool _search_authors, bool _search_abstract) {
+void AppCore::SetSearchQuery(const std::string& query,
+                             bool _search_title,
+                             bool _search_authors,
+                             bool _search_abstract) {
     SearchMode mode = SearchMode::title;
-    if (_search_title)         mode = SearchMode::title;
-    else if (_search_authors)  mode = SearchMode::authors;
-    else if (_search_abstract) mode = SearchMode::abstract;
+    if (_search_title)
+        mode = SearchMode::title;
+    else if (_search_authors)
+        mode = SearchMode::authors;
+    else if (_search_abstract)
+        mode = SearchMode::abstract;
     m_search.set(query, mode);
     FetchArticles();
 }
@@ -593,14 +624,16 @@ void AppCore::ClearSearch() {
     FetchArticles();
 }
 
-void AppCore::RateArticle(const std::string &article_link, int rating) {
-    if (rating < 1 || rating > 5) return;
+void AppCore::RateArticle(const std::string& article_link, int rating) {
+    if (rating < 1 || rating > 5)
+        return;
     m_db->SetRating(article_link, rating);
     spdlog::info("[AppCore]: Rated article {} with {}", article_link, rating);
 
     ++m_ratings_since_train;
     spdlog::debug("[AppCore]: {} new rating(s) pending (threshold: {})",
-                  m_ratings_since_train, m_retrain_interval);
+                  m_ratings_since_train,
+                  m_retrain_interval);
 
     if (m_ratings_since_train >= m_retrain_interval) {
         m_ratings_since_train = 0;
@@ -626,7 +659,7 @@ void AppCore::SpawnTrainingThread(bool warm_start) {
 
     // Snapshot training data on the main thread.
     auto all_articles = m_db->GetRecent(-1);
-    auto rated        = m_db->GetRatedArticles();
+    auto rated = m_db->GetRatedArticles();
 
     // For warm-start, copy the current ranker (vocab + weights) to the thread.
     // For cold-start, a default-constructed Ranker will be used.
@@ -637,10 +670,11 @@ void AppCore::SpawnTrainingThread(bool warm_start) {
     }
 
     m_training = true;
-    m_train_thread = std::thread([this, warm_start,
-                                   all_articles = std::move(all_articles),
-                                   rated        = std::move(rated),
-                                   seed_ranker  = std::move(seed_ranker)]() mutable {
+    m_train_thread = std::thread([this,
+                                  warm_start,
+                                  all_articles = std::move(all_articles),
+                                  rated = std::move(rated),
+                                  seed_ranker = std::move(seed_ranker)]() mutable {
         if (!warm_start) {
             // Cold start: build fresh vocabulary then train from scratch.
             seed_ranker = Ranker{};
@@ -654,7 +688,7 @@ void AppCore::SpawnTrainingThread(bool warm_start) {
             std::lock_guard<std::mutex> lock(m_ranker_mutex);
             m_ranker = std::move(seed_ranker);
         }
-        m_training      = false;
+        m_training = false;
         m_needs_refetch = true;
         NotifyArticleUpdate();
     });
@@ -670,22 +704,25 @@ void AppCore::TryRefetchIfNeeded() {
     // SQLite would serialise the read against every pending insert and the
     // UI thread would block for the duration of the bulk insert.
     if (m_fetching.load()) {
-        if (m_recorder) m_recorder->RecordEvent("appcore/try_refetch_skipped", "fetching");
+        if (m_recorder)
+            m_recorder->RecordEvent("appcore/try_refetch_skipped", "fetching");
         return;
     }
     if (m_needs_refetch.exchange(false)) {
-        if (m_recorder) m_recorder->RecordEvent("appcore/try_refetch_executing");
-        FetchArticles();   // FetchArticles also fires NotifyArticleUpdate
-        if (m_recorder) m_recorder->RecordEvent("appcore/try_refetch_executed",
-                                                "count=" + std::to_string(m_current_articles.size()));
+        if (m_recorder)
+            m_recorder->RecordEvent("appcore/try_refetch_executing");
+        FetchArticles(); // FetchArticles also fires NotifyArticleUpdate
+        if (m_recorder)
+            m_recorder->RecordEvent("appcore/try_refetch_executed",
+                                    "count=" + std::to_string(m_current_articles.size()));
     }
 }
 
-int AppCore::GetArticleRating(const std::string &article_link) const {
+int AppCore::GetArticleRating(const std::string& article_link) const {
     return m_db->GetRating(article_link);
 }
 
-float AppCore::GetPredictedScore(const Article &article) const {
+float AppCore::GetPredictedScore(const Article& article) const {
     std::lock_guard<std::mutex> lock(m_ranker_mutex);
     return m_ranker.Predict(article);
 }
@@ -698,7 +735,7 @@ void AppCore::SetRecommendThreshold(float threshold) {
 }
 
 void AppCore::NotifyArticleUpdate() {
-    if(m_article_update_callback) {
+    if (m_article_update_callback) {
         m_article_update_callback();
     }
 }
@@ -710,11 +747,13 @@ std::vector<std::string> AppCore::GetProjectsForArticle(const std::string& artic
 void AppCore::SetProjectParent(const std::string& project_name, const std::string& parent) {
     m_db->SetProjectParent(project_name, parent);
     RefreshFilterOptions();
-    if (m_project_update_callback) m_project_update_callback();
+    if (m_project_update_callback)
+        m_project_update_callback();
     NotifyArticleUpdate();
 }
 
-void AppCore::SetProjectNote(const std::string& project_name, const std::string& article_link,
+void AppCore::SetProjectNote(const std::string& project_name,
+                             const std::string& article_link,
                              const std::string& note) {
     m_db->SetProjectNote(project_name, article_link, note);
     NotifyArticleUpdate();
@@ -726,7 +765,7 @@ std::string AppCore::GetProjectNote(const std::string& project_name,
 }
 
 std::string AppCore::GetProjectNameForFilter(int index) const {
-    int proj_index = index - static_cast<int>(FilterView::Project);  // 0-based into project list
+    int proj_index = index - static_cast<int>(FilterView::Project); // 0-based into project list
     if (proj_index >= 0 && static_cast<size_t>(proj_index) < m_filter_project_names.size()) {
         return m_filter_project_names[static_cast<size_t>(proj_index)];
     }
@@ -764,7 +803,8 @@ bool write_export(const std::string& path,
                   std::string_view log_subject,
                   const std::function<void(std::ofstream&)>& writer) {
     std::ofstream file(path);
-    if (!file.is_open()) return false;
+    if (!file.is_open())
+        return false;
     writer(file);
     spdlog::info("[AppCore]: Exported {} to {}", log_subject, path);
     return true;
@@ -774,70 +814,69 @@ bool write_export(const std::string& path,
 bool AppCore::ExportProjectMarkdown(const std::string& project_name,
                                     const std::string& output_path) const {
     auto articles = m_db->GetArticlesForProject(project_name);
-    return write_export(output_path,
-                        "project '" + project_name + "' Markdown",
-                        [&](std::ofstream& file) {
-        file << "# " << project_name << "\n\n";
-        file << articles.size() << " article(s)\n\n---\n\n";
-        for (const auto& article : articles) {
-            std::string note = m_db->GetProjectNote(project_name, article.link);
-            file << "## " << article.title << "\n\n";
-            file << "**Authors:** " << article.authors << "  \n";
-            file << "**Date:** " << format_date_str(article.date) << "  \n";
-            file << "**Link:** " << article.link << "  \n\n";
-            file << article.abstract << "\n\n";
-            if (!note.empty()) {
-                file << "> **Note:** " << note << "\n\n";
+    return write_export(
+        output_path, "project '" + project_name + "' Markdown", [&](std::ofstream& file) {
+            file << "# " << project_name << "\n\n";
+            file << articles.size() << " article(s)\n\n---\n\n";
+            for (const auto& article : articles) {
+                std::string note = m_db->GetProjectNote(project_name, article.link);
+                file << "## " << article.title << "\n\n";
+                file << "**Authors:** " << article.authors << "  \n";
+                file << "**Date:** " << format_date_str(article.date) << "  \n";
+                file << "**Link:** " << article.link << "  \n\n";
+                file << article.abstract << "\n\n";
+                if (!note.empty()) {
+                    file << "> **Note:** " << note << "\n\n";
+                }
+                file << "---\n\n";
             }
-            file << "---\n\n";
-        }
-    });
+        });
 }
 
 bool AppCore::ExportProjectText(const std::string& project_name,
                                 const std::string& output_path) const {
     auto articles = m_db->GetArticlesForProject(project_name);
-    return write_export(output_path,
-                        "project '" + project_name + "' plain text",
-                        [&](std::ofstream& file) {
-        file << project_name << "\n" << std::string(project_name.size(), '=') << "\n\n";
-        file << articles.size() << " article(s)\n\n";
-        for (size_t i = 0; i < articles.size(); ++i) {
-            const auto& article = articles[i];
-            std::string note = m_db->GetProjectNote(project_name, article.link);
-            file << "[" << (i + 1) << "] " << article.title << "\n";
-            file << "    Authors: " << article.authors << "\n";
-            file << "    Date: " << format_date_str(article.date) << "\n";
-            file << "    Link: " << article.link << "\n";
-            if (!note.empty()) file << "    Note: " << note << "\n";
-            file << "\n";
-        }
-    });
+    return write_export(
+        output_path, "project '" + project_name + "' plain text", [&](std::ofstream& file) {
+            file << project_name << "\n" << std::string(project_name.size(), '=') << "\n\n";
+            file << articles.size() << " article(s)\n\n";
+            for (size_t i = 0; i < articles.size(); ++i) {
+                const auto& article = articles[i];
+                std::string note = m_db->GetProjectNote(project_name, article.link);
+                file << "[" << (i + 1) << "] " << article.title << "\n";
+                file << "    Authors: " << article.authors << "\n";
+                file << "    Date: " << format_date_str(article.date) << "\n";
+                file << "    Link: " << article.link << "\n";
+                if (!note.empty())
+                    file << "    Note: " << note << "\n";
+                file << "\n";
+            }
+        });
 }
 
 bool AppCore::ExportProjectJSON(const std::string& project_name,
                                 const std::string& output_path) const {
     auto articles = m_db->GetArticlesForProject(project_name);
-    return write_export(output_path,
-                        "project '" + project_name + "' JSON",
-                        [&](std::ofstream& file) {
-        nlohmann::json j;
-        j["name"] = project_name;
-        j["articles"] = nlohmann::json::array();
-        for (const auto& a : articles) {
-            auto ts = std::chrono::duration_cast<std::chrono::seconds>(
-                a.date.time_since_epoch()).count();
-            nlohmann::json entry;
-            entry["link"]     = a.link;
-            entry["title"]    = a.title;
-            entry["authors"]  = a.authors;
-            entry["abstract"] = a.abstract;
-            entry["date"]     = ts;
-            entry["note"]     = m_db->GetProjectNote(project_name, a.link);
-            j["articles"].push_back(std::move(entry));
-        }
-        file << j.dump(2) << "\n";
-    });
+    return write_export(
+        output_path, "project '" + project_name + "' JSON", [&](std::ofstream& file) {
+            nlohmann::json j;
+            j["name"] = project_name;
+            j["articles"] = nlohmann::json::array();
+            for (const auto& a : articles) {
+                auto ts =
+                    std::chrono::duration_cast<std::chrono::seconds>(a.date.time_since_epoch())
+                        .count();
+                nlohmann::json entry;
+                entry["link"] = a.link;
+                entry["title"] = a.title;
+                entry["authors"] = a.authors;
+                entry["abstract"] = a.abstract;
+                entry["date"] = ts;
+                entry["note"] = m_db->GetProjectNote(project_name, a.link);
+                j["articles"].push_back(std::move(entry));
+            }
+            file << j.dump(2) << "\n";
+        });
 }
 
 bool AppCore::ImportProjectJSON(const std::string& input_path) {
@@ -866,13 +905,14 @@ bool AppCore::ImportProjectJSON(const std::string& input_path) {
     if (j.contains("articles") && j["articles"].is_array()) {
         for (const auto& entry : j["articles"]) {
             std::string link = entry.value("link", "");
-            if (link.empty()) continue;
+            if (link.empty())
+                continue;
 
             Article article;
-            article.link      = link;
-            article.title     = entry.value("title", "");
-            article.authors   = entry.value("authors", "");
-            article.abstract  = entry.value("abstract", "");
+            article.link = link;
+            article.title = entry.value("title", "");
+            article.authors = entry.value("authors", "");
+            article.abstract = entry.value("abstract", "");
             article.bookmarked = false;
             int64_t ts = entry.value("date", int64_t{0});
             article.date = std::chrono::system_clock::from_time_t(static_cast<time_t>(ts));
@@ -888,7 +928,8 @@ bool AppCore::ImportProjectJSON(const std::string& input_path) {
     }
 
     RefreshFilterOptions();
-    if (m_project_update_callback) m_project_update_callback();
+    if (m_project_update_callback)
+        m_project_update_callback();
     NotifyArticleUpdate();
     spdlog::info("[AppCore]: Imported project '{}' from JSON: {}", project_name, input_path);
     return true;
@@ -907,7 +948,8 @@ static std::string first_author_last_name(const std::string& authors) {
     std::string first = authors.substr(0, authors.find(','));
     // Last word is the last name
     std::size_t space = first.rfind(' ');
-    if (space == std::string::npos) return first;
+    if (space == std::string::npos)
+        return first;
     return first.substr(space + 1);
 }
 
@@ -924,8 +966,7 @@ static std::string build_fallback_bibtex(const Arxiv::Article& article) {
     std::strftime(year_buf, sizeof(year_buf), "%Y", &tm);
 
     // Citation key: LastnameYear:arxivID
-    std::string key = first_author_last_name(article.authors) + ":" + year_buf
-                      + "_" + arxiv_id;
+    std::string key = first_author_last_name(article.authors) + ":" + year_buf + "_" + arxiv_id;
     // Replace non-alphanumeric (except :_.) with underscore
     for (char& c : key) {
         if (!std::isalnum(static_cast<unsigned char>(c)) && c != ':' && c != '_' && c != '.') {
@@ -973,21 +1014,19 @@ bool AppCore::ExportArticlesBibTeX(const std::vector<Article>& articles,
     return write_export(output_path,
                         std::to_string(articles.size()) + " article(s) BibTeX",
                         [&](std::ofstream& file) {
-        for (const auto& a : articles) {
-            file << get_bibtex(a, m_fetcher.get()) << "\n";
-        }
-    });
+                            for (const auto& a : articles) {
+                                file << get_bibtex(a, m_fetcher.get()) << "\n";
+                            }
+                        });
 }
 
-bool AppCore::ExportArticleBibTeX(const Article& article,
-                                  const std::string& output_path) const {
+bool AppCore::ExportArticleBibTeX(const Article& article, const std::string& output_path) const {
     return ExportArticlesBibTeX({article}, output_path);
 }
 
 bool AppCore::ExportProjectBibTeX(const std::string& project_name,
                                   const std::string& output_path) const {
-    return ExportArticlesBibTeX(m_db->GetArticlesForProject(project_name),
-                                output_path);
+    return ExportArticlesBibTeX(m_db->GetArticlesForProject(project_name), output_path);
 }
 
 // ---------------------------------------------------------------------------
@@ -998,8 +1037,8 @@ std::vector<Article> AppCore::FuzzySearchArticles(const std::string& query, int 
     auto all = m_db->GetRecent(-1);
     std::vector<Article> results;
     for (const auto& a : all) {
-        if (FuzzyMatch::MatchesText(query, a.title,    threshold) ||
-            FuzzyMatch::MatchesText(query, a.authors,  threshold) ||
+        if (FuzzyMatch::MatchesText(query, a.title, threshold) ||
+            FuzzyMatch::MatchesText(query, a.authors, threshold) ||
             FuzzyMatch::MatchesText(query, a.abstract, threshold)) {
             results.push_back(a);
         }
@@ -1011,21 +1050,16 @@ std::vector<Article> AppCore::FuzzySearchArticles(const std::string& query, int 
 // Author subscriptions
 // ---------------------------------------------------------------------------
 
-void AppCore::FollowAuthor(const std::string& author_name) {
-    m_db->FollowAuthor(author_name);
-}
+void AppCore::FollowAuthor(const std::string& author_name) { m_db->FollowAuthor(author_name); }
 
-void AppCore::UnfollowAuthor(const std::string& author_name) {
-    m_db->UnfollowAuthor(author_name);
-}
+void AppCore::UnfollowAuthor(const std::string& author_name) { m_db->UnfollowAuthor(author_name); }
 
-std::vector<std::string> AppCore::GetFollowedAuthors() const {
-    return m_db->GetFollowedAuthors();
-}
+std::vector<std::string> AppCore::GetFollowedAuthors() const { return m_db->GetFollowedAuthors(); }
 
 std::vector<Article> AppCore::GetArticlesForFollowedAuthors() const {
     auto followed = m_db->GetFollowedAuthors();
-    if (followed.empty()) return {};
+    if (followed.empty())
+        return {};
 
     auto all = m_db->GetRecent(-1);
     std::vector<Article> result;
@@ -1045,7 +1079,7 @@ std::vector<Article> AppCore::GetArticlesForFollowedAuthors() const {
 // ---------------------------------------------------------------------------
 
 static std::string today_string() {
-    auto now   = std::chrono::system_clock::now();
+    auto now = std::chrono::system_clock::now();
     std::time_t t = std::chrono::system_clock::to_time_t(now);
     std::tm tm_val{};
     localtime_r(&t, &tm_val);
@@ -1059,20 +1093,20 @@ bool AppCore::ExportDailyDigest(const std::string& output_path) const {
     return write_export(output_path,
                         "daily digest (" + std::to_string(articles.size()) + " articles)",
                         [&](std::ofstream& f) {
-        f << "# arXiv Daily Digest — " << today_string() << "\n\n";
-        if (articles.empty()) {
-            f << "_No articles fetched today._\n";
-        } else {
-            for (const auto& a : articles) {
-                f << "## " << a.title << "\n";
-                f << "**Authors:** " << a.authors << "  \n";
-                f << "**Link:** <" << a.link << ">  \n";
-                if (!a.abstract.empty())
-                    f << "\n" << a.abstract << "\n";
-                f << "\n---\n\n";
-            }
-        }
-    });
+                            f << "# arXiv Daily Digest — " << today_string() << "\n\n";
+                            if (articles.empty()) {
+                                f << "_No articles fetched today._\n";
+                            } else {
+                                for (const auto& a : articles) {
+                                    f << "## " << a.title << "\n";
+                                    f << "**Authors:** " << a.authors << "  \n";
+                                    f << "**Link:** <" << a.link << ">  \n";
+                                    if (!a.abstract.empty())
+                                        f << "\n" << a.abstract << "\n";
+                                    f << "\n---\n\n";
+                                }
+                            }
+                        });
 }
 
 bool AppCore::ExportDailyDigestYAML(const std::string& output_path) const {
@@ -1080,24 +1114,26 @@ bool AppCore::ExportDailyDigestYAML(const std::string& output_path) const {
     return write_export(output_path,
                         "daily digest YAML (" + std::to_string(articles.size()) + " articles)",
                         [&](std::ofstream& f) {
-        auto escape_yaml = [](const std::string& s) {
-            std::string out;
-            out.reserve(s.size());
-            for (char c : s) {
-                if (c == '"') out += "\\\"";
-                else out += c;
-            }
-            return out;
-        };
-        f << "date: \"" << today_string() << "\"\narticles:\n";
-        for (const auto& a : articles) {
-            f << "  - title: \"" << escape_yaml(a.title) << "\"\n";
-            f << "    authors: \"" << escape_yaml(a.authors) << "\"\n";
-            f << "    link: \"" << escape_yaml(a.link) << "\"\n";
-            if (!a.abstract.empty())
-                f << "    abstract: \"" << escape_yaml(a.abstract) << "\"\n";
-        }
-    });
+                            auto escape_yaml = [](const std::string& s) {
+                                std::string out;
+                                out.reserve(s.size());
+                                for (char c : s) {
+                                    if (c == '"')
+                                        out += "\\\"";
+                                    else
+                                        out += c;
+                                }
+                                return out;
+                            };
+                            f << "date: \"" << today_string() << "\"\narticles:\n";
+                            for (const auto& a : articles) {
+                                f << "  - title: \"" << escape_yaml(a.title) << "\"\n";
+                                f << "    authors: \"" << escape_yaml(a.authors) << "\"\n";
+                                f << "    link: \"" << escape_yaml(a.link) << "\"\n";
+                                if (!a.abstract.empty())
+                                    f << "    abstract: \"" << escape_yaml(a.abstract) << "\"\n";
+                            }
+                        });
 }
 
 // ---------------------------------------------------------------------------
@@ -1105,8 +1141,10 @@ bool AppCore::ExportDailyDigestYAML(const std::string& output_path) const {
 // ---------------------------------------------------------------------------
 
 void AppCore::ToggleSelection(const std::string& link) {
-    if (m_selected_links.count(link)) m_selected_links.erase(link);
-    else                              m_selected_links.insert(link);
+    if (m_selected_links.count(link))
+        m_selected_links.erase(link);
+    else
+        m_selected_links.insert(link);
     RefreshTitles();
     NotifyArticleUpdate();
 }
@@ -1129,7 +1167,8 @@ std::string AppCore::ExportSelectedDigest() {
     std::vector<Article> picked;
     picked.reserve(m_selected_links.size());
     for (const auto& a : all) {
-        if (m_selected_links.count(a.link)) picked.push_back(a);
+        if (m_selected_links.count(a.link))
+            picked.push_back(a);
     }
     if (picked.empty()) {
         spdlog::warn("[AppCore]: ExportSelectedDigest: no matching articles in DB");
@@ -1142,7 +1181,8 @@ std::string AppCore::ExportSelectedDigest() {
     std::error_code ec;
     fs::create_directories(digest_dir, ec);
     if (ec) {
-        spdlog::error("[AppCore]: Cannot create digest dir {}: {}", digest_dir.string(), ec.message());
+        spdlog::error(
+            "[AppCore]: Cannot create digest dir {}: {}", digest_dir.string(), ec.message());
         return "";
     }
 
@@ -1160,8 +1200,10 @@ std::string AppCore::ExportSelectedDigest() {
         f << "**Authors:** " << a.authors << "  \n";
         f << "**Link:** <" << a.link << ">  \n";
         f << "**PDF:** [" << a.id() << ".pdf](" << a.id() << ".pdf)  \n";
-        if (!a.category.empty()) f << "**Category:** " << a.category << "  \n";
-        if (!a.abstract.empty()) f << "\n" << a.abstract << "\n";
+        if (!a.category.empty())
+            f << "**Category:** " << a.category << "  \n";
+        if (!a.abstract.empty())
+            f << "\n" << a.abstract << "\n";
         f << "\n---\n\n";
     }
     f.close();
@@ -1172,10 +1214,13 @@ std::string AppCore::ExportSelectedDigest() {
     int ok = 0;
     for (const auto& a : picked) {
         std::string rel = date_dir + "/" + a.id() + ".pdf";
-        if (m_fetcher->DownloadPaper(a.id(), rel)) ++ok;
+        if (m_fetcher->DownloadPaper(a.id(), rel))
+            ++ok;
     }
     spdlog::info("[AppCore]: Selected digest written to {} ({}/{} PDFs downloaded)",
-                 digest_dir.string(), ok, picked.size());
+                 digest_dir.string(),
+                 ok,
+                 picked.size());
 
     return digest_dir.string();
 }
@@ -1189,10 +1234,14 @@ std::string yaml_quote(const std::string& s) {
     std::string out = "\"";
     out.reserve(s.size() + 2);
     for (char c : s) {
-        if      (c == '\\') out += "\\\\";
-        else if (c == '"')  out += "\\\"";
-        else if (c == '\n' || c == '\r') out += ' ';
-        else                out += c;
+        if (c == '\\')
+            out += "\\\\";
+        else if (c == '"')
+            out += "\\\"";
+        else if (c == '\n' || c == '\r')
+            out += ' ';
+        else
+            out += c;
     }
     out += '"';
     return out;
@@ -1208,17 +1257,24 @@ std::string yaml_inline_list(const std::string& csv) {
         // trim
         size_t a = token.find_first_not_of(" \t");
         size_t b = token.find_last_not_of(" \t");
-        if (a == std::string::npos) { token.clear(); return; }
+        if (a == std::string::npos) {
+            token.clear();
+            return;
+        }
         std::string t = token.substr(a, b - a + 1);
         token.clear();
-        if (t.empty()) return;
-        if (!first) out += ", ";
+        if (t.empty())
+            return;
+        if (!first)
+            out += ", ";
         out += t;
         first = false;
     };
     for (char c : csv) {
-        if (c == ',') flush();
-        else token += c;
+        if (c == ',')
+            flush();
+        else
+            token += c;
     }
     flush();
     out += "]";
@@ -1243,7 +1299,8 @@ std::string AppCore::ExportSelectedToObsidian() {
     std::vector<Article> picked;
     picked.reserve(m_selected_links.size());
     for (const auto& a : all) {
-        if (m_selected_links.count(a.link)) picked.push_back(a);
+        if (m_selected_links.count(a.link))
+            picked.push_back(a);
     }
     if (picked.empty()) {
         spdlog::warn("[AppCore]: ExportSelectedToObsidian: no matching articles in DB");
@@ -1272,15 +1329,15 @@ std::string AppCore::ExportSelectedToObsidian() {
             continue;
         }
         nf << "---\n";
-        nf << "title: "    << yaml_quote(a.title)   << "\n";
-        nf << "authors: "  << yaml_quote(a.authors) << "\n";
-        nf << "arxiv_id: " << aid                   << "\n";
-        nf << "url: "      << yaml_quote(a.link)    << "\n";
+        nf << "title: " << yaml_quote(a.title) << "\n";
+        nf << "authors: " << yaml_quote(a.authors) << "\n";
+        nf << "arxiv_id: " << aid << "\n";
+        nf << "url: " << yaml_quote(a.link) << "\n";
         if (!a.category.empty()) {
-            nf << "tags: "     << yaml_inline_list(a.category) << "\n";
-            nf << "category: " << yaml_quote(a.category)       << "\n";
+            nf << "tags: " << yaml_inline_list(a.category) << "\n";
+            nf << "category: " << yaml_quote(a.category) << "\n";
         }
-        nf << "imported: "  << date_str << "\n";
+        nf << "imported: " << date_str << "\n";
         nf << "related-projects: []\n";
         nf << "---\n\n";
         nf << "# " << a.title << "\n\n";
@@ -1301,7 +1358,8 @@ std::string AppCore::ExportSelectedToObsidian() {
         // the vault. Use an absolute path via the std::filesystem API
         // instead so the file lands in the vault directory.
         fs::path pdf_path = note_dir / (aid + ".pdf");
-        if (m_fetcher->DownloadPaper(aid, pdf_path.string())) ++pdf_ok;
+        if (m_fetcher->DownloadPaper(aid, pdf_path.string()))
+            ++pdf_ok;
     }
 
     // Index note that links to every paper imported today.
@@ -1325,7 +1383,9 @@ std::string AppCore::ExportSelectedToObsidian() {
     idx.close();
 
     spdlog::info("[AppCore]: Obsidian digest written to {} ({}/{} PDFs)",
-                 index_path.string(), pdf_ok, picked.size());
+                 index_path.string(),
+                 pdf_ok,
+                 picked.size());
     return index_path.string();
 }
 
@@ -1335,7 +1395,8 @@ std::string AppCore::ExportSelectedToObsidian() {
 
 void AppCore::ReloadKeywords() {
     const std::string& path = m_config.get_keywords_file();
-    if (path.empty()) return;
+    if (path.empty())
+        return;
 
     std::ifstream f(path);
     if (!f.is_open()) {
@@ -1359,7 +1420,8 @@ void AppCore::ReloadKeywords() {
 
 bool AppCore::SaveKeywords(const std::vector<std::string>& keywords) {
     const std::string& path = m_config.get_keywords_file();
-    if (path.empty()) return false;
+    if (path.empty())
+        return false;
 
     std::ofstream f(path);
     if (!f.is_open()) {
@@ -1378,19 +1440,18 @@ bool AppCore::SaveKeywords(const std::vector<std::string>& keywords) {
     return true;
 }
 
-std::vector<std::string> AppCore::GetKeywords() const {
-    return m_keywords;
-}
+std::vector<std::string> AppCore::GetKeywords() const { return m_keywords; }
 
 void AppCore::StartAutoRefresh() {
-    if (m_refresh_running.load()) return;
+    if (m_refresh_running.load())
+        return;
     m_refresh_running.store(true);
     m_refresh_thread = std::thread([this] {
         while (m_refresh_running.load()) {
             std::unique_lock<std::mutex> lock(m_refresh_mutex);
             int minutes = m_auto_refresh_minutes > 0 ? m_auto_refresh_minutes : 60;
-            m_refresh_cv.wait_for(lock, std::chrono::minutes(minutes),
-                                  [this] { return !m_refresh_running.load(); });
+            m_refresh_cv.wait_for(
+                lock, std::chrono::minutes(minutes), [this] { return !m_refresh_running.load(); });
             if (m_refresh_running.load()) {
                 FetchArticles();
             }
@@ -1399,7 +1460,8 @@ void AppCore::StartAutoRefresh() {
 }
 
 void AppCore::StopAutoRefresh() {
-    if (!m_refresh_running.load()) return;
+    if (!m_refresh_running.load())
+        return;
     m_refresh_running.store(false);
     m_refresh_cv.notify_all();
     if (m_refresh_thread.joinable()) {
@@ -1407,12 +1469,8 @@ void AppCore::StopAutoRefresh() {
     }
 }
 
-bool AppCore::IsAutoRefreshing() const {
-    return m_refresh_running.load();
-}
+bool AppCore::IsAutoRefreshing() const { return m_refresh_running.load(); }
 
-int AppCore::GetAutoRefreshMinutes() const {
-    return m_auto_refresh_minutes;
-}
+int AppCore::GetAutoRefreshMinutes() const { return m_auto_refresh_minutes; }
 
 } // namespace Arxiv

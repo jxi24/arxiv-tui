@@ -10,21 +10,25 @@ using namespace Arxiv;
 
 void ArxivApp::SetupImportDialog() {
     import_dialog = Renderer([&] {
-        if (dialog_depth != Dialog::Import) return emptyElement();
+        if (dialog_depth != Dialog::Import)
+            return emptyElement();
 
         return vbox({
-            text("Import Project from JSON") | bold | color(TextColors::primary()),
-            separator() | color(TextColors::border()),
-            text("File path: " + import_path) | color(TextColors::text()),
-            separator() | color(TextColors::border()),
-            text("Type path, Enter to import, Esc to cancel") | color(TextColors::subtext()),
-        }) | borderStyled(ROUNDED, TextColors::border()) | bgcolor(TextColors::surface()) | clear_under | center;
+                   text("Import Project from JSON") | bold | color(TextColors::primary()),
+                   separator() | color(TextColors::border()),
+                   text("File path: " + import_path) | color(TextColors::text()),
+                   separator() | color(TextColors::border()),
+                   text("Type path, Enter to import, Esc to cancel") | color(TextColors::subtext()),
+               }) |
+               borderStyled(ROUNDED, TextColors::border()) | bgcolor(TextColors::surface()) |
+               clear_under | center;
     });
 }
 
 bool ArxivApp::HandleImportEvent(ftxui::Event event) {
     if (event == Event::Return) {
-        if (m_recorder) m_recorder->RecordImportProjectJSON(import_path);
+        if (m_recorder)
+            m_recorder->RecordImportProjectJSON(import_path);
         bool ok = core.ImportProjectJSON(import_path);
         dialog_depth = Dialog::None;
         if (!ok) {
@@ -35,7 +39,8 @@ bool ArxivApp::HandleImportEvent(ftxui::Event event) {
         return true;
     }
     if (event == Event::Backspace) {
-        if (!import_path.empty()) import_path.pop_back();
+        if (!import_path.empty())
+            import_path.pop_back();
         return true;
     }
     if (event == Event::Escape) {

@@ -2,11 +2,10 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
-#include <catch2/catch_test_macros.hpp>
-#include <catch2/matchers/catch_matchers_floating_point.hpp>
-
 #include "Arxiv/Config.hh"
 
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -75,8 +74,7 @@ TEST_CASE("Config: recommend_threshold round-trips through save/load", "[config]
     cfg.save_to_file(tmp.path);
 
     Config loaded(tmp.path);
-    REQUIRE_THAT(loaded.get_recommend_threshold(),
-                 Catch::Matchers::WithinRel(4.2f, 0.001f));
+    REQUIRE_THAT(loaded.get_recommend_threshold(), Catch::Matchers::WithinRel(4.2f, 0.001f));
 }
 
 TEST_CASE("Config: retrain_interval round-trips through save/load", "[config]") {

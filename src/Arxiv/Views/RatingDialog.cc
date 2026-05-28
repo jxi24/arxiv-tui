@@ -4,6 +4,7 @@
 
 #include "Arxiv/App.hh"
 #include "Arxiv/Views/Colors.hh"
+
 #include "spdlog/spdlog.h"
 
 using namespace ftxui;
@@ -11,13 +12,16 @@ using namespace Arxiv;
 
 void ArxivApp::SetupRatingDialog() {
     rating_dialog = Renderer([&] {
-        if (dialog_depth != Dialog::Rating) return emptyElement();
+        if (dialog_depth != Dialog::Rating)
+            return emptyElement();
 
         auto articles = core.GetCurrentArticles();
-        std::string article_title = articles.empty() ? "" :
-            articles[static_cast<size_t>(core.GetArticleIndex())].title;
-        int current_rating = articles.empty() ? 0 :
-            core.GetArticleRating(articles[static_cast<size_t>(core.GetArticleIndex())].link);
+        std::string article_title =
+            articles.empty() ? "" : articles[static_cast<size_t>(core.GetArticleIndex())].title;
+        int current_rating =
+            articles.empty()
+                ? 0
+                : core.GetArticleRating(articles[static_cast<size_t>(core.GetArticleIndex())].link);
 
         std::vector<Element> stars;
         for (int i = 1; i <= 5; ++i) {
@@ -33,18 +37,22 @@ void ArxivApp::SetupRatingDialog() {
         }
 
         return vbox({
-            text("Rate Article") | bold | color(TextColors::primary()),
-            separator() | color(TextColors::border()),
-            paragraph(article_title) | color(TextColors::subtext()),
-            separator() | color(TextColors::border()),
-            text(current_rating > 0
-                 ? "Current rating: " + std::to_string(current_rating) + "/5"
-                 : "Not yet rated") | color(TextColors::subtext()),
-            separator() | color(TextColors::border()),
-            vbox(stars),
-            separator() | color(TextColors::border()),
-            text("j/k to select, Enter to save, Esc to cancel") | color(TextColors::subtext()),
-        }) | borderStyled(ROUNDED, TextColors::border()) | bgcolor(TextColors::surface()) | clear_under | center;
+                   text("Rate Article") | bold | color(TextColors::primary()),
+                   separator() | color(TextColors::border()),
+                   paragraph(article_title) | color(TextColors::subtext()),
+                   separator() | color(TextColors::border()),
+                   text(current_rating > 0
+                            ? "Current rating: " + std::to_string(current_rating) + "/5"
+                            : "Not yet rated") |
+                       color(TextColors::subtext()),
+                   separator() | color(TextColors::border()),
+                   vbox(stars),
+                   separator() | color(TextColors::border()),
+                   text("j/k to select, Enter to save, Esc to cancel") |
+                       color(TextColors::subtext()),
+               }) |
+               borderStyled(ROUNDED, TextColors::border()) | bgcolor(TextColors::surface()) |
+               clear_under | center;
     });
 }
 
@@ -53,10 +61,12 @@ bool ArxivApp::HandleRatingEvent(ftxui::Event event) {
         if (pending_rating >= 1 && pending_rating <= 5) {
             auto articles = core.GetCurrentArticles();
             if (!articles.empty()) {
-                const std::string& link = articles[static_cast<size_t>(core.GetArticleIndex())].link;
+                const std::string& link =
+                    articles[static_cast<size_t>(core.GetArticleIndex())].link;
                 spdlog::info("rate_article link={} rating={}", link, pending_rating);
                 core.RateArticle(link, pending_rating);
-                if (m_recorder) m_recorder->RecordRateArticle(link, pending_rating);
+                if (m_recorder)
+                    m_recorder->RecordRateArticle(link, pending_rating);
             }
         }
         dialog_depth = Dialog::None;

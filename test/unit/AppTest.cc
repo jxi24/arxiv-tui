@@ -2,16 +2,16 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
+#include <Arxiv/AppCore.hh>
+#include <Arxiv/Config.hh>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
-#include <Arxiv/AppCore.hh>
-#include <Arxiv/Config.hh>
+#include <cstdio>
 #include <fixtures/test_data.hh>
+#include <fstream>
 #include <mocks/DatabaseManagerMock.hh>
 #include <mocks/FetcherMock.hh>
-#include <fstream>
-#include <cstdio>
 #include <unistd.h>
 
 using namespace Arxiv;
@@ -29,8 +29,7 @@ TEST_CASE("AppCore initialization", "[app]") {
         // GetRecent(-1) is called twice by the constructor:
         // once in FetchArticles() and once in the ranker-load fallback.
         // Use ALLOW_CALL to permit any number of calls.
-        ALLOW_CALL(*db_ptr, GetRecent(ANY(int)))
-            .RETURN(sample_articles);
+        ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(sample_articles);
 
         Arxiv::AppCore core(config, std::move(db), std::move(fetcher));
 
@@ -53,15 +52,11 @@ TEST_CASE("AppCore article management", "[app]") {
     auto* fetcher_ptr = fetcher.get();
 
     // Set up expectations in the test scope
-    ALLOW_CALL(*fetcher_ptr, Fetch())
-        .RETURN(sample_articles);
+    ALLOW_CALL(*fetcher_ptr, Fetch()).RETURN(sample_articles);
     ALLOW_CALL(*db_ptr, AddArticle(trompeloeil::_));
-    ALLOW_CALL(*db_ptr, GetRecent(trompeloeil::_))
-        .RETURN(sample_articles);
-    ALLOW_CALL(*db_ptr, ListBookmarked())
-        .RETURN(std::vector<Arxiv::Article>{});
-    ALLOW_CALL(*db_ptr, GetProjects())
-        .RETURN(std::vector<std::string>{});
+    ALLOW_CALL(*db_ptr, GetRecent(trompeloeil::_)).RETURN(sample_articles);
+    ALLOW_CALL(*db_ptr, ListBookmarked()).RETURN(std::vector<Arxiv::Article>{});
+    ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{});
     ALLOW_CALL(*db_ptr, ToggleBookmark(trompeloeil::_, trompeloeil::_));
 
     Arxiv::AppCore core(config, std::move(db), std::move(fetcher));
@@ -111,21 +106,16 @@ TEST_CASE("AppCore project management", "[app]") {
     std::vector<std::string> mock_projects;
     std::vector<Arxiv::Article> mock_project_articles;
 
-    ALLOW_CALL(*fetcher_ptr, Fetch())
-        .RETURN(sample_articles);
+    ALLOW_CALL(*fetcher_ptr, Fetch()).RETURN(sample_articles);
     ALLOW_CALL(*db_ptr, AddArticle(trompeloeil::_));
-    ALLOW_CALL(*db_ptr, GetRecent(trompeloeil::_))
-        .RETURN(sample_articles);
-    ALLOW_CALL(*db_ptr, ListBookmarked())
-        .RETURN(std::vector<Arxiv::Article>{});
-    ALLOW_CALL(*db_ptr, GetProjects())
-        .LR_RETURN(mock_projects);
+    ALLOW_CALL(*db_ptr, GetRecent(trompeloeil::_)).RETURN(sample_articles);
+    ALLOW_CALL(*db_ptr, ListBookmarked()).RETURN(std::vector<Arxiv::Article>{});
+    ALLOW_CALL(*db_ptr, GetProjects()).LR_RETURN(mock_projects);
     ALLOW_CALL(*db_ptr, AddProject(trompeloeil::_));
     ALLOW_CALL(*db_ptr, RemoveProject(trompeloeil::_));
     ALLOW_CALL(*db_ptr, LinkArticleToProject(trompeloeil::_, trompeloeil::_));
     ALLOW_CALL(*db_ptr, UnlinkArticleFromProject(trompeloeil::_, trompeloeil::_));
-    ALLOW_CALL(*db_ptr, GetArticlesForProject(trompeloeil::_))
-        .LR_RETURN(mock_project_articles);
+    ALLOW_CALL(*db_ptr, GetArticlesForProject(trompeloeil::_)).LR_RETURN(mock_project_articles);
 
     Arxiv::AppCore core(config, std::move(db), std::move(fetcher));
 
@@ -159,14 +149,18 @@ TEST_CASE("AppCore project management", "[app]") {
         core.LinkArticleToProject(article_link, project_name);
 
         auto project_articles = core.GetArticlesForProject(project_name);
-        REQUIRE(std::find_if(project_articles.begin(), project_articles.end(),
-            [&](const Arxiv::Article& a) { return a.link == article_link; }) != project_articles.end());
+        REQUIRE(std::find_if(
+                    project_articles.begin(), project_articles.end(), [&](const Arxiv::Article& a) {
+                        return a.link == article_link;
+                    }) != project_articles.end());
 
         mock_project_articles = {};
         core.UnlinkArticleFromProject(article_link, project_name);
         project_articles = core.GetArticlesForProject(project_name);
-        REQUIRE(std::find_if(project_articles.begin(), project_articles.end(),
-            [&](const Arxiv::Article& a) { return a.link == article_link; }) == project_articles.end());
+        REQUIRE(std::find_if(
+                    project_articles.begin(), project_articles.end(), [&](const Arxiv::Article& a) {
+                        return a.link == article_link;
+                    }) == project_articles.end());
     }
 }
 
@@ -177,15 +171,11 @@ TEST_CASE("AppCore state management", "[app]") {
     auto* db_ptr = db.get();
     auto* fetcher_ptr = fetcher.get();
 
-    ALLOW_CALL(*fetcher_ptr, Fetch())
-        .RETURN(sample_articles);
+    ALLOW_CALL(*fetcher_ptr, Fetch()).RETURN(sample_articles);
     ALLOW_CALL(*db_ptr, AddArticle(trompeloeil::_));
-    ALLOW_CALL(*db_ptr, GetRecent(trompeloeil::_))
-        .RETURN(sample_articles);
-    ALLOW_CALL(*db_ptr, ListBookmarked())
-        .RETURN(std::vector<Arxiv::Article>{});
-    ALLOW_CALL(*db_ptr, GetProjects())
-        .RETURN(std::vector<std::string>{});
+    ALLOW_CALL(*db_ptr, GetRecent(trompeloeil::_)).RETURN(sample_articles);
+    ALLOW_CALL(*db_ptr, ListBookmarked()).RETURN(std::vector<Arxiv::Article>{});
+    ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{});
 
     Arxiv::AppCore core(config, std::move(db), std::move(fetcher));
 
@@ -212,8 +202,7 @@ TEST_CASE("AppCore rating and recommendation", "[app][ranking]") {
     // a stale ranker.bin from a prior run (or another test) must not cause
     // IsRankerTrained() to spuriously return true, and our writes must not
     // pollute the next test's cwd.
-    config.set_ranker_file("/tmp/arxiv_tui_apptest_ranker_" +
-                           std::to_string(::getpid()) + ".bin");
+    config.set_ranker_file("/tmp/arxiv_tui_apptest_ranker_" + std::to_string(::getpid()) + ".bin");
     std::remove(config.get_ranker_file().c_str());
 
     auto db = std::make_unique<DatabaseManagerMock>();
@@ -298,8 +287,7 @@ TEST_CASE("AppCore sub-project hierarchy", "[app][projects]") {
     SECTION("Sub-project appears indented in filter options") {
         // parent "Physics" with child "Quantum"
         db_ptr->setProjects({"Physics", "Quantum"});
-        ALLOW_CALL(*db_ptr, GetProjectParent(std::string("Physics")))
-            .RETURN(std::string{});
+        ALLOW_CALL(*db_ptr, GetProjectParent(std::string("Physics"))).RETURN(std::string{});
         ALLOW_CALL(*db_ptr, GetProjectParent(std::string("Quantum")))
             .RETURN(std::string("Physics"));
 
@@ -319,8 +307,7 @@ TEST_CASE("AppCore sub-project hierarchy", "[app][projects]") {
 
     SECTION("GetProjectNameForFilter strips indentation") {
         db_ptr->setProjects({"Physics", "Quantum"});
-        ALLOW_CALL(*db_ptr, GetProjectParent(std::string("Physics")))
-            .RETURN(std::string{});
+        ALLOW_CALL(*db_ptr, GetProjectParent(std::string("Physics"))).RETURN(std::string{});
         ALLOW_CALL(*db_ptr, GetProjectParent(std::string("Quantum")))
             .RETURN(std::string("Physics"));
 
@@ -338,8 +325,7 @@ TEST_CASE("AppCore sub-project hierarchy", "[app][projects]") {
         db_ptr->setProjects({"Physics", "Quantum"});
 
         REQUIRE_CALL(*db_ptr, SetProjectParent(std::string("Quantum"), std::string("Physics")));
-        NAMED_ALLOW_CALL(*db_ptr, GetProjectParent(ANY(std::string)))
-            .RETURN(std::string{});
+        NAMED_ALLOW_CALL(*db_ptr, GetProjectParent(ANY(std::string))).RETURN(std::string{});
 
         Arxiv::AppCore core(config, std::move(db), std::move(fetcher));
         core.SetProjectParent("Quantum", "Physics");
@@ -360,16 +346,15 @@ TEST_CASE("AppCore project notes", "[app][projects]") {
 
     SECTION("SetProjectNote delegates to database") {
         const std::string link = sample_articles[0].link;
-        REQUIRE_CALL(*db_ptr, SetProjectNote(
-            std::string("MyProject"), link, std::string("my note")));
+        REQUIRE_CALL(*db_ptr,
+                     SetProjectNote(std::string("MyProject"), link, std::string("my note")));
 
         core.SetProjectNote("MyProject", link, "my note");
     }
 
     SECTION("GetProjectNote delegates to database") {
         const std::string link = sample_articles[0].link;
-        ALLOW_CALL(*db_ptr, GetProjectNote(
-            std::string("MyProject"), link))
+        ALLOW_CALL(*db_ptr, GetProjectNote(std::string("MyProject"), link))
             .RETURN(std::string("stored note"));
 
         REQUIRE(core.GetProjectNote("MyProject", link) == "stored note");
@@ -395,8 +380,7 @@ TEST_CASE("AppCore project export", "[app][projects]") {
         REQUIRE(ok);
         std::ifstream f(path);
         REQUIRE(f.good());
-        std::string content((std::istreambuf_iterator<char>(f)),
-                             std::istreambuf_iterator<char>());
+        std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
         REQUIRE_THAT(content, ContainsSubstring("ExportTest"));
         REQUIRE_THAT(content, ContainsSubstring(sample_articles[0].title));
     }
@@ -407,8 +391,7 @@ TEST_CASE("AppCore project export", "[app][projects]") {
         REQUIRE(ok);
         std::ifstream f(path);
         REQUIRE(f.good());
-        std::string content((std::istreambuf_iterator<char>(f)),
-                             std::istreambuf_iterator<char>());
+        std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
         REQUIRE_THAT(content, ContainsSubstring(sample_articles[0].title));
     }
 
@@ -418,8 +401,7 @@ TEST_CASE("AppCore project export", "[app][projects]") {
         REQUIRE(ok);
         std::ifstream f(path);
         REQUIRE(f.good());
-        std::string content((std::istreambuf_iterator<char>(f)),
-                             std::istreambuf_iterator<char>());
+        std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
         REQUIRE_THAT(content, ContainsSubstring("\"name\""));
         REQUIRE_THAT(content, ContainsSubstring("ExportTest"));
         REQUIRE_THAT(content, ContainsSubstring("\"articles\""));
@@ -588,20 +570,16 @@ TEST_CASE("AppCore BibTeX generation", "[app][bibtex]") {
     auto* db_ptr = db.get();
     auto* fetcher_ptr = fetcher.get();
 
-    ALLOW_CALL(*fetcher_ptr, Fetch())
-        .RETURN(sample_articles);
+    ALLOW_CALL(*fetcher_ptr, Fetch()).RETURN(sample_articles);
     ALLOW_CALL(*db_ptr, AddArticle(trompeloeil::_));
-    ALLOW_CALL(*db_ptr, GetRecent(trompeloeil::_))
-        .RETURN(sample_articles);
-    ALLOW_CALL(*db_ptr, ListBookmarked())
-        .RETURN(std::vector<Arxiv::Article>{});
-    ALLOW_CALL(*db_ptr, GetProjects())
-        .RETURN(std::vector<std::string>{});
+    ALLOW_CALL(*db_ptr, GetRecent(trompeloeil::_)).RETURN(sample_articles);
+    ALLOW_CALL(*db_ptr, ListBookmarked()).RETURN(std::vector<Arxiv::Article>{});
+    ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{});
 
     SECTION("Should use INSPIRE BibTeX when available") {
-        std::string inspire_bibtex = "@article{Doe:2403.12345,\n    author = \"Doe, John\",\n    title = \"{Sample}\"\n}";
-        ALLOW_CALL(*fetcher_ptr, FetchBibTeX(trompeloeil::_))
-            .RETURN(inspire_bibtex);
+        std::string inspire_bibtex =
+            "@article{Doe:2403.12345,\n    author = \"Doe, John\",\n    title = \"{Sample}\"\n}";
+        ALLOW_CALL(*fetcher_ptr, FetchBibTeX(trompeloeil::_)).RETURN(inspire_bibtex);
 
         Arxiv::AppCore core(config, std::move(db), std::move(fetcher));
         auto articles = core.GetCurrentArticles();
@@ -612,8 +590,7 @@ TEST_CASE("AppCore BibTeX generation", "[app][bibtex]") {
     }
 
     SECTION("Should fall back to constructed BibTeX when INSPIRE fails") {
-        ALLOW_CALL(*fetcher_ptr, FetchBibTeX(trompeloeil::_))
-            .RETURN(std::string(""));
+        ALLOW_CALL(*fetcher_ptr, FetchBibTeX(trompeloeil::_)).RETURN(std::string(""));
 
         Arxiv::AppCore core(config, std::move(db), std::move(fetcher));
         auto articles = core.GetCurrentArticles();

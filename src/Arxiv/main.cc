@@ -4,20 +4,20 @@
 
 #include "Arxiv/App.hh"
 #include "Arxiv/Config.hh"
-#include "Arxiv/Replay.hh"
 #include "Arxiv/CrashHandler.hh"
 #include "Arxiv/DatabaseManager.hh"
 #include "Arxiv/Fetcher.hh"
-
-#include "spdlog/spdlog.h"
-#include "spdlog/sinks/rotating_file_sink.h"
+#include "Arxiv/Replay.hh"
 
 #include <chrono>
 #include <cstring>
 #include <ctime>
-#include <unistd.h>
 #include <iostream>
 #include <string>
+#include <unistd.h>
+
+#include "spdlog/sinks/rotating_file_sink.h"
+#include "spdlog/spdlog.h"
 
 // Timestamp + PID so a replay file and log from the same run can be matched
 // by grepping both for the session ID.
@@ -36,8 +36,7 @@ static std::string MakeSessionId() {
 void CreateLogger(bool trace_mode) {
     constexpr std::size_t kMaxBytes = 5 * 1024 * 1024;
     constexpr std::size_t kMaxFiles = 3;
-    auto logger = spdlog::rotating_logger_mt("arxiv", "arxiv_tui.log",
-                                             kMaxBytes, kMaxFiles);
+    auto logger = spdlog::rotating_logger_mt("arxiv", "arxiv_tui.log", kMaxBytes, kMaxFiles);
     logger->set_level(trace_mode ? spdlog::level::trace : spdlog::level::debug);
     logger->flush_on(spdlog::level::warn);
     spdlog::set_default_logger(logger);
@@ -50,7 +49,7 @@ int main(int argc, char* argv[]) {
     std::string replay_file;
     std::string export_today_path;
     std::string export_yaml_path;
-    bool        trace_mode = false;
+    bool trace_mode = false;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--replay") == 0 && i + 1 < argc) {
             replay_file = argv[++i];
@@ -76,13 +75,18 @@ int main(int argc, char* argv[]) {
 
         if (!export_today_path.empty()) {
             bool ok = core->ExportDailyDigest(export_today_path);
-            std::cout << (ok ? "Digest written to " + export_today_path : "Failed to write digest") << "\n";
-            if (!ok) return 1;
+            std::cout << (ok ? "Digest written to " + export_today_path : "Failed to write digest")
+                      << "\n";
+            if (!ok)
+                return 1;
         }
         if (!export_yaml_path.empty()) {
             bool ok = core->ExportDailyDigestYAML(export_yaml_path);
-            std::cout << (ok ? "YAML digest written to " + export_yaml_path : "Failed to write YAML digest") << "\n";
-            if (!ok) return 1;
+            std::cout << (ok ? "YAML digest written to " + export_yaml_path
+                             : "Failed to write YAML digest")
+                      << "\n";
+            if (!ok)
+                return 1;
         }
         return 0;
     }

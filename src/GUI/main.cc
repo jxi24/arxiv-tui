@@ -2,31 +2,29 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
-#include "imgui.h"
-#include "imgui_impl_glfw.h"
-#include "imgui_impl_opengl3.h"
-
-#include <GLFW/glfw3.h>
-
 #include "Arxiv/AppCore.hh"
 #include "Arxiv/Config.hh"
 #include "Arxiv/DatabaseManager.hh"
 #include "Arxiv/Fetcher.hh"
 
-#include "spdlog/spdlog.h"
-#include "spdlog/sinks/basic_file_sink.h"
-
+#include <GLFW/glfw3.h>
 #include <chrono>
 #include <ctime>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_opengl3.h"
+#include "spdlog/sinks/basic_file_sink.h"
+#include "spdlog/spdlog.h"
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-static std::string format_date(const Arxiv::time_point &tp) {
+static std::string format_date(const Arxiv::time_point& tp) {
     std::time_t t = std::chrono::system_clock::to_time_t(tp);
     std::tm tm{};
     gmtime_r(&t, &tm);
@@ -35,7 +33,7 @@ static std::string format_date(const Arxiv::time_point &tp) {
     return buf;
 }
 
-static void glfw_error_callback(int error, const char *description) {
+static void glfw_error_callback(int error, const char* description) {
     spdlog::error("GLFW error {}: {}", error, description);
 }
 
@@ -44,11 +42,12 @@ static void glfw_error_callback(int error, const char *description) {
 // ---------------------------------------------------------------------------
 
 class ArxivGuiApp {
-public:
-    explicit ArxivGuiApp(Arxiv::AppCore &core) : m_core(core) {}
+  public:
+    explicit ArxivGuiApp(Arxiv::AppCore& core)
+        : m_core(core) {}
 
     void render() {
-        const ImGuiIO &io = ImGui::GetIO();
+        const ImGuiIO& io = ImGui::GetIO();
         const float W = io.DisplaySize.x;
         const float H = io.DisplaySize.y;
 
@@ -56,21 +55,21 @@ public:
         ImGui::SetNextWindowPos({0, 0});
         ImGui::SetNextWindowSize({W, H});
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {0, 0});
-        ImGui::Begin("##root", nullptr,
+        ImGui::Begin("##root",
+                     nullptr,
                      ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
-                     ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar |
-                     ImGuiWindowFlags_NoScrollWithMouse |
-                     ImGuiWindowFlags_NoBringToFrontOnFocus |
-                     ImGuiWindowFlags_MenuBar);
+                         ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar |
+                         ImGuiWindowFlags_NoScrollWithMouse |
+                         ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_MenuBar);
         ImGui::PopStyleVar();
 
         render_menu_bar();
 
         // Three-column layout: filter list | article list | detail
-        const float filter_w  = 200.0f;
-        const float detail_w  = 420.0f;
+        const float filter_w = 200.0f;
+        const float detail_w = 420.0f;
         const float article_w = W - filter_w - detail_w;
-        const float panel_h   = H - ImGui::GetFrameHeightWithSpacing() * 2.0f;
+        const float panel_h = H - ImGui::GetFrameHeightWithSpacing() * 2.0f;
 
         render_filter_panel(filter_w, panel_h);
         ImGui::SameLine();
@@ -80,20 +79,22 @@ public:
 
         ImGui::End();
 
-        if (m_show_search_dialog) render_search_dialog();
+        if (m_show_search_dialog)
+            render_search_dialog();
     }
 
-private:
-    Arxiv::AppCore &m_core;
+  private:
+    Arxiv::AppCore& m_core;
 
     // UI state
-    bool        m_show_search_dialog{false};
-    char        m_search_buf[512]{};
+    bool m_show_search_dialog{false};
+    char m_search_buf[512]{};
     std::string m_status_msg;
 
     // ---------------------------------------------------------------------------
     void render_menu_bar() {
-        if (!ImGui::BeginMenuBar()) return;
+        if (!ImGui::BeginMenuBar())
+            return;
 
         if (ImGui::BeginMenu("File")) {
             if (ImGui::MenuItem("Refresh", "F5"))
@@ -105,7 +106,7 @@ private:
         }
 
         if (ImGui::BeginMenu("View")) {
-            const auto &opts = m_core.GetFilterOptions();
+            const auto& opts = m_core.GetFilterOptions();
             for (int i = 0; i < static_cast<int>(opts.size()); ++i) {
                 bool selected = (m_core.GetFilterIndex() == i);
                 if (ImGui::MenuItem(opts[static_cast<size_t>(i)].c_str(), nullptr, selected)) {
@@ -135,11 +136,13 @@ private:
         ImGui::TextDisabled("Filters");
         ImGui::Separator();
 
-        const auto &opts = m_core.GetFilterOptions();
+        const auto& opts = m_core.GetFilterOptions();
         for (int i = 0; i < static_cast<int>(opts.size()); ++i) {
             bool selected = (m_core.GetFilterIndex() == i);
-            if (ImGui::Selectable(opts[static_cast<size_t>(i)].c_str(), selected,
-                                  ImGuiSelectableFlags_None, {width - 12.0f, 0})) {
+            if (ImGui::Selectable(opts[static_cast<size_t>(i)].c_str(),
+                                  selected,
+                                  ImGuiSelectableFlags_None,
+                                  {width - 12.0f, 0})) {
                 m_core.SetFilterIndex(i);
             }
         }
@@ -155,20 +158,19 @@ private:
 
         const auto articles = m_core.GetCurrentArticles();
 
-        ImGui::TextDisabled("%zu article(s)  —  %s",
-                            articles.size(),
-                            m_core.GetFilterOptions()[
-                                static_cast<size_t>(m_core.GetFilterIndex())].c_str());
+        ImGui::TextDisabled(
+            "%zu article(s)  —  %s",
+            articles.size(),
+            m_core.GetFilterOptions()[static_cast<size_t>(m_core.GetFilterIndex())].c_str());
         ImGui::Separator();
 
         const float row_h = ImGui::GetTextLineHeightWithSpacing() * 2.2f;
         for (int i = 0; i < static_cast<int>(articles.size()); ++i) {
-            const auto &a = articles[static_cast<size_t>(i)];
+            const auto& a = articles[static_cast<size_t>(i)];
             bool selected = (m_core.GetArticleIndex() == i);
 
             ImGui::PushID(i);
-            if (ImGui::Selectable("##row", selected,
-                                  ImGuiSelectableFlags_None, {0, row_h})) {
+            if (ImGui::Selectable("##row", selected, ImGuiSelectableFlags_None, {0, row_h})) {
                 m_core.SetArticleIndex(i);
             }
 
@@ -177,18 +179,20 @@ private:
             ImGui::SetCursorScreenPos({item_pos.x + 4, item_pos.y + 2});
 
             // Bookmark indicator
-            const char *bm = a.bookmarked ? "[*] " : "    ";
-            ImGui::TextColored(a.bookmarked ? ImVec4{1, 0.8f, 0.2f, 1} : ImVec4{0.5f, 0.5f, 0.5f, 1},
-                               "%s", bm);
+            const char* bm = a.bookmarked ? "[*] " : "    ";
+            ImGui::TextColored(
+                a.bookmarked ? ImVec4{1, 0.8f, 0.2f, 1} : ImVec4{0.5f, 0.5f, 0.5f, 1}, "%s", bm);
             ImGui::SameLine();
 
             // Title (truncated)
             std::string title = a.title;
-            if (title.size() > 80) title = title.substr(0, 77) + "...";
+            if (title.size() > 80)
+                title = title.substr(0, 77) + "...";
             ImGui::TextUnformatted(title.c_str());
 
             // Second line: authors + date
-            ImGui::SetCursorScreenPos({item_pos.x + 4 + 28, item_pos.y + ImGui::GetTextLineHeightWithSpacing() + 2});
+            ImGui::SetCursorScreenPos(
+                {item_pos.x + 4 + 28, item_pos.y + ImGui::GetTextLineHeightWithSpacing() + 2});
             ImGui::TextDisabled("%s  |  %s", a.authors.c_str(), format_date(a.date).c_str());
 
             // Context menu on right-click
@@ -235,7 +239,7 @@ private:
             return;
         }
 
-        const auto &a = articles[static_cast<size_t>(idx)];
+        const auto& a = articles[static_cast<size_t>(idx)];
 
         // Title
         ImGui::PushTextWrapPos(width - 12);
@@ -285,14 +289,14 @@ private:
         ImGui::SetNextWindowPos(center, ImGuiCond_Always, {0.5f, 0.5f});
         ImGui::SetNextWindowSize({440, 0});
 
-        if (ImGui::BeginPopupModal("Search##dlg", &m_show_search_dialog,
-                                   ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (ImGui::BeginPopupModal(
+                "Search##dlg", &m_show_search_dialog, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("Search query:");
             ImGui::SetNextItemWidth(-1);
             if (ImGui::IsWindowAppearing())
                 ImGui::SetKeyboardFocusHere();
-            bool submit = ImGui::InputText("##q", m_search_buf, sizeof(m_search_buf),
-                                           ImGuiInputTextFlags_EnterReturnsTrue);
+            bool submit = ImGui::InputText(
+                "##q", m_search_buf, sizeof(m_search_buf), ImGuiInputTextFlags_EnterReturnsTrue);
 
             ImGui::Spacing();
             if (submit || ImGui::Button("Search", {120, 0})) {
@@ -322,12 +326,13 @@ private:
 // main
 // ---------------------------------------------------------------------------
 
-int main(int /*argc*/, char ** /*argv*/) {
+int main(int /*argc*/, char** /*argv*/) {
     // Logging
     try {
         auto logger = spdlog::basic_logger_mt("arxiv_gui", "arxiv_gui.log");
         spdlog::set_default_logger(logger);
-    } catch (...) {}
+    } catch (...) {
+    }
     spdlog::set_level(spdlog::level::info);
 
     // AppCore setup
@@ -338,9 +343,8 @@ int main(int /*argc*/, char ** /*argv*/) {
         spdlog::warn("Config file not found, using defaults");
     }
 
-    auto db      = std::make_unique<Arxiv::DatabaseManager>("articles.db");
-    auto fetcher = std::make_unique<Arxiv::Fetcher>(config.get_topics(),
-                                                     config.get_download_dir());
+    auto db = std::make_unique<Arxiv::DatabaseManager>("articles.db");
+    auto fetcher = std::make_unique<Arxiv::Fetcher>(config.get_topics(), config.get_download_dir());
     Arxiv::AppCore core(config, std::move(db), std::move(fetcher));
 
     // GLFW / OpenGL
@@ -354,7 +358,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    GLFWwindow *window = glfwCreateWindow(1280, 800, "arXiv Browser", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(1280, 800, "arXiv Browser", nullptr, nullptr);
     if (!window) {
         spdlog::critical("Failed to create GLFW window");
         glfwTerminate();
@@ -366,7 +370,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     // ImGui setup
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
-    ImGuiIO &io = ImGui::GetIO();
+    ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     ImGui::StyleColorsDark();
 

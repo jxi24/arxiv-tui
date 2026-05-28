@@ -5,28 +5,28 @@
 #ifndef ARXIV_APP_CORE
 #define ARXIV_APP_CORE
 
-#include <condition_variable>
-#include <memory>
-#include <set>
-#include <string>
-#include <vector>
-#include <functional>
-#include <atomic>
-#include <mutex>
-#include <thread>
-
+#include "Arxiv/Article.hh"
 #include "Arxiv/Config.hh"
 #include "Arxiv/DatabaseManager.hh"
 #include "Arxiv/Fetcher.hh"
-#include "Arxiv/Article.hh"
 #include "Arxiv/Ranker.hh"
+
+#include <atomic>
+#include <condition_variable>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <set>
+#include <string>
+#include <thread>
+#include <vector>
 
 namespace Arxiv {
 
 class ReplayRecorder; // forward decl — included only by users that pass one
 
 class AppCore {
-public:
+  public:
     // Whether the initial network fetch runs on the constructor thread (Sync,
     // the default — chosen so existing tests with mocked fetchers see the
     // fetched data immediately) or on a background thread (Async — used by
@@ -36,31 +36,27 @@ public:
     // Constructor with dependency injection. `recorder` is optional and used
     // for diagnostic instrumentation (lifecycle / fetch-progress events) so
     // the post-mortem replay log captures *why* the UI was blocked.
-    explicit AppCore(const Config &config,
-                    std::unique_ptr<DatabaseManager> db,
-                    std::unique_ptr<Fetcher> fetcher,
-                    FetchMode fetch_mode = FetchMode::Sync,
-                    ReplayRecorder* recorder = nullptr);
+    explicit AppCore(const Config& config,
+                     std::unique_ptr<DatabaseManager> db,
+                     std::unique_ptr<Fetcher> fetcher,
+                     FetchMode fetch_mode = FetchMode::Sync,
+                     ReplayRecorder* recorder = nullptr);
     ~AppCore();
 
-    enum class SearchMode {
-        title,
-        authors,
-        abstract
-    };
+    enum class SearchMode { title, authors, abstract };
 
     enum class FilterView {
-        All             = 0,
-        Bookmarks       = 1,
-        Today           = 2,
-        Range           = 3,
-        Search          = 4,
-        Recommended     = 5,
+        All = 0,
+        Bookmarks = 1,
+        Today = 2,
+        Range = 3,
+        Search = 4,
+        Recommended = 5,
         FollowedAuthors = 6,
-        NewArticles     = 7,
-        Project         = 8,  // sentinel: any index >= 8 is a project
+        NewArticles = 7,
+        Project = 8, // sentinel: any index >= 8 is a project
     };
-    
+
     // Article management
     void FetchArticles();
     void ToggleBookmark(const std::string& article_link);
@@ -68,7 +64,7 @@ public:
     std::string GetBibtex(const Article& article);
     std::vector<Article> GetCurrentArticles() const;
     std::vector<std::string> GetCurrentTitles() const;
-    std::vector<std::string> &GetCurrentTitles();
+    std::vector<std::string>& GetCurrentTitles();
 
     // Rating and ranking
     void RateArticle(const std::string& article_link, int rating);
@@ -76,7 +72,7 @@ public:
     float GetPredictedScore(const Article& article) const;
     bool IsRankerTrained() const;
     bool IsTraining() const { return m_training.load(); }
-    int  PendingRatings() const { return m_ratings_since_train; }
+    int PendingRatings() const { return m_ratings_since_train; }
     // Called from the UI refresh loop to re-fetch articles after background
     // training completes. Must be called on the main thread.
     void TryRefetchIfNeeded();
@@ -85,7 +81,7 @@ public:
     void ForceRetrain();
     void SetRecommendThreshold(float threshold);
     float GetRecommendThreshold() const { return m_recommend_threshold; }
-    
+
     // Project management
     void AddProject(const std::string& project_name);
     void RemoveProject(const std::string& project_name);
@@ -97,18 +93,23 @@ public:
     std::vector<std::string> GetProjectsForArticle(const std::string& article_link) const;
 
     // Project notes
-    void SetProjectNote(const std::string& project_name, const std::string& article_link, const std::string& note);
-    std::string GetProjectNote(const std::string& project_name, const std::string& article_link) const;
+    void SetProjectNote(const std::string& project_name,
+                        const std::string& article_link,
+                        const std::string& note);
+    std::string GetProjectNote(const std::string& project_name,
+                               const std::string& article_link) const;
 
     // Export/import
-    bool ExportProjectMarkdown(const std::string& project_name, const std::string& output_path) const;
+    bool ExportProjectMarkdown(const std::string& project_name,
+                               const std::string& output_path) const;
     bool ExportProjectText(const std::string& project_name, const std::string& output_path) const;
     bool ExportProjectJSON(const std::string& project_name, const std::string& output_path) const;
     bool ImportProjectJSON(const std::string& input_path);
 
     // BibTeX export
     bool ExportArticleBibTeX(const Article& article, const std::string& output_path) const;
-    bool ExportArticlesBibTeX(const std::vector<Article>& articles, const std::string& output_path) const;
+    bool ExportArticlesBibTeX(const std::vector<Article>& articles,
+                              const std::string& output_path) const;
     bool ExportProjectBibTeX(const std::string& project_name, const std::string& output_path) const;
 
     // Daily-digest export
@@ -119,24 +120,25 @@ public:
     // has a similarity score >= threshold (0-100) against the query.
     std::vector<Article> FuzzySearchArticles(const std::string& query, int threshold = 80) const;
 
-    // Returns the actual project name for a filter index >= 6 (accounting for indented sub-projects)
+    // Returns the actual project name for a filter index >= 6 (accounting for indented
+    // sub-projects)
     std::string GetProjectNameForFilter(int index) const;
-    
+
     // Filter management
     std::vector<std::string> GetFilterOptions() const;
-    std::vector<std::string> &GetFilterOptions();
+    std::vector<std::string>& GetFilterOptions();
     void SetFilterIndex(int index);
     void SetFilterIndex(FilterView view);
     int GetFilterIndex() const;
-    int &GetFilterIndex();
+    int& GetFilterIndex();
     FilterView GetFilterView() const;
-    
+
     // State management
     void SetArticleIndex(int index);
     int GetArticleIndex() const;
-    int &GetArticleIndex();
+    int& GetArticleIndex();
     bool IsArticleBookmarked(const std::string& article_link) const;
-    
+
     // Callbacks for UI updates
     using ArticleUpdateCallback = std::function<void()>;
     void SetArticleUpdateCallback(ArticleUpdateCallback callback);
@@ -151,8 +153,10 @@ public:
     }
 
     // Search methods
-    void SetSearchQuery(const std::string& query, bool search_title = true,
-                       bool search_authors = true, bool search_abstract = true);
+    void SetSearchQuery(const std::string& query,
+                        bool search_title = true,
+                        bool search_authors = true,
+                        bool search_abstract = true);
     void ClearSearch();
     bool HasSearchQuery() const { return m_search.active; }
     std::string GetSearchQuery() const { return m_search.query; }
@@ -167,7 +171,7 @@ public:
     void StartAutoRefresh();
     void StopAutoRefresh();
     bool IsAutoRefreshing() const;
-    int  GetAutoRefreshMinutes() const;
+    int GetAutoRefreshMinutes() const;
 
     // Initial network fetch state (see FetchMode at top of class).
     // While an Async fetch is in flight, IsFetching() is true so the UI can
@@ -193,9 +197,7 @@ public:
     // only — they don't persist across restarts (use bookmarks for that).
     void ToggleSelection(const std::string& link);
     void ClearSelections();
-    bool IsSelected(const std::string& link) const {
-        return m_selected_links.count(link) > 0;
-    }
+    bool IsSelected(const std::string& link) const { return m_selected_links.count(link) > 0; }
     std::size_t GetSelectionCount() const { return m_selected_links.size(); }
 
     // Write a markdown digest covering every selected article to
@@ -220,7 +222,7 @@ public:
     bool SaveKeywords(const std::vector<std::string>& keywords);
     std::vector<std::string> GetKeywords() const;
 
-private:
+  private:
     Config m_config;
     std::vector<std::string> m_topics;
     std::unique_ptr<DatabaseManager> m_db;
@@ -230,8 +232,8 @@ private:
     std::thread m_train_thread;
     std::atomic<bool> m_training{false};
     std::atomic<bool> m_needs_refetch{false};
-    int  m_ratings_since_train{0};
-    int  m_retrain_interval{5};
+    int m_ratings_since_train{0};
+    int m_retrain_interval{5};
     float m_recommend_threshold{3.5f};
     std::string m_ranker_path{"ranker.bin"};
 
@@ -239,66 +241,79 @@ private:
     // warm_start=true: keep existing vocab and weights as starting point.
     // warm_start=false: refit vocabulary and reset weights (full retrain).
     void SpawnTrainingThread(bool warm_start);
-    
+
     std::vector<Article> m_current_articles;
     std::vector<std::string> m_current_titles;
     std::vector<std::string> m_filter_options;
-    // Actual project names parallel to filter_options[6+] (display may be indented for sub-projects)
+    // Actual project names parallel to filter_options[6+] (display may be indented for
+    // sub-projects)
     std::vector<std::string> m_filter_project_names;
-    
+
     int m_filter_index{static_cast<int>(FilterView::NewArticles)};
     int m_article_index{0};
-    
+
     ArticleUpdateCallback m_article_update_callback;
     ArticleUpdateCallback m_project_update_callback;
-    
+
     // Active filter state. Bundling each (active, data...) tuple as a struct
     // makes it impossible to set the data without also flipping `active`,
     // and it pairs the related fields visually for readers of FetchArticles.
     struct DateRangeFilter {
-        bool        active = false;
+        bool active = false;
         std::string start;
         std::string end;
 
         void set(const std::string& s, const std::string& e) {
-            start = s; end = e; active = true;
+            start = s;
+            end = e;
+            active = true;
         }
-        void clear() { active = false; start.clear(); end.clear(); }
+        void clear() {
+            active = false;
+            start.clear();
+            end.clear();
+        }
     };
     struct SearchFilter {
-        bool        active = false;
+        bool active = false;
         std::string query;
-        SearchMode  mode   = SearchMode::title;
+        SearchMode mode = SearchMode::title;
 
         void set(const std::string& q, SearchMode m) {
-            query = q; mode = m; active = true;
+            query = q;
+            mode = m;
+            active = true;
         }
-        void clear() { active = false; query.clear(); mode = SearchMode::title; }
+        void clear() {
+            active = false;
+            query.clear();
+            mode = SearchMode::title;
+        }
     };
 
     DateRangeFilter m_date_range;
-    SearchFilter    m_search;
+    SearchFilter m_search;
 
     // Background auto-refresh
-    std::thread              m_refresh_thread;
-    std::atomic<bool>        m_refresh_running{false};
-    std::condition_variable  m_refresh_cv;
-    std::mutex               m_refresh_mutex;
-    int                      m_auto_refresh_minutes{0};
+    std::thread m_refresh_thread;
+    std::atomic<bool> m_refresh_running{false};
+    std::condition_variable m_refresh_cv;
+    std::mutex m_refresh_mutex;
+    int m_auto_refresh_minutes{0};
 
     // Initial network fetch state.
-    std::thread              m_initial_fetch_thread;
-    std::atomic<bool>        m_fetching{false};
-    ReplayRecorder*          m_recorder = nullptr;
+    std::thread m_initial_fetch_thread;
+    std::atomic<bool> m_fetching{false};
+    ReplayRecorder* m_recorder = nullptr;
 
     // Active arxiv categories — empty = no filter. Initialised in the
     // constructor to the full set of configured topics so the user starts
     // seeing everything.
-    std::set<std::string>    m_active_categories;
+    std::set<std::string> m_active_categories;
 
     // Article links the user has tagged for the next digest export.
     // Session-scoped only.
-    std::set<std::string>    m_selected_links;
+    std::set<std::string> m_selected_links;
 
     // Keyword cold-start
     std::vector<std::string> m_keywords;
@@ -315,4 +330,4 @@ private:
 
 } // namespace Arxiv
 
-#endif 
+#endif

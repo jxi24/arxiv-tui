@@ -11,11 +11,11 @@ using namespace Arxiv;
 void ArxivApp::SetupSettingsDialog() {
     // Sections: 0=General 1=Topics 2=Ranker 3=Export 4=Keys
     settings_dialog = Renderer([&] {
-        if (dialog_depth != Dialog::Settings) return emptyElement();
+        if (dialog_depth != Dialog::Settings)
+            return emptyElement();
 
         static constexpr std::string_view kSectionNames[] = {
-            "General", "Topics", "Ranker", "Export", "Keys"
-        };
+            "General", "Topics", "Ranker", "Export", "Keys"};
         static constexpr int kNumSections = 5;
 
         Elements rows;
@@ -29,7 +29,8 @@ void ArxivApp::SetupSettingsDialog() {
             for (int i = 0; i < kNumSections; ++i) {
                 std::string label = "[" + std::string(kSectionNames[i]) + "]";
                 if (i == settings_section)
-                    tabs.push_back(text(label) | bold | color(TextColors::base()) | bgcolor(TextColors::primary()));
+                    tabs.push_back(text(label) | bold | color(TextColors::base()) |
+                                   bgcolor(TextColors::primary()));
                 else
                     tabs.push_back(text(label) | color(TextColors::subtext()));
                 tabs.push_back(text(" "));
@@ -40,12 +41,11 @@ void ArxivApp::SetupSettingsDialog() {
 
         auto field_row = [&](int idx, std::string_view label, const std::string& value) {
             bool sel = (idx == settings_field_index);
-            std::string val = (sel && settings_editing)
-                              ? (settings_edit_buffer + "_")
-                              : value;
+            std::string val = (sel && settings_editing) ? (settings_edit_buffer + "_") : value;
             auto row = hbox({
                 text(sel ? "  > " : "    ") | color(TextColors::primary()),
-                text(std::string(label)) | color(sel ? TextColors::primary() : TextColors::subtext()),
+                text(std::string(label)) |
+                    color(sel ? TextColors::primary() : TextColors::subtext()),
                 text(" : ") | color(TextColors::border()),
                 text(val) | color(TextColors::text()),
             });
@@ -55,12 +55,11 @@ void ArxivApp::SetupSettingsDialog() {
         };
 
         if (settings_section == 0) {
-            rows.push_back(field_row(0, "Download dir  ",
-                                     m_config.get_download_dir()));
-            rows.push_back(field_row(1, "Auto-refresh  ",
-                                     std::to_string(m_config.get_auto_refresh_minutes()) + " min"));
-            rows.push_back(field_row(2, "Scroll margin ",
-                                     std::to_string(m_config.get_scroll_margin()) + " lines"));
+            rows.push_back(field_row(0, "Download dir  ", m_config.get_download_dir()));
+            rows.push_back(field_row(
+                1, "Auto-refresh  ", std::to_string(m_config.get_auto_refresh_minutes()) + " min"));
+            rows.push_back(field_row(
+                2, "Scroll margin ", std::to_string(m_config.get_scroll_margin()) + " lines"));
 
         } else if (settings_section == 1) {
             const auto& topics = m_config.get_topics();
@@ -73,43 +72,50 @@ void ArxivApp::SetupSettingsDialog() {
                         text(sel ? "  > " : "    ") | color(TextColors::primary()),
                         text(topics[static_cast<size_t>(i)]) | color(TextColors::text()),
                     });
-                    if (sel) rows.push_back(row | bgcolor(TextColors::surface()));
-                    else     rows.push_back(row);
+                    if (sel)
+                        rows.push_back(row | bgcolor(TextColors::surface()));
+                    else
+                        rows.push_back(row);
                 }
             }
             rows.push_back(separator() | color(TextColors::border()));
             rows.push_back(hbox({
                 text("  ") | color(TextColors::subtext()),
-                text("New: " + (settings_editing ? settings_edit_buffer + "_" : ""))
-                    | color(TextColors::text()),
+                text("New: " + (settings_editing ? settings_edit_buffer + "_" : "")) |
+                    color(TextColors::text()),
             }));
 
         } else if (settings_section == 2) {
-            rows.push_back(field_row(0, "Recommend threshold",
-                                     std::to_string(m_config.get_recommend_threshold())));
-            rows.push_back(field_row(1, "Retrain interval   ",
+            rows.push_back(field_row(
+                0, "Recommend threshold", std::to_string(m_config.get_recommend_threshold())));
+            rows.push_back(field_row(1,
+                                     "Retrain interval   ",
                                      std::to_string(m_config.get_retrain_interval()) + " ratings"));
 
         } else if (settings_section == 3) {
-            rows.push_back(field_row(0, "Obsidian vault",
+            rows.push_back(field_row(0,
+                                     "Obsidian vault",
                                      m_config.get_obsidian_vault().empty()
-                                         ? "(not set)" : m_config.get_obsidian_vault()));
+                                         ? "(not set)"
+                                         : m_config.get_obsidian_vault()));
 
         } else if (settings_section == 4) {
             auto bindings = key_bindings.get_all_bindings();
             for (int i = 0; i < static_cast<int>(bindings.size()); ++i) {
                 bool sel = (i == settings_field_index);
                 std::string key_val = (sel && settings_editing)
-                                      ? (settings_edit_buffer + "_")
-                                      : bindings[static_cast<size_t>(i)].second;
+                                          ? (settings_edit_buffer + "_")
+                                          : bindings[static_cast<size_t>(i)].second;
                 auto row = hbox({
                     text(sel ? "  > " : "    ") | color(TextColors::primary()),
-                    text(bindings[static_cast<size_t>(i)].first) | size(WIDTH, EQUAL, 24)
-                        | color(TextColors::subtext()),
+                    text(bindings[static_cast<size_t>(i)].first) | size(WIDTH, EQUAL, 24) |
+                        color(TextColors::subtext()),
                     text(key_val) | color(TextColors::text()),
                 });
-                if (sel) rows.push_back(row | bgcolor(TextColors::surface()));
-                else     rows.push_back(row);
+                if (sel)
+                    rows.push_back(row | bgcolor(TextColors::surface()));
+                else
+                    rows.push_back(row);
             }
         }
 
@@ -127,11 +133,8 @@ void ArxivApp::SetupSettingsDialog() {
             text(": save & close") | color(TextColors::subtext()),
         }));
 
-        return vbox(std::move(rows))
-            | borderStyled(ROUNDED, TextColors::border())
-            | bgcolor(TextColors::surface())
-            | clear_under
-            | center;
+        return vbox(std::move(rows)) | borderStyled(ROUNDED, TextColors::border()) |
+               bgcolor(TextColors::surface()) | clear_under | center;
     });
 }
 
@@ -139,11 +142,16 @@ bool ArxivApp::HandleSettingsEvent(ftxui::Event event) {
     static constexpr int kNumSections = 5;
 
     auto section_fields = [&]() -> int {
-        if (settings_section == 0) return 3;
-        if (settings_section == 1) return static_cast<int>(m_config.get_topics().size());
-        if (settings_section == 2) return 2;
-        if (settings_section == 3) return 1;
-        if (settings_section == 4) return static_cast<int>(key_bindings.get_all_bindings().size());
+        if (settings_section == 0)
+            return 3;
+        if (settings_section == 1)
+            return static_cast<int>(m_config.get_topics().size());
+        if (settings_section == 2)
+            return 2;
+        if (settings_section == 3)
+            return 1;
+        if (settings_section == 4)
+            return static_cast<int>(key_bindings.get_all_bindings().size());
         return 0;
     };
 
@@ -152,19 +160,27 @@ bool ArxivApp::HandleSettingsEvent(ftxui::Event event) {
             if (settings_field_index == 0)
                 m_config.set_download_dir(settings_edit_buffer);
             else if (settings_field_index == 1) {
-                try { m_config.set_auto_refresh_minutes(std::stoi(settings_edit_buffer)); }
-                catch (...) {}
+                try {
+                    m_config.set_auto_refresh_minutes(std::stoi(settings_edit_buffer));
+                } catch (...) {
+                }
             } else if (settings_field_index == 2) {
-                try { m_config.set_scroll_margin(std::stoi(settings_edit_buffer)); }
-                catch (...) {}
+                try {
+                    m_config.set_scroll_margin(std::stoi(settings_edit_buffer));
+                } catch (...) {
+                }
             }
         } else if (settings_section == 2) {
             if (settings_field_index == 0) {
-                try { m_config.set_recommend_threshold(std::stof(settings_edit_buffer)); }
-                catch (...) {}
+                try {
+                    m_config.set_recommend_threshold(std::stof(settings_edit_buffer));
+                } catch (...) {
+                }
             } else if (settings_field_index == 1) {
-                try { m_config.set_retrain_interval(std::stoi(settings_edit_buffer)); }
-                catch (...) {}
+                try {
+                    m_config.set_retrain_interval(std::stoi(settings_edit_buffer));
+                } catch (...) {
+                }
             }
         } else if (settings_section == 3) {
             if (settings_field_index == 0)
@@ -183,9 +199,8 @@ bool ArxivApp::HandleSettingsEvent(ftxui::Event event) {
                     }
                 }
                 if (!found) {
-                    mappings.push_back({
-                        bindings[static_cast<size_t>(settings_field_index)].first,
-                        settings_edit_buffer});
+                    mappings.push_back({bindings[static_cast<size_t>(settings_field_index)].first,
+                                        settings_edit_buffer});
                 }
                 m_config.set_key_mappings(mappings);
             }
@@ -212,7 +227,7 @@ bool ArxivApp::HandleSettingsEvent(ftxui::Event event) {
             settings_editing = false;
             settings_edit_buffer.clear();
         }
-        settings_section     = (settings_section + 1) % kNumSections;
+        settings_section = (settings_section + 1) % kNumSections;
         settings_field_index = 0;
         return true;
     }
@@ -268,8 +283,8 @@ bool ArxivApp::HandleSettingsEvent(ftxui::Event event) {
                     settings_edit_buffer = std::to_string(m_config.get_scroll_margin());
             } else if (settings_section == 2) {
                 settings_edit_buffer = (settings_field_index == 0)
-                    ? std::to_string(m_config.get_recommend_threshold())
-                    : std::to_string(m_config.get_retrain_interval());
+                                           ? std::to_string(m_config.get_recommend_threshold())
+                                           : std::to_string(m_config.get_retrain_interval());
             } else if (settings_section == 3) {
                 settings_edit_buffer = m_config.get_obsidian_vault();
             } else if (settings_section == 4) {
@@ -284,7 +299,8 @@ bool ArxivApp::HandleSettingsEvent(ftxui::Event event) {
     }
 
     if (event == Event::Backspace && settings_editing) {
-        if (!settings_edit_buffer.empty()) settings_edit_buffer.pop_back();
+        if (!settings_edit_buffer.empty())
+            settings_edit_buffer.pop_back();
         return true;
     }
 

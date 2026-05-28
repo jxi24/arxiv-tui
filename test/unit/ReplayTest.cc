@@ -2,39 +2,37 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
+#include "Arxiv/Replay.hh"
+
+#include "Arxiv/AppCore.hh"
+#include "Arxiv/Config.hh"
+#include "Arxiv/CrashHandler.hh"
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
-
 #include <csignal>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
 
-#include "Arxiv/Replay.hh"
-#include "Arxiv/CrashHandler.hh"
-#include "Arxiv/AppCore.hh"
-#include "Arxiv/Config.hh"
-
 #include "mocks/DatabaseManagerMock.hh"
 #include "mocks/FetcherMock.hh"
 
 using namespace Catch::Matchers;
 using DatabaseManagerMock = arxiv_tui::test::DatabaseManagerMock;
-using FetcherMock         = arxiv_tui::test::FetcherMock;
+using FetcherMock = arxiv_tui::test::FetcherMock;
 namespace fs = std::filesystem;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-static std::unique_ptr<Arxiv::AppCore> make_core(
-    DatabaseManagerMock*& db_out,
-    FetcherMock*&         fetcher_out)
-{
-    auto db_ptr  = std::make_unique<DatabaseManagerMock>();
+static std::unique_ptr<Arxiv::AppCore> make_core(DatabaseManagerMock*& db_out,
+                                                 FetcherMock*& fetcher_out) {
+    auto db_ptr = std::make_unique<DatabaseManagerMock>();
     auto fet_ptr = std::make_unique<FetcherMock>();
-    db_out      = db_ptr.get();
+    db_out = db_ptr.get();
     fetcher_out = fet_ptr.get();
     Arxiv::Config cfg;
     cfg.set_topics({"cs.AI"});
@@ -128,7 +126,9 @@ TEST_CASE("ReplayRecorder: in-memory recording produces valid JSONL", "[replay][
         // Count newlines: 3 lines means 3 newline characters
         std::string jsonl = recorder.GetJSONL();
         int newlines = 0;
-        for (char c : jsonl) if (c == '\n') ++newlines;
+        for (char c : jsonl)
+            if (c == '\n')
+                ++newlines;
         REQUIRE(newlines == 3);
     }
 
@@ -136,7 +136,8 @@ TEST_CASE("ReplayRecorder: in-memory recording produces valid JSONL", "[replay][
         recorder.RecordSetFilterIndex(0);
         std::string jsonl = recorder.GetJSONL();
         // Remove trailing newline for easier parsing
-        if (!jsonl.empty() && jsonl.back() == '\n') jsonl.pop_back();
+        if (!jsonl.empty() && jsonl.back() == '\n')
+            jsonl.pop_back();
         REQUIRE_THAT(jsonl, ContainsSubstring("\"ts\""));
     }
 }
@@ -156,9 +157,7 @@ TEST_CASE("ReplayRecorder: file mode writes JSONL to disk", "[replay][recorder][
         recorder.RecordSetArticleIndex(5);
     } // destructor should flush/close
 
-    SECTION("file exists after recording") {
-        REQUIRE(fs::exists(tmp));
-    }
+    SECTION("file exists after recording") { REQUIRE(fs::exists(tmp)); }
 
     SECTION("file contains expected JSONL") {
         std::ifstream f(tmp);
@@ -179,32 +178,35 @@ TEST_CASE("ReplayRecorder: file mode writes JSONL to disk", "[replay][recorder][
 // ---------------------------------------------------------------------------
 
 TEST_CASE("ReplayPlayer::FromString dispatches actions to AppCore", "[replay][player]") {
-    DatabaseManagerMock* db_ptr     = nullptr;
-    FetcherMock*         fetcher_ptr = nullptr;
+    DatabaseManagerMock* db_ptr = nullptr;
+    FetcherMock* fetcher_ptr = nullptr;
     auto core = make_core(db_ptr, fetcher_ptr);
 
     SECTION("set_filter_index action updates filter") {
-        std::string jsonl = R"({"ts":1000,"action":"set_filter_index","index":1})" "\n";
+        std::string jsonl = R"({"ts":1000,"action":"set_filter_index","index":1})"
+                            "\n";
         auto result = Arxiv::ReplayPlayer::FromString(jsonl, *core);
-        REQUIRE(result.total    == 1);
+        REQUIRE(result.total == 1);
         REQUIRE(result.replayed == 1);
-        REQUIRE(result.skipped  == 0);
+        REQUIRE(result.skipped == 0);
         REQUIRE(result.error.empty());
         REQUIRE(core->GetFilterIndex() == 1);
     }
 
     SECTION("set_article_index action updates article index") {
-        std::string jsonl = R"({"ts":1000,"action":"set_article_index","index":2})" "\n";
+        std::string jsonl = R"({"ts":1000,"action":"set_article_index","index":2})"
+                            "\n";
         auto result = Arxiv::ReplayPlayer::FromString(jsonl, *core);
         REQUIRE(result.replayed == 1);
         REQUIRE(core->GetArticleIndex() == 2);
     }
 
     SECTION("unknown action is skipped without error") {
-        std::string jsonl = R"({"ts":1000,"action":"do_something_unknown"})" "\n";
+        std::string jsonl = R"({"ts":1000,"action":"do_something_unknown"})"
+                            "\n";
         auto result = Arxiv::ReplayPlayer::FromString(jsonl, *core);
-        REQUIRE(result.total    == 1);
-        REQUIRE(result.skipped  == 1);
+        REQUIRE(result.total == 1);
+        REQUIRE(result.skipped == 1);
         REQUIRE(result.replayed == 0);
         REQUIRE(result.error.empty());
     }
@@ -216,34 +218,35 @@ TEST_CASE("ReplayPlayer::FromString dispatches actions to AppCore", "[replay][pl
     }
 
     SECTION("multiple actions are all replayed") {
-        std::string jsonl =
-            R"({"ts":1000,"action":"set_filter_index","index":1})" "\n"
-            R"({"ts":2000,"action":"set_article_index","index":3})" "\n";
+        std::string jsonl = R"({"ts":1000,"action":"set_filter_index","index":1})"
+                            "\n"
+                            R"({"ts":2000,"action":"set_article_index","index":3})"
+                            "\n";
         auto result = Arxiv::ReplayPlayer::FromString(jsonl, *core);
-        REQUIRE(result.total    == 2);
+        REQUIRE(result.total == 2);
         REQUIRE(result.replayed == 2);
-        REQUIRE(result.skipped  == 0);
+        REQUIRE(result.skipped == 0);
     }
 
     SECTION("toggle_bookmark action is dispatched") {
         ALLOW_CALL(*db_ptr, ToggleBookmark(ANY(std::string), ANY(bool)));
-        std::string jsonl =
-            R"({"ts":1000,"action":"toggle_bookmark","article_link":"http://x"})" "\n";
+        std::string jsonl = R"({"ts":1000,"action":"toggle_bookmark","article_link":"http://x"})"
+                            "\n";
         auto result = Arxiv::ReplayPlayer::FromString(jsonl, *core);
         REQUIRE(result.replayed == 1);
     }
 
     SECTION("add_project action is dispatched") {
         ALLOW_CALL(*db_ptr, AddProject(ANY(std::string)));
-        std::string jsonl =
-            R"({"ts":1000,"action":"add_project","name":"TestProj"})" "\n";
+        std::string jsonl = R"({"ts":1000,"action":"add_project","name":"TestProj"})"
+                            "\n";
         auto result = Arxiv::ReplayPlayer::FromString(jsonl, *core);
         REQUIRE(result.replayed == 1);
     }
 
     SECTION("empty JSONL produces zero results") {
         auto result = Arxiv::ReplayPlayer::FromString("", *core);
-        REQUIRE(result.total    == 0);
+        REQUIRE(result.total == 0);
         REQUIRE(result.replayed == 0);
         REQUIRE(result.error.empty());
     }
@@ -254,8 +257,8 @@ TEST_CASE("ReplayPlayer::FromString dispatches actions to AppCore", "[replay][pl
 // ---------------------------------------------------------------------------
 
 TEST_CASE("ReplayPlayer::FromFile returns error for nonexistent path", "[replay][player][file]") {
-    DatabaseManagerMock* db_ptr     = nullptr;
-    FetcherMock*         fetcher_ptr = nullptr;
+    DatabaseManagerMock* db_ptr = nullptr;
+    FetcherMock* fetcher_ptr = nullptr;
     auto core = make_core(db_ptr, fetcher_ptr);
 
     auto result = Arxiv::ReplayPlayer::FromFile("/nonexistent/path/replay.jsonl", *core);
@@ -263,8 +266,8 @@ TEST_CASE("ReplayPlayer::FromFile returns error for nonexistent path", "[replay]
 }
 
 TEST_CASE("ReplayPlayer::FromFile replays a valid file", "[replay][player][file]") {
-    DatabaseManagerMock* db_ptr     = nullptr;
-    FetcherMock*         fetcher_ptr = nullptr;
+    DatabaseManagerMock* db_ptr = nullptr;
+    FetcherMock* fetcher_ptr = nullptr;
     auto core = make_core(db_ptr, fetcher_ptr);
 
     fs::path tmp = fs::temp_directory_path() / "replay_test_player.jsonl";
@@ -275,7 +278,7 @@ TEST_CASE("ReplayPlayer::FromFile replays a valid file", "[replay][player][file]
     }
 
     auto result = Arxiv::ReplayPlayer::FromFile(tmp.string(), *core);
-    REQUIRE(result.total    == 2);
+    REQUIRE(result.total == 2);
     REQUIRE(result.replayed == 2);
     REQUIRE(result.error.empty());
 

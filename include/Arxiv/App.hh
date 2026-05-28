@@ -5,23 +5,24 @@
 #ifndef ARXIV_APP
 #define ARXIV_APP
 
-#include <memory>
-#include <string>
-#include <vector>
-#include <ftxui/dom/elements.hpp>
-#include <ftxui/component/component.hpp>
-#include <ftxui/component/event.hpp>
-#include <ftxui/component/screen_interactive.hpp>
-#include <map>
-#include <set>
-#include <chrono>
-
 #include "Arxiv/AppCore.hh"
 #include "Arxiv/KeyBindings.hh"
 #include "Arxiv/Replay.hh"
 
-using ftxui::Component;
+#include <ftxui/component/component.hpp>
+#include <ftxui/component/event.hpp>
+#include <ftxui/component/screen_interactive.hpp>
+#include <ftxui/dom/elements.hpp>
+
+#include <chrono>
+#include <map>
+#include <memory>
+#include <set>
+#include <string>
+#include <vector>
+
 using ftxui::Color;
+using ftxui::Component;
 
 namespace Arxiv {
 
@@ -29,32 +30,33 @@ namespace Arxiv {
 /// integer "dialog_depth" with a typed enumeration so the compiler catches
 /// stale literals and so the meaning of each branch is self-documenting.
 enum class Dialog {
-    None          = 0,
-    NewProject    = 1,
+    None = 0,
+    NewProject = 1,
     AssignProject = 2,
-    Error         = 3,
-    DateRange     = 4,
-    Search        = 5,
-    Rating        = 6,
-    Notes         = 7,
-    Export        = 8,
-    Import        = 9,
+    Error = 3,
+    DateRange = 4,
+    Search = 5,
+    Rating = 6,
+    Notes = 7,
+    Export = 8,
+    Import = 9,
     KeywordEditor = 10,
     CategoryFilter = 11,
-    Success   = 12,
-    Settings  = 13,
+    Success = 12,
+    Settings = 13,
     CitationBibtex = 14,
 };
 
 class ArxivApp {
-public:
-    explicit ArxivApp(const Config &config,
-                      const std::string &config_path = "",
+  public:
+    explicit ArxivApp(const Config& config,
+                      const std::string& config_path = "",
                       ReplayRecorder* recorder = nullptr);
     void Run() { screen.Loop(event_handler); }
     ~ArxivApp() {
         refresh_ui_continue = false;
-        if (refresh_ui.joinable()) refresh_ui.join();
+        if (refresh_ui.joinable())
+            refresh_ui.join();
     }
 
 #ifdef TESTING
@@ -68,7 +70,7 @@ public:
     Component GetEventHandler() const { return event_handler; }
 #endif
 
-private:
+  private:
     // Core application logic
     AppCore core;
     KeyBindings key_bindings;
@@ -97,13 +99,10 @@ private:
     static constexpr int arrow_size = 2;
     static constexpr int padding = 4;
     static constexpr int border_size = 3;
-    static constexpr float scroll_speed = 4.0f;  // Scroll speed in characters per second
+    static constexpr float scroll_speed = 4.0f; // Scroll speed in characters per second
 
     // Date range dialog
-    enum class DateInputMode {
-        Start,
-        End
-    };
+    enum class DateInputMode { Start, End };
     DateInputMode date_input_mode = DateInputMode::Start;
     std::string start_date;
     std::string end_date;
@@ -111,22 +110,22 @@ private:
 
     // Search dialog
     std::string search_query;
-    AppCore::SearchMode search_field = AppCore::SearchMode::title;  // Default to searching in title
-    int selected_search_option = 0;  // 0: query, 1: title, 2: authors, 3: abstract
+    AppCore::SearchMode search_field = AppCore::SearchMode::title; // Default to searching in title
+    int selected_search_option = 0; // 0: query, 1: title, 2: authors, 3: abstract
     Component search_dialog;
 
     // Rating dialog
-    int pending_rating = 0;  // 1-5 chosen by user
+    int pending_rating = 0; // 1-5 chosen by user
     Component rating_dialog;
 
     // Notes dialog
     std::string note_edit_text;
-    std::string note_project_name;   // project context when editing
-    std::string note_article_link;   // article being annotated
+    std::string note_project_name; // project context when editing
+    std::string note_article_link; // article being annotated
     Component note_dialog;
 
     // Export dialog
-    int export_format_index = 0;     // 0=Markdown 1=Text 2=JSON
+    int export_format_index = 0; // 0=Markdown 1=Text 2=JSON
     std::string export_project_name;
     Component export_dialog;
 
@@ -152,8 +151,8 @@ private:
     Component settings_dialog;
 
     // Article pane scrolling
-    int visible_rows = 0;  // Number of rows visible in the article pane
-    int top_article_index = 0;  // Index of the article at the top of the visible area
+    int visible_rows = 0;      // Number of rows visible in the article pane
+    int top_article_index = 0; // Index of the article at the top of the visible area
 
     // Components
     Component filter_menu;
@@ -165,7 +164,7 @@ private:
     Component main_renderer;
     Component event_handler;
     Component help_dialog;
-    
+
     // Project dialog components
     Component project_checkbox_container;
     Component project_dialog;
