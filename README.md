@@ -52,18 +52,66 @@ A keyboard-driven terminal user interface for browsing, managing, and downloadin
 
 ---
 
-## Building
+## Installation
+
+The recommended way to install arxiv-tui for personal use is a user-space
+install under `~/.local`, which requires no root access and places the binary
+on the standard `$PATH` on most Linux distributions.
 
 ```bash
-# Clone the repository
 git clone https://github.com/jxi24/arxiv-tui.git
 cd arxiv-tui
+cmake -B build -DCMAKE_INSTALL_PREFIX=~/.local
+cmake --build build -j$(nproc)
+cmake --install build
+```
 
-# Configure and build
+After installation the binary is at `~/.local/bin/arxiv-tui`. If `~/.local/bin`
+is already on your `PATH` (it is by default on most distributions) you can run
+`arxiv-tui` from any directory.
+
+### System-wide install
+
+To install for all users, omit the prefix (defaults to `/usr/local`) and run
+the install step as root:
+
+```bash
 cmake -B build
-cmake --build build
+cmake --build build -j$(nproc)
+sudo cmake --install build
+```
 
-# Run
+### File layout after install
+
+Regardless of prefix, runtime files are placed in standard per-user locations.
+`XDG_DATA_HOME` and `XDG_STATE_HOME` override the data and state paths at
+runtime; `XDG_CONFIG_HOME` overrides the config path.
+
+| Path | Contents |
+|------|----------|
+| `~/.config/arxiv-tui/config.yml` | Configuration (created on first run) |
+| `~/.local/share/arxiv-tui/articles.db` | Article database and ratings |
+| `~/.local/share/arxiv-tui/ranker.bin` | Trained ranking model |
+| `~/.local/share/arxiv-tui/downloads/` | Default PDF download directory |
+| `~/.local/state/arxiv-tui/arxiv_tui.log` | Rotating application log |
+| `~/.local/state/arxiv-tui/replay.jsonl` | UI action replay log |
+| `~/.local/state/arxiv-tui/crash_*.txt` | Crash reports with backtrace |
+
+The `~/.local/share` and `~/.local/state` paths above assume a `~/.local`
+prefix. A system-wide install uses `/usr/local/share` and `/usr/local/var`
+instead, but the per-user config and data files always live under `$HOME`.
+
+---
+
+## Building from source (without installing)
+
+```bash
+git clone https://github.com/jxi24/arxiv-tui.git
+cd arxiv-tui
+cmake -B build
+cmake --build build -j$(nproc)
+
+# Run directly from the build tree
 ./build/src/Arxiv/arxiv-tui
 ```
 
@@ -71,7 +119,7 @@ cmake --build build
 
 ```bash
 cmake -B build -DARXIV_TUI_ENABLE_TESTING=ON
-cmake --build build
+cmake --build build -j$(nproc)
 ctest --test-dir build --output-on-failure
 ```
 
@@ -79,7 +127,7 @@ ctest --test-dir build --output-on-failure
 
 ```bash
 cmake -B build -DARXIV_TUI_ENABLE_TESTING=ON -DARXIV_TUI_COVERAGE=ON
-cmake --build build
+cmake --build build -j$(nproc)
 ```
 
 ### Build the ImGui/GLFW GUI companion
@@ -89,13 +137,13 @@ Pass `-DARXIV_TUI_BUILD_GUI=ON` to enable it; Wayland support is auto-detected.
 
 ```bash
 cmake -B build -DARXIV_TUI_BUILD_GUI=ON
-cmake --build build
+cmake --build build -j$(nproc)
 ```
 
 ### Replay a crash report
 
 ```bash
-./build/src/Arxiv/arxiv-tui --replay crash_report.jsonl
+arxiv-tui --replay ~/.local/state/arxiv-tui/crash_20260101_120000_SIGSEGV.txt
 ```
 
 ---
@@ -175,14 +223,20 @@ All bindings except `R` (force retrain) are remappable in `.arxiv-tui.yml`.
 
 ## Runtime Files
 
+All runtime files are stored in standard per-user directories; see the
+[File layout after install](#file-layout-after-install) table for the full
+paths. The locations can be overridden with the standard XDG environment
+variables: `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, and `XDG_STATE_HOME`.
+
 | File | Description |
 |------|-------------|
-| `.arxiv-tui.yml` | Configuration (created on first run) |
+| `config.yml` | Configuration (created on first run in `~/.config/arxiv-tui/`) |
 | `articles.db` | SQLite database of fetched articles and ratings |
 | `ranker.bin` | Saved ranking model weights (created after first retrain) |
-| `replay.jsonl` | Action replay log for crash reporting |
-| `arxiv_tui.log` | Application log (spdlog) |
 | `downloads/` | Default PDF download directory |
+| `arxiv_tui.log` | Rotating application log (up to 3 × 5 MB files) |
+| `replay.jsonl` | UI action replay log for crash reporting |
+| `crash_*.txt` | Crash reports with backtrace and session replay |
 
 ---
 
