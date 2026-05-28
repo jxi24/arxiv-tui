@@ -40,3 +40,8 @@ add_executable(arxiv-tui
     main.cc
 )
 target_link_libraries(arxiv-tui PUBLIC arxiv_tui_options arxiv_tui_warnings libarxiv-tui)
+
+if(ARXIV_TUI_CLANG_TIDY_COMMAND)
+    set_target_properties(libarxiv-tui arxiv-tui PROPERTIES
+        CXX_CLANG_TIDY "${ARXIV_TUI_CLANG_TIDY_COMMAND}")
+endif()

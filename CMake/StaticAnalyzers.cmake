@@ -17,7 +17,10 @@ endif()
 if(ENABLE_CLANG_TIDY)
     find_program(CLANGTIDY clang-tidy)
     if(CLANGTIDY)
-        set(CMAKE_CXX_CLANG_TIDY ${CLANGTIDY})
+        # Store the command but do NOT set CMAKE_CXX_CLANG_TIDY globally — that
+        # would also run clang-tidy over every CPM dependency source file.
+        # Individual targets opt in via set_target_properties instead.
+        set(ARXIV_TUI_CLANG_TIDY_COMMAND "${CLANGTIDY}" CACHE INTERNAL "")
     else()
         message(SEND_ERROR "clang-tidy requested but executable not found")
     endif()

@@ -95,6 +95,11 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     target_compile_options(integration_tests PRIVATE -Wno-free-nonheap-object)
 endif()
 
+if(ARXIV_TUI_CLANG_TIDY_COMMAND)
+    set_target_properties(unit_tests integration_tests PROPERTIES
+        CXX_CLANG_TIDY "${ARXIV_TUI_CLANG_TIDY_COMMAND}")
+endif()
+
 # Register tests
 include(CTest)
 catch_discover_tests(unit_tests)
