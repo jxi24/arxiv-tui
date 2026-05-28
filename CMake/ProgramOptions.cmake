@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2024-2026 Josh Isaacson
+#
+# SPDX-License-Identifier: GPL-3.0-only
+
 # List of all possible optional binaries in Achilles
 option(ACHILLES_ENABLE_CASCADE_TEST "Enable executables for testing the cascade" OFF)
 option(ACHILLES_ENABLE_POTENTIAL_TEST "Enable executables for testing the potential" OFF)

@@ -1,4 +1,6 @@
 build/
+build_gui/
+install/
 CMakeFiles/
 articles.db
 arxiv_tui.log

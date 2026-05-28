@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2024-2026 Josh Isaacson
+#
+# SPDX-License-Identifier: GPL-3.0-only
+
 cmake_minimum_required(VERSION 3.17)
 
 # Policy to address @foo@ variable expansion

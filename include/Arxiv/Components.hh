@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2024-2026 Josh Isaacson
+//
+// SPDX-License-Identifier: GPL-3.0-only
+
 #ifndef ARXIV_UI_MANAGER
 #define ARXIV_UI_MANAGER
 

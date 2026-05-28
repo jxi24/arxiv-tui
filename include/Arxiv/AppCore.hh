@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2024-2026 Josh Isaacson
+//
+// SPDX-License-Identifier: GPL-3.0-only
+
 #ifndef ARXIV_APP_CORE
 #define ARXIV_APP_CORE
 

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2024-2026 Josh Isaacson
+//
+// SPDX-License-Identifier: GPL-3.0-only
+
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"

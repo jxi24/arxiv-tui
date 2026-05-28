@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2024-2026 Josh Isaacson
+//
+// SPDX-License-Identifier: GPL-3.0-only
+
 // Headless TUI tests for ArxivApp using FTXUI's component rendering API.
 // Components can receive events and render to a fixed-size screen without
 // a real terminal, enabling verification of dialog state and output.

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2024-2026 Josh Isaacson
+#
+# SPDX-License-Identifier: GPL-3.0-only
+
 # Create a macro for properly linking the libraries for the pybind11 modules 
 macro(pylink target includes libraries)
     target_include_directories(${target} PRIVATE ${includes})

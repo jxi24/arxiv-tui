@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2024-2026 Josh Isaacson
+//
+// SPDX-License-Identifier: GPL-3.0-only
+
 #include "Arxiv/Ranker.hh"
 #include "Arxiv/LatexUtils.hh"
 #include "spdlog/spdlog.h"
