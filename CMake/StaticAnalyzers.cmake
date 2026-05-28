@@ -20,7 +20,11 @@ if(ENABLE_CLANG_TIDY)
         # Store the command but do NOT set CMAKE_CXX_CLANG_TIDY globally — that
         # would also run clang-tidy over every CPM dependency source file.
         # Individual targets opt in via set_target_properties instead.
-        set(ARXIV_TUI_CLANG_TIDY_COMMAND "${CLANGTIDY}" CACHE INTERNAL "")
+        # --extra-arg silences GCC-only warning flags that end up in the
+        # compile commands when the project is built with GCC.
+        set(ARXIV_TUI_CLANG_TIDY_COMMAND
+            "${CLANGTIDY};--extra-arg=-Wno-unknown-warning-option"
+            CACHE INTERNAL "")
     else()
         message(SEND_ERROR "clang-tidy requested but executable not found")
     endif()
