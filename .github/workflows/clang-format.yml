@@ -17,5 +17,5 @@ jobs:
         with:
           source: 'src include test'
           extensions: 'cc,hh'
-          clangFormatVersion: 22
+          clangFormatVersion: 20
           style: file
