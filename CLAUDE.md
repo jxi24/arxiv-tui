@@ -108,12 +108,13 @@ cd build && ctest --output-on-failure
 
 ```
 main()
-  └── Config(".arxiv-tui.yml")       # Load/create YAML config
-       └── ArxivApp(config)
-             ├── AppCore(config, DatabaseManager, Fetcher)
-             │     └── FetchArticles()  # Populate DB from arXiv RSS
-             └── SetupUI()             # Build FTXUI component tree
-                   └── screen.Loop()   # Event loop
+  └── Paths::Resolve()               # XDG / install-prefix path resolution
+       └── Config(config_file)       # Load/create YAML config
+            └── ArxivApp(config)
+                  ├── AppCore(config, DatabaseManager, Fetcher)
+                  │     └── FetchArticles()  # Populate DB from arXiv RSS
+                  └── SetupUI()             # Build FTXUI component tree
+                        └── screen.Loop()   # Event loop
 ```
 
 ### Key Classes
@@ -131,7 +132,10 @@ SQLite3 persistence layer. All virtual methods — mock-friendly for testing.
 Parses arXiv RSS/XML feeds via `cpr` + `pugixml`. Downloads PDFs. All virtual methods.
 
 **`Config`** (`Config.hh/cc`)
-Loads `.arxiv-tui.yml` on startup; creates defaults if missing. Stores topics, download directory, and key bindings.
+Loads `config.yml` from the XDG config path on startup; creates defaults if missing. Stores topics, download directory, key bindings, and runtime file paths (`db_file_`, `ranker_file_`). The db and ranker paths are not written to YAML — they are set programmatically by `main.cc` from `Paths::Resolve()` before the app is constructed.
+
+**`Paths`** (`Paths.hh/cc`)
+Resolves all runtime file locations at startup following the XDG Base Directory Specification. Config is always `XDG_CONFIG_HOME/arxiv-tui/config.yml`. Data (database, ranker, downloads) and state (log, replay, crash reports) default to the compile-time install prefix (`InstallPaths.hh`, generated from `InstallPaths.hh.in` by CMake) and can be overridden at runtime via `XDG_DATA_HOME` / `XDG_STATE_HOME`.
 
 **`KeyBindings`** (`KeyBindings.hh/cc`)
 Maps string action names to `ftxui::Event` instances from the config.
@@ -195,29 +199,58 @@ CREATE TABLE project_articles (
 
 ---
 
+## Runtime File Layout
+
+All paths are resolved by `Paths::Resolve()` in `main.cc` before any other
+initialization. The compile-time defaults are baked in via the generated header
+`include/Arxiv/InstallPaths.hh` (produced from `InstallPaths.hh.in` by
+`configure_file` in `CMakeLists.txt`). XDG environment variables take
+precedence over the compiled-in values at runtime.
+
+| Location | Content | XDG override |
+|----------|---------|--------------|
+| `$XDG_CONFIG_HOME/arxiv-tui/config.yml` | User config (YAML) | `XDG_CONFIG_HOME` |
+| `$XDG_DATA_HOME/arxiv-tui/articles.db` | SQLite article database | `XDG_DATA_HOME` |
+| `$XDG_DATA_HOME/arxiv-tui/ranker.bin` | Trained ranking model | `XDG_DATA_HOME` |
+| `$XDG_DATA_HOME/arxiv-tui/downloads/` | Default PDF download dir | `XDG_DATA_HOME` |
+| `$XDG_STATE_HOME/arxiv-tui/arxiv_tui.log` | Rotating spdlog output | `XDG_STATE_HOME` |
+| `$XDG_STATE_HOME/arxiv-tui/replay.jsonl` | UI action replay log | `XDG_STATE_HOME` |
+| `$XDG_STATE_HOME/arxiv-tui/crash_*.txt` | Crash reports | `XDG_STATE_HOME` |
+
+XDG defaults (when variables are unset): `~/.config`, `~/.local/share`,
+`~/.local/state`. A user-space install with `--prefix ~/.local` aligns the
+compiled-in data/state paths exactly with the XDG defaults.
+
+The `download_dir` config key overrides the default download path. If absent
+from the YAML, `main.cc` sets it to `<data_dir>/downloads/`.
+
 ## Configuration File
 
-Location: `.arxiv-tui.yml` (working directory). Created with defaults on first run.
+Location: `~/.config/arxiv-tui/config.yml` (created with defaults on first run).
 
 ```yaml
-articles:
-  download_dir: downloads/
+article_settings:
+  download_dir: /home/user/.local/share/arxiv-tui/downloads
   topics:
     - hep-ph
     - hep-ex
     - hep-lat
     - hep-th
-key_bindings:
-  - action: next_article
+recommend_threshold: 3.5
+retrain_interval: 5
+auto_refresh_minutes: 0
+scroll_margin: 3
+key_mappings:
+  - action: next
     key: j
-  - action: prev_article
+  - action: previous
     key: k
   # ...
 ```
 
-Runtime files:
-- `articles.db` — SQLite database (created at runtime)
-- `arxiv_tui.log` — spdlog output (created at runtime)
+Note: `db_file` and `ranker_file` are **not** written to the YAML — they are
+always derived from `Paths::Resolve()` at startup and set on the `Config`
+object programmatically.
 
 ---
 
@@ -356,4 +389,4 @@ Edit `.arxiv-tui.yml` and add the topic string under `articles.topics`. Topics c
 - Do not construct `DatabaseManager` or `Fetcher` inside `AppCore`; always inject them.
 - Do not mix UI logic into `AppCore` — it should remain testable without FTXUI.
 - Do not use `using namespace std;` globally; prefer explicit `std::` qualifiers.
-- Do not commit `articles.db`, `arxiv_tui.log`, or the `build/` directory.
+- Do not commit `articles.db`, `arxiv_tui.log`, `replay.jsonl`, `ranker.bin`, or the `build/` directory.
