@@ -3,4 +3,6 @@
 # SPDX-License-Identifier: GPL-3.0-only
 
 add_subdirectory(Arxiv)
-add_subdirectory(GUI)
+if(ARXIV_TUI_BUILD_GUI)
+    add_subdirectory(GUI)
+endif()

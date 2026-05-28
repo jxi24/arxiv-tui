@@ -69,11 +69,15 @@ find_package(Filesystem REQUIRED)
 # Add dependencies
 include(CMake/CPM.cmake)
 
-find_program(WAYLAND_SCANNER wayland-scanner)
-if(WAYLAND_SCANNER)
-    set(ARXIV_TUI_GLFW_BUILD_WAYLAND ON)
-else()
-    set(ARXIV_TUI_GLFW_BUILD_WAYLAND OFF)
+option(ARXIV_TUI_BUILD_GUI "Build the ImGui/GLFW GUI companion" OFF)
+
+if(ARXIV_TUI_BUILD_GUI)
+    find_program(WAYLAND_SCANNER wayland-scanner)
+    if(WAYLAND_SCANNER)
+        set(ARXIV_TUI_GLFW_BUILD_WAYLAND ON)
+    else()
+        set(ARXIV_TUI_GLFW_BUILD_WAYLAND OFF)
+    endif()
 endif()
 
 include(Dependencies.txt)
