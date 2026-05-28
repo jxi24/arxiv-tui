@@ -68,6 +68,14 @@ find_package(Filesystem REQUIRED)
 
 # Add dependencies
 include(CMake/CPM.cmake)
+
+find_program(WAYLAND_SCANNER wayland-scanner)
+if(WAYLAND_SCANNER)
+    set(ARXIV_TUI_GLFW_BUILD_WAYLAND ON)
+else()
+    set(ARXIV_TUI_GLFW_BUILD_WAYLAND OFF)
+endif()
+
 include(Dependencies.txt)
 
 find_package(SQLite3 REQUIRED)
