@@ -6,9 +6,11 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <atomic>
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <unistd.h>
 
 using Arxiv::Config;
 
@@ -18,11 +20,17 @@ using Arxiv::Config;
 
 namespace {
 
-// RAII wrapper: writes config to a temp file, deletes on scope exit.
+// RAII wrapper: creates a uniquely-named temp file, deletes on scope exit.
+// Uses PID + atomic counter so parallel ctest -jN runs never share a path.
 struct TempConfig {
     std::string path;
-    explicit TempConfig(const std::string& suffix = ".yml")
-        : path(std::filesystem::temp_directory_path() / ("arxiv_test_config_" + suffix)) {}
+    TempConfig() {
+        static std::atomic<int> counter{0};
+        path = (std::filesystem::temp_directory_path() /
+                ("arxiv_test_config_" + std::to_string(::getpid()) + "_" +
+                 std::to_string(counter++) + ".yml"))
+                   .string();
+    }
     ~TempConfig() { std::filesystem::remove(path); }
 };
 
