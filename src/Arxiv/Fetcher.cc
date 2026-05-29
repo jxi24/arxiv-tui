@@ -205,7 +205,7 @@ std::optional<std::string> Fetcher::FetchFeeds() {
     }
 }
 
-std::vector<Article> Fetcher::ParseFeed(const std::string& xml_content) {
+std::vector<Article> Fetcher::ParseFeed(const std::string& xml_content) const {
     std::vector<Article> articles;
     pugi::xml_document doc;
 
@@ -305,48 +305,42 @@ std::optional<Arxiv::time_point> Fetcher::ParseDate(const std::string& date) con
 std::string Fetcher::StyleLatex(const std::string& text) const {
     std::string result = text;
 
-    // Text formatting commands whose opening (\cmd{) we strip; the matching
-    // closing brace is removed in the second pass below.
-    const std::vector<std::pair<std::string, std::string>> replacements = {{"\\textit{", ""},
-                                                                           {"\\textbf{", ""},
-                                                                           {"\\emph{", ""},
-                                                                           {"\\textsl{", ""},
-                                                                           {"\\textsc{", ""},
-                                                                           {"\\texttt{", ""},
-                                                                           {"\\textnormal{", ""},
-                                                                           {"\\textrm{", ""},
-                                                                           {"\\textsf{", ""},
-                                                                           {"\\textmd{", ""},
-                                                                           {"\\textup{", ""},
-                                                                           {"\\textdown{", ""},
-                                                                           {"\\underline{", ""},
-                                                                           {"\\overline{", ""},
-                                                                           {"\\st{", ""}};
-
-    apply_replacements(result, replacements);
-
-    // Second pass: remove closing braces that follow formatting commands
-    size_t pos = 0;
-    while ((pos = result.find("}", pos)) != std::string::npos) {
-        // Check if this closing brace is preceded by a formatting command
-        bool is_formatting_brace = false;
-        for (const auto& [latex, _] : replacements) {
-            // Look back for the corresponding opening command
-            size_t cmd_pos = result.rfind(latex, pos);
-            if (cmd_pos != std::string::npos) {
-                // Check if there's no other closing brace between the command and this one
-                size_t next_brace = result.find("}", cmd_pos + 1);
-                if (next_brace == pos) {
-                    is_formatting_brace = true;
+    // For each formatting command, replace \cmd{content} with content in one
+    // pass so both the opening marker and its matching closing brace are
+    // removed together.  Processing innermost first (repeated until stable)
+    // handles nested commands correctly.
+    static const std::vector<std::string> commands = {"\\textit",
+                                                      "\\textbf",
+                                                      "\\emph",
+                                                      "\\textsl",
+                                                      "\\textsc",
+                                                      "\\texttt",
+                                                      "\\textnormal",
+                                                      "\\textrm",
+                                                      "\\textsf",
+                                                      "\\textmd",
+                                                      "\\textup",
+                                                      "\\textdown",
+                                                      "\\underline",
+                                                      "\\overline",
+                                                      "\\st"};
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (const auto& cmd : commands) {
+            std::string open = cmd + "{";
+            size_t pos = 0;
+            while ((pos = result.find(open, pos)) != std::string::npos) {
+                size_t content_start = pos + open.size();
+                size_t close = result.find("}", content_start);
+                if (close == std::string::npos)
                     break;
-                }
+                result.replace(
+                    pos, close - pos + 1, result.substr(content_start, close - content_start));
+                changed = true;
+                // Re-scan from same position — the replacement may itself
+                // contain a further instance of the same command.
             }
-        }
-
-        if (is_formatting_brace) {
-            result.erase(pos, 1);
-        } else {
-            pos++;
         }
     }
 
@@ -617,7 +611,7 @@ std::vector<Article> Fetcher::FetchSince(const std::string& utc_date) {
     return all_articles;
 }
 
-std::vector<Article> Fetcher::ParseAtomFeed(const std::string& xml_content) {
+std::vector<Article> Fetcher::ParseAtomFeed(const std::string& xml_content) const {
     std::vector<Article> articles;
     pugi::xml_document doc;
 

@@ -154,3 +154,24 @@ TEST_CASE("KeyBindings: get_action_name covers every action", "[keybindings]") {
         REQUIRE(name != "Unknown");
     }
 }
+
+TEST_CASE("KeyBindings: get_action_name returns 'Unknown' for invalid action", "[keybindings]") {
+    auto name = KeyBindings::get_action_name(static_cast<KeyBindings::Action>(9999));
+    REQUIRE(name == "Unknown");
+}
+
+TEST_CASE("KeyBindings: get_all_bindings returns all actions", "[keybindings]") {
+    KeyBindings kb(std::vector<Arxiv::Config::KeyMapping>{});
+    auto bindings = kb.get_all_bindings();
+    REQUIRE_FALSE(bindings.empty());
+    // Every entry should have a non-empty action name and key.
+    for (const auto& [name, key] : bindings) {
+        REQUIRE_FALSE(name.empty());
+    }
+}
+
+TEST_CASE("KeyBindings: unknown config_name is silently ignored", "[keybindings]") {
+    std::vector<Arxiv::Config::KeyMapping> mappings = {{"nonexistent_action", "z"}};
+    // Should not throw; unknown names are skipped.
+    REQUIRE_NOTHROW(KeyBindings(mappings));
+}

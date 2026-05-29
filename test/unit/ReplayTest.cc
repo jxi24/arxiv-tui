@@ -339,3 +339,134 @@ TEST_CASE("WriteCrashReport handles unwritable directory gracefully", "[crashhan
     // Just verify it doesn't throw
     (void)path;
 }
+
+// ---------------------------------------------------------------------------
+// ReplayRecorder — remaining Record* methods not covered elsewhere
+// ---------------------------------------------------------------------------
+TEST_CASE("ReplayRecorder: uncovered record methods", "[replay][recorder]") {
+    Arxiv::ReplayRecorder recorder;
+
+    SECTION("RecordForceRetrain") {
+        recorder.RecordForceRetrain();
+        REQUIRE_THAT(recorder.GetJSONL(), ContainsSubstring("force_retrain"));
+    }
+
+    SECTION("RecordExportProjectMarkdown") {
+        recorder.RecordExportProjectMarkdown("MyProj", "/tmp/out.md");
+        REQUIRE_THAT(recorder.GetJSONL(), ContainsSubstring("export_project_markdown"));
+        REQUIRE_THAT(recorder.GetJSONL(), ContainsSubstring("MyProj"));
+    }
+
+    SECTION("RecordExportProjectText") {
+        recorder.RecordExportProjectText("MyProj", "/tmp/out.txt");
+        REQUIRE_THAT(recorder.GetJSONL(), ContainsSubstring("export_project_text"));
+    }
+
+    SECTION("RecordExportProjectJSON") {
+        recorder.RecordExportProjectJSON("MyProj", "/tmp/out.json");
+        REQUIRE_THAT(recorder.GetJSONL(), ContainsSubstring("export_project_json"));
+    }
+
+    SECTION("RecordImportProjectJSON") {
+        recorder.RecordImportProjectJSON("/tmp/in.json");
+        REQUIRE_THAT(recorder.GetJSONL(), ContainsSubstring("import_project_json"));
+    }
+
+    SECTION("RecordExportArticleBibTeX") {
+        recorder.RecordExportArticleBibTeX("https://arxiv.org/abs/2403.12345", "/tmp/out.bib");
+        REQUIRE_THAT(recorder.GetJSONL(), ContainsSubstring("export_article_bibtex"));
+    }
+
+    SECTION("RecordExportArticlesBibTeX") {
+        recorder.RecordExportArticlesBibTeX("/tmp/out.bib");
+        REQUIRE_THAT(recorder.GetJSONL(), ContainsSubstring("export_articles_bibtex"));
+    }
+
+    SECTION("RecordExportProjectBibTeX") {
+        recorder.RecordExportProjectBibTeX("MyProj", "/tmp/out.bib");
+        REQUIRE_THAT(recorder.GetJSONL(), ContainsSubstring("export_project_bibtex"));
+    }
+
+    SECTION("RecordToggleSelection") {
+        recorder.RecordToggleSelection("https://arxiv.org/abs/2403.12345");
+        REQUIRE_THAT(recorder.GetJSONL(), ContainsSubstring("toggle_selection"));
+    }
+
+    SECTION("RecordExportSelectedDigest") {
+        recorder.RecordExportSelectedDigest("/tmp/digest");
+        REQUIRE_THAT(recorder.GetJSONL(), ContainsSubstring("export_selected_digest"));
+    }
+
+    SECTION("RecordExportToObsidian") {
+        recorder.RecordExportToObsidian("/tmp/vault");
+        REQUIRE_THAT(recorder.GetJSONL(), ContainsSubstring("export_to_obsidian"));
+    }
+
+    SECTION("RecordSetActiveCategories") {
+        recorder.RecordSetActiveCategories({"hep-ph", "hep-ex"});
+        REQUIRE_THAT(recorder.GetJSONL(), ContainsSubstring("set_active_categories"));
+    }
+
+    SECTION("RecordSaveKeywords") {
+        recorder.RecordSaveKeywords({"quark", "gluon"});
+        REQUIRE_THAT(recorder.GetJSONL(), ContainsSubstring("save_keywords"));
+    }
+
+    SECTION("RecordDownloadArticle") {
+        recorder.RecordDownloadArticle("2403.12345");
+        REQUIRE_THAT(recorder.GetJSONL(), ContainsSubstring("download_article"));
+    }
+
+    SECTION("RecordSetProjectParent") {
+        recorder.RecordSetProjectParent("Child", "Parent");
+        REQUIRE_THAT(recorder.GetJSONL(), ContainsSubstring("set_project_parent"));
+    }
+
+    SECTION("RecordExportDailyDigest") {
+        recorder.RecordExportDailyDigest("/tmp/digest.md");
+        REQUIRE_THAT(recorder.GetJSONL(), ContainsSubstring("export_daily_digest"));
+    }
+
+    SECTION("RecordToggleCategory") {
+        recorder.RecordToggleCategory("hep-ph");
+        REQUIRE_THAT(recorder.GetJSONL(), ContainsSubstring("toggle_category"));
+        REQUIRE_THAT(recorder.GetJSONL(), ContainsSubstring("hep-ph"));
+    }
+
+    SECTION("RecordEvent with detail") {
+        recorder.RecordEvent("session_start", "id=abc123");
+        REQUIRE_THAT(recorder.GetJSONL(), ContainsSubstring("event"));
+        REQUIRE_THAT(recorder.GetJSONL(), ContainsSubstring("session_start"));
+    }
+
+    SECTION("RecordEvent without detail") {
+        recorder.RecordEvent("some_event");
+        REQUIRE_THAT(recorder.GetJSONL(), ContainsSubstring("some_event"));
+    }
+}
+
+TEST_CASE("ReplayPlayer: handles malformed lines in replay file", "[replay][player]") {
+    // Write a replay file containing lines that trigger the DispatchAction error paths.
+    fs::path tmp = fs::temp_directory_path() / "replay_error_test.jsonl";
+    {
+        std::ofstream f(tmp);
+        f << "not json at all\n";
+        f << R"({"ts":123})" << "\n"; // missing action field
+    }
+
+    Arxiv::Config config("test/fixtures/test_config.yml");
+    auto db = std::make_unique<DatabaseManagerMock>();
+    auto fetcher = std::make_unique<FetcherMock>();
+    auto* db_ptr = db.get();
+    ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(std::vector<Arxiv::Article>{});
+    ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{});
+    Arxiv::AppCore core(config, std::move(db), std::move(fetcher));
+
+    SECTION("Stops on first hard parse error and reports it") {
+        auto result = Arxiv::ReplayPlayer::FromFile(tmp.string(), core);
+        REQUIRE_FALSE(result.error.empty());
+        REQUIRE(result.replayed == 0);
+    }
+
+    fs::remove(tmp);
+}

@@ -105,13 +105,14 @@ target_include_directories(arxiv_tui_options INTERFACE
 # Testing
 if(ARXIV_TUI_ENABLE_TESTING)
     if(ARXIV_TUI_COVERAGE)
-    target_compile_options(arxiv_tui_options INTERFACE --coverage)
-    target_link_libraries(arxiv_tui_options INTERFACE gcov)
-  endif()
-  target_compile_definitions(arxiv_tui_options INTERFACE TESTING)
-  enable_testing()
-  message(STATUS "Building Tests.")
-  add_subdirectory(test)
+        target_compile_options(arxiv_tui_options INTERFACE --coverage -O0 -g)
+        target_link_libraries(arxiv_tui_options INTERFACE gcov)
+        include(CMake/Coverage.cmake)
+    endif()
+    target_compile_definitions(arxiv_tui_options INTERFACE TESTING)
+    enable_testing()
+    message(STATUS "Building Tests.")
+    add_subdirectory(test)
 endif()
 
 # Main code

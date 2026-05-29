@@ -759,6 +759,220 @@ TEST_CASE("AppCore::AddSelectedToProject", "[app][projects]") {
 }
 
 // ---------------------------------------------------------------------------
+// AppCore export functions
+// ---------------------------------------------------------------------------
+
+TEST_CASE("AppCore::ExportProjectMarkdown", "[app][export]") {
+    auto tmp = (std::filesystem::temp_directory_path() / "arxiv_export_md_test.md").string();
+    std::filesystem::remove(tmp);
+
+    Config config("test/fixtures/test_config.yml");
+    auto db = std::make_unique<DatabaseManagerMock>();
+    auto fetcher = std::make_unique<FetcherMock>();
+    auto* db_ptr = db.get();
+
+    ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(sample_articles);
+    ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{"TestProj"});
+    ALLOW_CALL(*db_ptr, GetProjectParent(ANY(std::string))).RETURN("");
+    ALLOW_CALL(*db_ptr, GetArticlesForProject("TestProj")).RETURN(sample_articles);
+    ALLOW_CALL(*db_ptr, GetProjectNote(ANY(std::string), ANY(std::string))).RETURN("");
+
+    AppCore core(config, std::move(db), std::move(fetcher));
+
+    SECTION("Returns true and creates the file") {
+        REQUIRE(core.ExportProjectMarkdown("TestProj", tmp));
+        REQUIRE(std::filesystem::exists(tmp));
+        std::filesystem::remove(tmp);
+    }
+}
+
+TEST_CASE("AppCore::ExportProjectText", "[app][export]") {
+    auto tmp = (std::filesystem::temp_directory_path() / "arxiv_export_txt_test.txt").string();
+    std::filesystem::remove(tmp);
+
+    Config config("test/fixtures/test_config.yml");
+    auto db = std::make_unique<DatabaseManagerMock>();
+    auto fetcher = std::make_unique<FetcherMock>();
+    auto* db_ptr = db.get();
+
+    ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(sample_articles);
+    ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{"TestProj"});
+    ALLOW_CALL(*db_ptr, GetProjectParent(ANY(std::string))).RETURN("");
+    ALLOW_CALL(*db_ptr, GetArticlesForProject("TestProj")).RETURN(sample_articles);
+    ALLOW_CALL(*db_ptr, GetProjectNote(ANY(std::string), ANY(std::string))).RETURN("");
+
+    AppCore core(config, std::move(db), std::move(fetcher));
+
+    SECTION("Returns true and creates the file") {
+        REQUIRE(core.ExportProjectText("TestProj", tmp));
+        REQUIRE(std::filesystem::exists(tmp));
+        std::filesystem::remove(tmp);
+    }
+}
+
+TEST_CASE("AppCore::ExportProjectJSON", "[app][export]") {
+    auto tmp = (std::filesystem::temp_directory_path() / "arxiv_export_json_test.json").string();
+    std::filesystem::remove(tmp);
+
+    Config config("test/fixtures/test_config.yml");
+    auto db = std::make_unique<DatabaseManagerMock>();
+    auto fetcher = std::make_unique<FetcherMock>();
+    auto* db_ptr = db.get();
+
+    ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(sample_articles);
+    ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{"TestProj"});
+    ALLOW_CALL(*db_ptr, GetProjectParent(ANY(std::string))).RETURN("");
+    ALLOW_CALL(*db_ptr, GetArticlesForProject("TestProj")).RETURN(sample_articles);
+    ALLOW_CALL(*db_ptr, GetProjectNote(ANY(std::string), ANY(std::string))).RETURN("");
+
+    AppCore core(config, std::move(db), std::move(fetcher));
+
+    SECTION("Returns true and creates a JSON file") {
+        REQUIRE(core.ExportProjectJSON("TestProj", tmp));
+        REQUIRE(std::filesystem::exists(tmp));
+        std::filesystem::remove(tmp);
+    }
+}
+
+TEST_CASE("AppCore::ExportArticleBibTeX", "[app][export]") {
+    auto tmp = (std::filesystem::temp_directory_path() / "arxiv_export_bib_test.bib").string();
+    std::filesystem::remove(tmp);
+
+    Config config("test/fixtures/test_config.yml");
+    auto db = std::make_unique<DatabaseManagerMock>();
+    auto fetcher = std::make_unique<FetcherMock>();
+    auto* db_ptr = db.get();
+
+    ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(sample_articles);
+    ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{});
+    ALLOW_CALL(*fetcher.get(), FetchBibTeX(ANY(std::string))).RETURN("");
+
+    AppCore core(config, std::move(db), std::move(fetcher));
+
+    SECTION("Returns true and writes fallback BibTeX") {
+        REQUIRE(core.ExportArticleBibTeX(sample_articles[0], tmp));
+        REQUIRE(std::filesystem::exists(tmp));
+        std::filesystem::remove(tmp);
+    }
+}
+
+TEST_CASE("AppCore::ExportSelectedDigest", "[app][export]") {
+    SECTION("Returns empty string when nothing selected") {
+        Config config("test/fixtures/test_config.yml");
+        auto db = std::make_unique<DatabaseManagerMock>();
+        auto fetcher = std::make_unique<FetcherMock>();
+        auto* db_ptr = db.get();
+
+        ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(sample_articles);
+        ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{});
+
+        AppCore core(config, std::move(db), std::move(fetcher));
+        REQUIRE(core.ExportSelectedDigest().empty());
+    }
+
+    SECTION("Returns path and creates digest file when articles are selected") {
+        auto tmp_dir = std::filesystem::temp_directory_path() / "arxiv_digest_test";
+        std::filesystem::remove_all(tmp_dir);
+
+        Config config("test/fixtures/test_config.yml");
+        config.set_download_dir(tmp_dir.string());
+
+        auto db = std::make_unique<DatabaseManagerMock>();
+        auto fetcher = std::make_unique<FetcherMock>();
+        auto* db_ptr = db.get();
+
+        ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(sample_articles);
+        ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{});
+        ALLOW_CALL(*fetcher.get(), DownloadPaper(ANY(std::string), ANY(std::string))).RETURN(false);
+
+        AppCore core(config, std::move(db), std::move(fetcher));
+        core.ToggleSelection(sample_articles[0].link);
+        auto path = core.ExportSelectedDigest();
+
+        REQUIRE_FALSE(path.empty());
+        REQUIRE(std::filesystem::exists(path));
+
+        std::filesystem::remove_all(tmp_dir);
+    }
+
+    SECTION("Returns empty string when selected links not in DB") {
+        auto tmp_dir = std::filesystem::temp_directory_path() / "arxiv_digest_empty";
+        std::filesystem::remove_all(tmp_dir);
+
+        Config config("test/fixtures/test_config.yml");
+        config.set_download_dir(tmp_dir.string());
+
+        auto db = std::make_unique<DatabaseManagerMock>();
+        auto fetcher = std::make_unique<FetcherMock>();
+        auto* db_ptr = db.get();
+
+        ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(std::vector<Arxiv::Article>{});
+        ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{});
+
+        AppCore core(config, std::move(db), std::move(fetcher));
+        core.ToggleSelection("https://arxiv.org/abs/not.in.db");
+        REQUIRE(core.ExportSelectedDigest().empty());
+
+        std::filesystem::remove_all(tmp_dir);
+    }
+}
+
+TEST_CASE("AppCore::ExportSelectedToObsidian", "[app][export]") {
+    SECTION("Returns empty string when no vault configured") {
+        Config config("test/fixtures/test_config.yml");
+        auto db = std::make_unique<DatabaseManagerMock>();
+        auto fetcher = std::make_unique<FetcherMock>();
+        auto* db_ptr = db.get();
+
+        ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(sample_articles);
+        ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{});
+
+        AppCore core(config, std::move(db), std::move(fetcher));
+        core.ToggleSelection(sample_articles[0].link);
+        REQUIRE(core.ExportSelectedToObsidian().empty());
+    }
+
+    SECTION("Returns path and creates note when vault and selection are set") {
+        auto vault = std::filesystem::temp_directory_path() / "arxiv_obsidian_vault";
+        std::filesystem::remove_all(vault);
+
+        Config config("test/fixtures/test_config.yml");
+        config.set_obsidian_vault(vault.string());
+
+        auto db = std::make_unique<DatabaseManagerMock>();
+        auto fetcher = std::make_unique<FetcherMock>();
+        auto* db_ptr = db.get();
+
+        ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(sample_articles);
+        ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{});
+        ALLOW_CALL(*fetcher.get(), DownloadPaper(ANY(std::string), ANY(std::string))).RETURN(false);
+
+        AppCore core(config, std::move(db), std::move(fetcher));
+        core.ToggleSelection(sample_articles[0].link);
+        auto path = core.ExportSelectedToObsidian();
+
+        REQUIRE_FALSE(path.empty());
+        REQUIRE(std::filesystem::exists(path));
+
+        std::filesystem::remove_all(vault);
+    }
+
+    SECTION("Returns empty string when no selections") {
+        Config config("test/fixtures/test_config.yml");
+        config.set_obsidian_vault("/tmp/some_vault");
+        auto db = std::make_unique<DatabaseManagerMock>();
+        auto fetcher = std::make_unique<FetcherMock>();
+        auto* db_ptr = db.get();
+
+        ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(sample_articles);
+        ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{});
+
+        AppCore core(config, std::move(db), std::move(fetcher));
+        REQUIRE(core.ExportSelectedToObsidian().empty());
+    }
+}
+
+// ---------------------------------------------------------------------------
 // v0.8: read/unread, pruning
 // ---------------------------------------------------------------------------
 

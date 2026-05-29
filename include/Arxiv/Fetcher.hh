@@ -37,18 +37,20 @@ class Fetcher {
     /// e.g. "http://arxiv.org/abs/2605.28788v1" → "https://arxiv.org/abs/2605.28788"
     static std::string NormalizeLink(const std::string& link);
 
+    // Parsing helpers exposed for testing.
+    std::vector<Article> ParseFeed(const std::string& xml) const;
+    std::vector<Article> ParseAtomFeed(const std::string& xml) const;
+    std::optional<time_point> ParseDate(const std::string& date) const;
+    std::optional<time_point> ParseAtomDate(const std::string& date) const;
+    std::string ReplaceLatexAccents(const std::string& text) const;
+    std::string StyleLatex(const std::string& text) const;
+    std::string ConstructPaperUrl(const std::string& paper_id, const std::string& format) const;
+
   private:
     static constexpr bool testing = false;
     std::vector<std::string> m_topics;
 
     std::optional<std::string> FetchFeeds();
-    std::vector<Article> ParseFeed(const std::string& content);
-    std::vector<Article> ParseAtomFeed(const std::string& content);
-    std::optional<time_point> ParseDate(const std::string& date) const;
-    std::optional<time_point> ParseAtomDate(const std::string& date) const;
-    std::string ConstructPaperUrl(const std::string& paper_id, const std::string& format) const;
-    std::string ReplaceLatexAccents(const std::string& text) const;
-    std::string StyleLatex(const std::string& text) const;
     std::filesystem::path base_path;
 };
 
