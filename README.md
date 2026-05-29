@@ -21,7 +21,10 @@ A keyboard-driven terminal user interface for browsing, managing, and downloadin
 - **Scrolling detail pane** — read full titles and abstracts without leaving the terminal
 - **Personalised ranking** — rate articles 1–5 stars; a lightweight neural network learns your preferences and surfaces today's most relevant papers in the Recommended filter
 - **BibTeX export** — generate `.bib` files for individual articles, selections, or entire projects, with automatic InspireHEP lookup and metadata fallback
+- **Read/unread tracking** — articles are marked read when the detail pane opens or a PDF is downloaded; read articles render dimmer so unread papers stand out; an **Unread** filter shows everything not yet read
 - **Auto-refresh** — configurable background feed refresh interval (0 = disabled)
+- **`--fetch` headless mode** — `arxiv-tui --fetch` updates the database and exits without opening the TUI, enabling cron-based refresh
+- **Database pruning** — optional `max_article_age_days` config key automatically removes old articles on startup unless they are bookmarked, rated, or in a project
 - **Replay system and crash handler** — all UI actions are recorded to a JSONL replay log; on a crash, a report with backtrace and full replay is saved for debugging
 - **Link deduplication** — incoming RSS and Atom feeds are normalised to a canonical URL form on ingestion, and any existing duplicates are cleaned up automatically on first run
 
@@ -149,6 +152,16 @@ cmake --build build -j$(nproc)
 arxiv-tui --replay ~/.local/state/arxiv-tui/crash_20260101_120000_SIGSEGV.txt
 ```
 
+### Headless feed fetch (cron)
+
+```bash
+# Fetch new articles without opening the TUI and exit
+arxiv-tui --fetch
+
+# Example cron entry: refresh at 07:00 on weekdays
+0 7 * * 1-5  arxiv-tui --fetch
+```
+
 ---
 
 ## Configuration
@@ -167,6 +180,7 @@ recommend_threshold: 3.5
 retrain_interval: 5
 auto_refresh_minutes: 0
 scroll_margin: 3
+max_article_age_days: 0
 key_mappings:
   - action: next
     key: j
@@ -201,6 +215,8 @@ key_mappings:
 **`auto_refresh_minutes`** is how often the background thread re-fetches the arXiv feeds. Set to `0` to disable automatic refresh. Default: `0`.
 
 **`scroll_margin`** is the number of context lines kept visible above and below the selected article when scrolling. Default: `3`.
+
+**`max_article_age_days`** is the maximum age (in days) of articles kept in the database. Articles older than this threshold are deleted on startup unless they are bookmarked, rated, or assigned to a project. Set to `0` to disable pruning entirely. Default: `0`.
 
 ---
 
@@ -247,6 +263,8 @@ Select any number of articles with `Space`. While a selection is active, the art
 | `/` | Open search dialog |
 | `r` | Set date range filter (when Date Range filter is active) |
 | `t` | Toggle category filter |
+
+The filter pane includes an **Unread** entry that shows only articles not yet read. Articles are marked read automatically when the detail pane is opened or a PDF is downloaded.
 
 ### Projects
 
@@ -400,18 +418,13 @@ Hooks: trailing whitespace, LF line endings, valid YAML/TOML, clang-format, REUS
 - **Multi-article selection and bulk actions** (v0.7) — select articles with `Space`; bulk bookmark, bulk project assignment, and bulk delete with confirmation
 - **Article deletion** (v0.7) — delete individual articles or entire selections from the local database; all associated ratings, notes, and project memberships are removed
 - **Link deduplication** (v0.7) — arXiv links are normalised to canonical form (`https`, no version suffix) on ingestion; a one-time startup migration merges any existing duplicates in the database
+- **Read/unread tracking** (v0.8) — `read_at` timestamp recorded when the detail pane opens or a PDF downloads; **Unread** filter shows unseen articles; read articles render dimmer in the list; on-startup DB migration requires no manual action
+- **`--fetch` headless mode** (v0.8) — `arxiv-tui --fetch` updates the database and exits, enabling cron-based feed refresh without opening the TUI
+- **Database pruning** (v0.8) — `max_article_age_days` config key (default 0 = off) automatically removes old unprotected articles on startup, keeping the database lean
 
 ---
 
 ## Roadmap to v1.0
-
-### v0.8 — Reading workflow
-
-The gap between "paper discovered" and "paper read" should be first-class.
-
-- **Read/unread tracking** — record a `read_at` timestamp when the detail pane is opened or a PDF is downloaded; add a **New** filter showing articles unseen since the last session; show unread articles in bold or with a dot prefix
-- **`--fetch` headless mode** — `arxiv-tui --fetch` updates the database and exits without opening the TUI, enabling cron-based refresh so the feed is always current when you open the app
-- **Database pruning** — add a `max_article_age_days` config option; articles older than that threshold are removed automatically on startup unless bookmarked, rated, or in a project, keeping the database from growing unboundedly
 
 ### v0.9 — Integration and power use
 
