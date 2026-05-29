@@ -431,6 +431,7 @@ The features that make the tool feel finished rather than functional.
 - **arXiv category autocomplete** — when adding a topic in the settings dialog, offer autocomplete against the full arXiv category taxonomy (a ~200-entry static list bundled at compile time) to prevent silent typos that produce empty feeds
 - **Help overlay search** — type to filter the help overlay when the binding count makes scrolling tedious; highlights matching rows
 - **Export digest as archive** — wrap the Markdown digest and downloaded PDFs produced by `g` into a `.tar.gz` so the output can be shared as a single file
+- **Documentation site** — publish a GitHub Pages site (via a `docs/` directory or a dedicated `gh-pages` branch) covering installation, configuration reference, all key bindings, the ranking system, and a getting-started walkthrough; generated with a static site tool (e.g. MkDocs or mdBook) and deployed automatically by a GitHub Actions workflow on every push to `main`
 
 ---
 
