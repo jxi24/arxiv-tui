@@ -45,6 +45,7 @@ enum class Dialog {
     Success = 12,
     Settings = 13,
     CitationBibtex = 14,
+    ConfirmDelete = 15,
 };
 
 class ArxivApp {

@@ -604,6 +604,159 @@ TEST_CASE("AppCore BibTeX generation", "[app][bibtex]") {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Delete and bulk-action methods
+// ---------------------------------------------------------------------------
+
+TEST_CASE("AppCore::DeleteCurrentOrSelected", "[app][delete]") {
+    Config config("test/fixtures/test_config.yml");
+
+    SECTION("Deletes the focused article when no selection is active") {
+        auto db = std::make_unique<DatabaseManagerMock>();
+        auto fetcher = std::make_unique<FetcherMock>();
+        auto* db_ptr = db.get();
+
+        ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(sample_articles);
+        ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{});
+
+        std::string deleted_link;
+        ALLOW_CALL(*db_ptr, DeleteArticle(ANY(std::string))).LR_SIDE_EFFECT(deleted_link = _1);
+
+        AppCore core(config, std::move(db), std::move(fetcher));
+        core.SetArticleIndex(0);
+        core.DeleteCurrentOrSelected();
+
+        REQUIRE(deleted_link == sample_articles[0].link);
+    }
+
+    SECTION("Deletes all selected articles when a selection is active") {
+        auto db = std::make_unique<DatabaseManagerMock>();
+        auto fetcher = std::make_unique<FetcherMock>();
+        auto* db_ptr = db.get();
+
+        ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(sample_articles);
+        ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{});
+
+        std::vector<std::string> deleted;
+        ALLOW_CALL(*db_ptr, DeleteArticle(ANY(std::string))).LR_SIDE_EFFECT(deleted.push_back(_1));
+
+        AppCore core(config, std::move(db), std::move(fetcher));
+        core.ToggleSelection(sample_articles[0].link);
+        core.ToggleSelection(sample_articles[1].link);
+        core.DeleteCurrentOrSelected();
+
+        REQUIRE(deleted.size() == 2);
+        REQUIRE(std::find(deleted.begin(), deleted.end(), sample_articles[0].link) !=
+                deleted.end());
+        REQUIRE(std::find(deleted.begin(), deleted.end(), sample_articles[1].link) !=
+                deleted.end());
+    }
+
+    SECTION("Clears the selection after a bulk delete") {
+        auto db = std::make_unique<DatabaseManagerMock>();
+        auto fetcher = std::make_unique<FetcherMock>();
+        auto* db_ptr = db.get();
+
+        ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(sample_articles);
+        ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{});
+        ALLOW_CALL(*db_ptr, DeleteArticle(ANY(std::string)));
+
+        AppCore core(config, std::move(db), std::move(fetcher));
+        core.ToggleSelection(sample_articles[0].link);
+        core.DeleteCurrentOrSelected();
+
+        REQUIRE(core.GetSelectionCount() == 0);
+    }
+}
+
+TEST_CASE("AppCore::BookmarkSelected", "[app][bookmark]") {
+    Config config("test/fixtures/test_config.yml");
+
+    SECTION("Bookmarks all selected articles") {
+        auto db = std::make_unique<DatabaseManagerMock>();
+        auto fetcher = std::make_unique<FetcherMock>();
+        auto* db_ptr = db.get();
+
+        ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(sample_articles);
+        ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{});
+
+        std::vector<std::pair<std::string, bool>> calls;
+        ALLOW_CALL(*db_ptr, ToggleBookmark(ANY(std::string), ANY(bool)))
+            .LR_SIDE_EFFECT(calls.push_back({_1, _2}));
+
+        AppCore core(config, std::move(db), std::move(fetcher));
+        core.ToggleSelection(sample_articles[0].link);
+        core.ToggleSelection(sample_articles[1].link);
+        core.BookmarkSelected(true);
+
+        REQUIRE(calls.size() == 2);
+        REQUIRE(std::all_of(calls.begin(), calls.end(), [](auto& p) { return p.second == true; }));
+    }
+
+    SECTION("Unbookmarks all selected articles") {
+        auto db = std::make_unique<DatabaseManagerMock>();
+        auto fetcher = std::make_unique<FetcherMock>();
+        auto* db_ptr = db.get();
+
+        ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(sample_articles);
+        ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{});
+
+        std::vector<bool> states;
+        ALLOW_CALL(*db_ptr, ToggleBookmark(ANY(std::string), ANY(bool)))
+            .LR_SIDE_EFFECT(states.push_back(_2));
+
+        AppCore core(config, std::move(db), std::move(fetcher));
+        core.ToggleSelection(sample_articles[0].link);
+        core.BookmarkSelected(false);
+
+        REQUIRE(states.size() == 1);
+        REQUIRE(states[0] == false);
+    }
+}
+
+TEST_CASE("AppCore::AddSelectedToProject", "[app][projects]") {
+    Config config("test/fixtures/test_config.yml");
+
+    SECTION("Links all selected articles to the given project") {
+        auto db = std::make_unique<DatabaseManagerMock>();
+        auto fetcher = std::make_unique<FetcherMock>();
+        auto* db_ptr = db.get();
+
+        ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(sample_articles);
+        ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{"Proj"});
+
+        std::vector<std::string> linked;
+        ALLOW_CALL(*db_ptr, LinkArticleToProject(ANY(std::string), ANY(std::string)))
+            .LR_SIDE_EFFECT(linked.push_back(_1));
+
+        AppCore core(config, std::move(db), std::move(fetcher));
+        core.ToggleSelection(sample_articles[0].link);
+        core.ToggleSelection(sample_articles[1].link);
+        core.AddSelectedToProject("Proj");
+
+        REQUIRE(linked.size() == 2);
+    }
+
+    SECTION("Links current article when no selection active") {
+        auto db = std::make_unique<DatabaseManagerMock>();
+        auto fetcher = std::make_unique<FetcherMock>();
+        auto* db_ptr = db.get();
+
+        ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(sample_articles);
+        ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{"Proj"});
+
+        std::string linked;
+        ALLOW_CALL(*db_ptr, LinkArticleToProject(ANY(std::string), ANY(std::string)))
+            .LR_SIDE_EFFECT(linked = _1);
+
+        AppCore core(config, std::move(db), std::move(fetcher));
+        core.SetArticleIndex(1);
+        core.AddSelectedToProject("Proj");
+
+        REQUIRE(linked == sample_articles[1].link);
+    }
+}
+
 // Note: Most of the ArxivApp's functionality is UI-based and involves
 // private components that can't be directly tested in unit tests.
 // The actual functionality should be tested through integration tests

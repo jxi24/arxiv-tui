@@ -200,6 +200,17 @@ class AppCore {
     bool IsSelected(const std::string& link) const { return m_selected_links.count(link) > 0; }
     std::size_t GetSelectionCount() const { return m_selected_links.size(); }
 
+    // Delete the focused article, or all selected articles if a selection is active.
+    // Clears the selection afterwards and refreshes the article list.
+    void DeleteCurrentOrSelected();
+
+    // Set the bookmark state on all selected articles (or the focused article if
+    // no selection is active).
+    void BookmarkSelected(bool bookmarked);
+
+    // Link all selected articles (or the focused article) to the given project.
+    void AddSelectedToProject(const std::string& project_name);
+
     // Write a markdown digest covering every selected article to
     //     <download_dir>/<YYYY-MM-DD>/digest.md
     // and download each selected article's PDF into the same directory.

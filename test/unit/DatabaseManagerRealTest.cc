@@ -105,6 +105,52 @@ TEST_CASE("Real DB: bookmarking", "[database][real]") {
 }
 
 // ---------------------------------------------------------------------------
+// Article deletion
+// ---------------------------------------------------------------------------
+TEST_CASE("Real DB: DeleteArticle", "[database][real]") {
+    DatabaseManager db(":memory:");
+    db.AddArticle(sample_articles[0]);
+    db.AddArticle(sample_articles[1]);
+
+    SECTION("Deleted article no longer appears in GetRecent") {
+        db.DeleteArticle(sample_articles[0].link);
+        auto articles = db.GetRecent(-1);
+        REQUIRE(articles.size() == 1);
+        REQUIRE(articles[0].link == sample_articles[1].link);
+    }
+
+    SECTION("Delete removes associated rating") {
+        db.SetRating(sample_articles[0].link, 5);
+        db.DeleteArticle(sample_articles[0].link);
+        // Article gone, rating should be gone too (no FK violation on re-add)
+        db.AddArticle(sample_articles[0]);
+        REQUIRE(db.GetRating(sample_articles[0].link) == 0);
+    }
+
+    SECTION("Delete removes project membership") {
+        db.AddProject("TestProject");
+        db.LinkArticleToProject(sample_articles[0].link, "TestProject");
+        db.DeleteArticle(sample_articles[0].link);
+        auto articles = db.GetArticlesForProject("TestProject");
+        REQUIRE(articles.empty());
+    }
+
+    SECTION("Delete removes project note") {
+        db.AddProject("TestProject");
+        db.SetProjectNote("TestProject", sample_articles[0].link, "my note");
+        db.DeleteArticle(sample_articles[0].link);
+        // Re-add article and verify note is gone
+        db.AddArticle(sample_articles[0]);
+        REQUIRE(db.GetProjectNote("TestProject", sample_articles[0].link).empty());
+    }
+
+    SECTION("Deleting a nonexistent link is a no-op") {
+        REQUIRE_NOTHROW(db.DeleteArticle("https://doesnotexist"));
+        REQUIRE(db.GetRecent(-1).size() == 2);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Search
 // ---------------------------------------------------------------------------
 TEST_CASE("Real DB: SearchArticles", "[database][real]") {

@@ -42,7 +42,8 @@ class KeyBindings {
         ExportSelectedDigest,
         ExportToObsidian,
         Settings,
-        GenerateBibtex
+        GenerateBibtex,
+        DeleteArticle
     };
 
     KeyBindings() = default;

@@ -419,6 +419,18 @@ void DatabaseManager::ToggleBookmark(const std::string& link, bool bookmarked) {
     stmt.bind(1, bookmarked ? 1 : 0).bind(2, link).step_done();
 }
 
+void DatabaseManager::DeleteArticle(const std::string& link) {
+    spdlog::debug("[Database]: Deleting article {}", link);
+    Stmt pn(db, "DELETE FROM project_notes WHERE article_link = ?", "DeleteArticle/notes");
+    pn.bind(1, link).step_done();
+    Stmt pa(db, "DELETE FROM project_articles WHERE article_link = ?", "DeleteArticle/projects");
+    pa.bind(1, link).step_done();
+    Stmt ar(db, "DELETE FROM article_ratings WHERE article_link = ?", "DeleteArticle/ratings");
+    ar.bind(1, link).step_done();
+    Stmt a(db, "DELETE FROM articles WHERE link = ?", "DeleteArticle");
+    a.bind(1, link).step_done();
+}
+
 void DatabaseManager::AddProject(const std::string& project_name) {
     Stmt stmt(db, "INSERT OR REPLACE INTO projects (name) VALUES (?)", "AddProject");
     stmt.bind(1, project_name).step_done();

@@ -70,18 +70,26 @@ void ArxivApp::SetupAssignProjectDialog() {
 
 bool ArxivApp::HandleAssignProjectEvent(ftxui::Event event) {
     if (event == Event::Return) {
-        auto articles = core.GetCurrentArticles();
-        if (!articles.empty()) {
-            auto article = articles[static_cast<size_t>(core.GetArticleIndex())];
+        if (core.GetSelectionCount() > 0) {
+            // Bulk mode: add all selected articles to every checked project.
             for (const auto& [project, selected] : checkbox_states) {
-                if (selected) {
-                    core.LinkArticleToProject(article.link, project);
-                    if (m_recorder)
-                        m_recorder->RecordLinkArticleToProject(article.link, project);
-                } else {
-                    core.UnlinkArticleFromProject(article.link, project);
-                    if (m_recorder)
-                        m_recorder->RecordUnlinkArticleFromProject(article.link, project);
+                if (selected)
+                    core.AddSelectedToProject(project);
+            }
+        } else {
+            auto articles = core.GetCurrentArticles();
+            if (!articles.empty()) {
+                auto article = articles[static_cast<size_t>(core.GetArticleIndex())];
+                for (const auto& [project, selected] : checkbox_states) {
+                    if (selected) {
+                        core.LinkArticleToProject(article.link, project);
+                        if (m_recorder)
+                            m_recorder->RecordLinkArticleToProject(article.link, project);
+                    } else {
+                        core.UnlinkArticleFromProject(article.link, project);
+                        if (m_recorder)
+                            m_recorder->RecordUnlinkArticleFromProject(article.link, project);
+                    }
                 }
             }
         }

@@ -38,11 +38,16 @@ void ArxivApp::SetupArticlePane() {
             if (key_bindings.matches(event, KeyBindings::Action::Bookmark)) {
                 auto articles = core.GetCurrentArticles();
                 if (!articles.empty()) {
-                    const std::string& link =
-                        articles[static_cast<size_t>(core.GetArticleIndex())].link;
-                    core.ToggleBookmark(link);
-                    if (m_recorder)
-                        m_recorder->RecordToggleBookmark(link);
+                    if (core.GetSelectionCount() > 0) {
+                        // Bulk bookmark: set all selected to bookmarked.
+                        core.BookmarkSelected(true);
+                    } else {
+                        const std::string& link =
+                            articles[static_cast<size_t>(core.GetArticleIndex())].link;
+                        core.ToggleBookmark(link);
+                        if (m_recorder)
+                            m_recorder->RecordToggleBookmark(link);
+                    }
                 }
                 return true;
             }
@@ -53,7 +58,11 @@ void ArxivApp::SetupArticlePane() {
 
                 selected_projects.clear();
                 checkbox_states.clear();
-                if (!articles.empty()) {
+                if (core.GetSelectionCount() > 0) {
+                    // Bulk mode: checkboxes start unchecked; confirm adds all selected.
+                    for (const auto& project : projects)
+                        checkbox_states[project] = false;
+                } else if (!articles.empty()) {
                     selected_projects = std::set<std::string>(
                         core.GetProjectsForArticle(
                                 articles[static_cast<size_t>(core.GetArticleIndex())].link)
@@ -61,12 +70,16 @@ void ArxivApp::SetupArticlePane() {
                         core.GetProjectsForArticle(
                                 articles[static_cast<size_t>(core.GetArticleIndex())].link)
                             .end());
-                }
-
-                for (const auto& project : projects) {
-                    checkbox_states[project] = selected_projects.count(project) > 0;
+                    for (const auto& project : projects)
+                        checkbox_states[project] = selected_projects.count(project) > 0;
                 }
                 selected_project_index = 0;
+                return true;
+            }
+            if (key_bindings.matches(event, KeyBindings::Action::DeleteArticle)) {
+                if (!core.GetCurrentArticles().empty()) {
+                    dialog_depth = Dialog::ConfirmDelete;
+                }
                 return true;
             }
             if (key_bindings.matches(event, KeyBindings::Action::DownloadArticle)) {
@@ -151,17 +164,21 @@ void ArxivApp::SetupArticlePane() {
         }
 
         int pending = core.PendingRatings();
+        std::size_t sel_count = core.GetSelectionCount();
         auto header_text = focused_pane == 1
                                ? text(" Articles ") | bold | color(TextColors::base()) |
                                      bgcolor(TextColors::primary())
                                : text(" Articles ") | bold | color(TextColors::primary());
         Element header = hbox({
             header_text,
-            core.IsTraining()
-                ? text("  [Training…]") | color(TextColors::secondary())
-                : (pending > 0 ? text("  [" + std::to_string(pending) + " rating(s) pending]") |
-                                     color(TextColors::subtext())
-                               : emptyElement()),
+            sel_count > 0
+                ? text("  [" + std::to_string(sel_count) + " selected]") |
+                      color(TextColors::secondary())
+                : (core.IsTraining() ? text("  [Training…]") | color(TextColors::secondary())
+                                     : (pending > 0 ? text("  [" + std::to_string(pending) +
+                                                           " rating(s) pending]") |
+                                                          color(TextColors::subtext())
+                                                    : emptyElement())),
         });
         return vbox({header,
                      separator() | color(TextColors::border()),

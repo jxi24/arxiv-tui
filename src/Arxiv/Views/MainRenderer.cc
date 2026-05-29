@@ -170,6 +170,24 @@ void ArxivApp::SetupMainRenderer() {
             document = dbox({document, category_dialog->Render()});
         } else if (dialog_depth == Dialog::Settings) {
             document = dbox({document, settings_dialog->Render()});
+        } else if (dialog_depth == Dialog::ConfirmDelete) {
+            std::size_t n = core.GetSelectionCount();
+            std::string msg = n > 0 ? "Delete " + std::to_string(n) + " selected article(s)?"
+                                    : "Delete this article?";
+            auto confirm_dialog = vbox({
+                                      text("DELETE") | bold | center | color(TextColors::error()),
+                                      separator() | color(TextColors::error()),
+                                      text(msg) | center | color(TextColors::text()),
+                                      separator() | color(TextColors::border()),
+                                      hbox({
+                                          text(" [y] Yes ") | bold | color(TextColors::error()),
+                                          text("  "),
+                                          text(" [n] No  ") | color(TextColors::subtext()),
+                                      }) | center,
+                                  }) |
+                                  borderStyled(ROUNDED, TextColors::error()) |
+                                  bgcolor(TextColors::surface()) | clear_under | center;
+            document = dbox({document, confirm_dialog});
         }
 
         if (show_help) {
@@ -246,6 +264,17 @@ void ArxivApp::SetupEventHandler() {
             if (event == Event::Return || event == Event::Escape) {
                 dialog_depth = Dialog::None;
                 success_msg = "";
+            }
+            return true;
+        }
+
+        // Delete confirmation: y = confirm, anything else = cancel
+        if (dialog_depth == Dialog::ConfirmDelete) {
+            if (event == Event::Character('y') || event == Event::Character('Y')) {
+                core.DeleteCurrentOrSelected();
+                dialog_depth = Dialog::None;
+            } else {
+                dialog_depth = Dialog::None;
             }
             return true;
         }

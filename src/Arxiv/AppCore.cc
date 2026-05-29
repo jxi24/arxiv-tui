@@ -1155,6 +1155,52 @@ void AppCore::ClearSelections() {
     NotifyArticleUpdate();
 }
 
+void AppCore::DeleteCurrentOrSelected() {
+    std::vector<std::string> to_delete;
+    if (!m_selected_links.empty()) {
+        to_delete.assign(m_selected_links.begin(), m_selected_links.end());
+    } else if (!m_current_articles.empty()) {
+        to_delete.push_back(m_current_articles[static_cast<size_t>(m_article_index)].link);
+    }
+    for (const auto& link : to_delete) {
+        spdlog::info("[AppCore]: Deleting article {}", link);
+        m_db->DeleteArticle(link);
+    }
+    m_selected_links.clear();
+    FetchArticles();
+}
+
+void AppCore::BookmarkSelected(bool bookmarked) {
+    std::vector<std::string> targets;
+    if (!m_selected_links.empty()) {
+        targets.assign(m_selected_links.begin(), m_selected_links.end());
+    } else if (!m_current_articles.empty()) {
+        targets.push_back(m_current_articles[static_cast<size_t>(m_article_index)].link);
+    }
+    for (const auto& link : targets) {
+        m_db->ToggleBookmark(link, bookmarked);
+        auto it = std::find_if(m_current_articles.begin(),
+                               m_current_articles.end(),
+                               [&](const Article& a) { return a.link == link; });
+        if (it != m_current_articles.end())
+            it->bookmarked = bookmarked;
+    }
+    RefreshTitles();
+    NotifyArticleUpdate();
+}
+
+void AppCore::AddSelectedToProject(const std::string& project_name) {
+    std::vector<std::string> targets;
+    if (!m_selected_links.empty()) {
+        targets.assign(m_selected_links.begin(), m_selected_links.end());
+    } else if (!m_current_articles.empty()) {
+        targets.push_back(m_current_articles[static_cast<size_t>(m_article_index)].link);
+    }
+    for (const auto& link : targets)
+        m_db->LinkArticleToProject(link, project_name);
+    NotifyArticleUpdate();
+}
+
 std::string AppCore::ExportSelectedDigest() {
     if (m_selected_links.empty()) {
         spdlog::warn("[AppCore]: ExportSelectedDigest called with no selections");

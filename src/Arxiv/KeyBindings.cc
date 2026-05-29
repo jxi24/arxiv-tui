@@ -24,7 +24,7 @@ struct ActionInfo {
 
 using Action = KeyBindings::Action;
 
-constexpr std::array<ActionInfo, 27> kActionTable = {{
+constexpr std::array<ActionInfo, 28> kActionTable = {{
     {Action::Next, "next", "j", "Next"},
     {Action::Previous, "previous", "k", "Previous"},
     {Action::Quit, "quit", "q", "Quit"},
@@ -52,6 +52,7 @@ constexpr std::array<ActionInfo, 27> kActionTable = {{
     {Action::ExportToObsidian, "export_to_obsidian", "o", "Export to Obsidian"},
     {Action::Settings, "settings", "S", "Settings"},
     {Action::GenerateBibtex, "generate_bibtex", "c", "Generate BibTeX"},
+    {Action::DeleteArticle, "delete_article", "D", "Delete Article"},
 }};
 
 const ActionInfo* find_by_config_name(std::string_view name) {
