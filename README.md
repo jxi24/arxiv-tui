@@ -403,12 +403,34 @@ Hooks: trailing whitespace, LF line endings, valid YAML/TOML, clang-format, REUS
 
 ---
 
-## Future Goals
+## Roadmap to v1.0
 
-- Read/unread tracking to highlight new papers since last session
-- Tag system for cross-project, user-defined labels
-- Copy BibTeX entry to clipboard directly from the detail pane
-- Auto-update a project's `.bib` file when a new article is added
+### v0.8 — Reading workflow
+
+The gap between "paper discovered" and "paper read" should be first-class.
+
+- **Read/unread tracking** — record a `read_at` timestamp when the detail pane is opened or a PDF is downloaded; add a **New** filter showing articles unseen since the last session; show unread articles in bold or with a dot prefix
+- **`--fetch` headless mode** — `arxiv-tui --fetch` updates the database and exits without opening the TUI, enabling cron-based refresh so the feed is always current when you open the app
+- **Database pruning** — add a `max_article_age_days` config option; articles older than that threshold are removed automatically on startup unless bookmarked, rated, or in a project, keeping the database from growing unboundedly
+
+### v0.9 — Integration and power use
+
+Connecting the tool to the rest of a research workflow.
+
+- **Clipboard integration** — pressing `c` on an article copies its BibTeX directly to the system clipboard (via `xclip`, `xsel`, or `wl-clipboard`); a `ARXIV_TUI_CLIPBOARD` env var selects the backend; writing to a file remains available as a fallback
+- **FTS5 full-text search** — replace the current `LIKE '%query%'` search with SQLite's built-in FTS5 extension for ranked, stemmed full-text search over titles, authors, and abstracts; no new dependency required
+- **Tag system** — user-defined labels that live outside the project hierarchy; an article can have multiple tags; tags appear as a filter alongside projects and can be exported with BibTeX metadata
+- **Auto-update project `.bib`** — when an article is added to a project that has a previously exported `.bib` file, append the new entry automatically without requiring a manual re-export
+
+### v1.0 — Polish and completeness
+
+The features that make the tool feel finished rather than functional.
+
+- **Undo for destructive actions** — `u` undoes the last delete or bulk-delete by restoring the article row, its rating, project memberships, and notes from an in-memory ring buffer; the buffer holds the last 10 operations
+- **Configurable article list columns** — allow the config to specify which columns appear in the article list (title, authors, date, category, score) and in what order; this makes the layout useful on narrow terminals and for non-physics categories where the arXiv ID is more informative than the date
+- **arXiv category autocomplete** — when adding a topic in the settings dialog, offer autocomplete against the full arXiv category taxonomy (a ~200-entry static list bundled at compile time) to prevent silent typos that produce empty feeds
+- **Help overlay search** — type to filter the help overlay when the binding count makes scrolling tedious; highlights matching rows
+- **Export digest as archive** — wrap the Markdown digest and downloaded PDFs produced by `g` into a `.tar.gz` so the output can be shared as a single file
 
 ---
 
