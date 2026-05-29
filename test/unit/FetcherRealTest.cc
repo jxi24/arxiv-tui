@@ -245,6 +245,115 @@ TEST_CASE("Fetcher::StyleLatex", "[fetcher][real][latex]") {
 }
 
 // ---------------------------------------------------------------------------
+// LatexToMarkdown
+// ---------------------------------------------------------------------------
+TEST_CASE("Fetcher::LatexToMarkdown", "[fetcher][real][latex]") {
+    Fetcher fetcher({"hep-ph"});
+
+    SECTION("\\textit{x} becomes *x*") {
+        REQUIRE(fetcher.LatexToMarkdown("\\textit{word}") == "*word*");
+    }
+
+    SECTION("\\emph{x} becomes *x*") {
+        REQUIRE(fetcher.LatexToMarkdown("\\emph{emphasis}") == "*emphasis*");
+    }
+
+    SECTION("\\textsl{x} becomes *x*") {
+        REQUIRE(fetcher.LatexToMarkdown("\\textsl{slanted}") == "*slanted*");
+    }
+
+    SECTION("\\textbf{x} becomes **x**") {
+        REQUIRE(fetcher.LatexToMarkdown("\\textbf{bold}") == "**bold**");
+    }
+
+    SECTION("\\texttt{x} becomes `x`") {
+        REQUIRE(fetcher.LatexToMarkdown("\\texttt{code}") == "`code`");
+    }
+
+    SECTION("\\st{x} becomes ~~x~~") {
+        REQUIRE(fetcher.LatexToMarkdown("\\st{struck}") == "~~struck~~");
+    }
+
+    SECTION("\\textsc{x} strips to x (no Markdown equivalent)") {
+        REQUIRE(fetcher.LatexToMarkdown("\\textsc{SmallCaps}") == "SmallCaps");
+    }
+
+    SECTION("\\underline{x} strips to x") {
+        REQUIRE(fetcher.LatexToMarkdown("\\underline{underlined}") == "underlined");
+    }
+
+    SECTION("$math$ is preserved unchanged") {
+        REQUIRE(fetcher.LatexToMarkdown("energy $E=mc^2$ formula") == "energy $E=mc^2$ formula");
+    }
+
+    SECTION("Nested \\textbf{\\textit{x}} becomes ***x***") {
+        REQUIRE(fetcher.LatexToMarkdown("\\textbf{\\textit{strong italic}}") ==
+                "***strong italic***");
+    }
+
+    SECTION("Plain text is unchanged") {
+        REQUIRE(fetcher.LatexToMarkdown("plain text") == "plain text");
+    }
+
+    SECTION("Inline usage: formatting inside a sentence") {
+        auto result = fetcher.LatexToMarkdown("We study \\textit{CP} violation.");
+        REQUIRE(result == "We study *CP* violation.");
+    }
+}
+
+TEST_CASE("ParseFeed stores Markdown-formatted text", "[fetcher][real][rss]") {
+    auto tmp = std::filesystem::temp_directory_path() / "arxiv_fetcher_md";
+    std::filesystem::create_directories(tmp);
+    Fetcher fetcher({"hep-ph"}, tmp.string());
+
+    SECTION("\\textit in title is converted to *x* in stored article") {
+        std::string xml =
+            R"(<?xml version="1.0"?><rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/"><channel><item>
+            <title>\textit{CP} violation at the LHC</title>
+            <link>https://arxiv.org/abs/2403.11111</link>
+            <description>Abstract: We measure \\textbf{coupling} constants.</description>
+            <pubDate>2024-03-25T12:00:00Z</pubDate>
+            <dc:creator>Author A</dc:creator>
+        </item></channel></rss>)";
+        auto articles = fetcher.ParseFeed(xml);
+        REQUIRE(articles.size() == 1);
+        REQUIRE_THAT(articles[0].title, ContainsSubstring("*CP*"));
+        REQUIRE_THAT(articles[0].abstract, ContainsSubstring("**coupling**"));
+    }
+
+    std::filesystem::remove_all(tmp);
+}
+
+TEST_CASE("ParseAtomFeed stores Markdown-formatted text", "[fetcher][real][atom]") {
+    auto tmp = std::filesystem::temp_directory_path() / "arxiv_fetcher_atom_md";
+    std::filesystem::create_directories(tmp);
+    Fetcher fetcher({"hep-ph"}, tmp.string());
+
+    static const std::string ATOM_WITH_LATEX = R"(<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:arxiv="http://arxiv.org/schemas/atom">
+  <entry>
+    <id>http://arxiv.org/abs/2605.00001v1</id>
+    <title>\textbf{Strong} force at \textit{high} energy</title>
+    <summary>We study the \textit{non-perturbative} regime.</summary>
+    <author><name>Alice Smith</name></author>
+    <published>2026-05-10T00:00:00Z</published>
+    <arxiv:primary_category term="hep-ph"/>
+    <arxiv:announce_type>new</arxiv:announce_type>
+  </entry>
+</feed>)";
+
+    SECTION("\\textbf in title becomes **x** in stored article") {
+        auto articles = fetcher.ParseAtomFeed(ATOM_WITH_LATEX);
+        REQUIRE(articles.size() == 1);
+        REQUIRE_THAT(articles[0].title, ContainsSubstring("**Strong**"));
+        REQUIRE_THAT(articles[0].abstract, ContainsSubstring("*non-perturbative*"));
+    }
+
+    std::filesystem::remove_all(tmp);
+}
+
+// ---------------------------------------------------------------------------
 // ConstructPaperUrl
 // ---------------------------------------------------------------------------
 TEST_CASE("Fetcher::ConstructPaperUrl", "[fetcher][real]") {

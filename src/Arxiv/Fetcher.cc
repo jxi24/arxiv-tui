@@ -229,7 +229,7 @@ std::vector<Article> Fetcher::ParseFeed(const std::string& xml_content) const {
             Article article;
 
             // Extract basic fields using node values
-            article.title = StyleLatex(ReplaceLatexAccents(item.child_value("title")));
+            article.title = LatexToMarkdown(item.child_value("title"));
             article.link = NormalizeLink(item.child_value("link"));
             std::string abstract_text = item.child_value("description");
             // Find the position of "Abstract:" and remove everything up to and including it
@@ -238,15 +238,14 @@ std::vector<Article> Fetcher::ParseFeed(const std::string& xml_content) const {
                 abstract_text =
                     abstract_text.substr(abstract_pos + 10); // 10 is length of "Abstract: "
             }
-            article.abstract = StyleLatex(ReplaceLatexAccents(abstract_text));
+            article.abstract = LatexToMarkdown(abstract_text);
 
             // Parse date
             auto date_str = item.child_value("pubDate");
             article.date = ParseDate(date_str).value_or(std::chrono::system_clock::now());
 
             // Extract authors (dc.creator)
-            article.authors =
-                StyleLatex(ReplaceLatexAccents(item.child("dc:creator").text().get()));
+            article.authors = LatexToMarkdown(item.child("dc:creator").text().get());
 
             // Collect all categories
             std::stringstream categories;
@@ -300,6 +299,78 @@ std::optional<Arxiv::time_point> Fetcher::ParseDate(const std::string& date) con
     // Convert to time_point
     std::time_t time = std::mktime(&tm);
     return std::chrono::system_clock::from_time_t(time);
+}
+
+// Return the position of the closing brace that matches the '{' at open_pos,
+// respecting nested braces.  Returns std::string::npos if unmatched.
+static size_t find_closing_brace(const std::string& s, size_t open_pos) {
+    int depth = 1;
+    for (size_t i = open_pos + 1; i < s.size(); ++i) {
+        if (s[i] == '{')
+            ++depth;
+        else if (s[i] == '}' && --depth == 0)
+            return i;
+    }
+    return std::string::npos;
+}
+
+// Apply one pass of command→marker substitutions using proper brace matching.
+// Each entry is { "\\cmd", { "open_marker", "close_marker" } }.
+// An empty marker pair means "strip the command, keep the content."
+static void apply_latex_conversions(
+    std::string& result,
+    const std::vector<std::pair<std::string, std::pair<std::string, std::string>>>& table) {
+    for (const auto& [cmd, markers] : table) {
+        const auto& [open_md, close_md] = markers;
+        std::string open_tok = cmd + "{";
+        size_t pos = 0;
+        while ((pos = result.find(open_tok, pos)) != std::string::npos) {
+            size_t brace = pos + cmd.size(); // position of '{'
+            size_t close = find_closing_brace(result, brace);
+            if (close == std::string::npos) {
+                ++pos;
+                continue;
+            }
+            std::string content = result.substr(brace + 1, close - brace - 1);
+            std::string replacement = open_md + content + close_md;
+            result.replace(pos, close - pos + 1, replacement);
+            pos += replacement.size();
+        }
+    }
+}
+
+std::string Fetcher::LatexToMarkdown(const std::string& text) const {
+    std::string result = ReplaceLatexAccents(text);
+
+    // Commands with Markdown equivalents.
+    static const std::vector<std::pair<std::string, std::pair<std::string, std::string>>>
+        conversions = {
+            {"\\textbf", {"**", "**"}},
+            {"\\textit", {"*", "*"}},
+            {"\\emph", {"*", "*"}},
+            {"\\textsl", {"*", "*"}},
+            {"\\texttt", {"`", "`"}},
+            {"\\st", {"~~", "~~"}},
+            // No Markdown equivalent — strip the command, keep the content.
+            {"\\textsc", {"", ""}},
+            {"\\textnormal", {"", ""}},
+            {"\\textrm", {"", ""}},
+            {"\\textsf", {"", ""}},
+            {"\\textmd", {"", ""}},
+            {"\\textup", {"", ""}},
+            {"\\textdown", {"", ""}},
+            {"\\underline", {"", ""}},
+            {"\\overline", {"", ""}},
+        };
+
+    // Repeat until no further substitutions are made (handles nesting).
+    std::string prev;
+    do {
+        prev = result;
+        apply_latex_conversions(result, conversions);
+    } while (result != prev);
+
+    return result;
 }
 
 std::string Fetcher::StyleLatex(const std::string& text) const {
@@ -637,8 +708,8 @@ std::vector<Article> Fetcher::ParseAtomFeed(const std::string& xml_content) cons
         std::string raw_link = entry.child_value("id");
         article.link = NormalizeLink(raw_link);
 
-        article.title = StyleLatex(ReplaceLatexAccents(entry.child_value("title")));
-        article.abstract = StyleLatex(ReplaceLatexAccents(entry.child_value("summary")));
+        article.title = LatexToMarkdown(entry.child_value("title"));
+        article.abstract = LatexToMarkdown(entry.child_value("summary"));
 
         // Authors: one or more <author><name>…</name></author>
         std::string authors_str;
@@ -647,7 +718,7 @@ std::vector<Article> Fetcher::ParseAtomFeed(const std::string& xml_content) cons
                 authors_str += ", ";
             authors_str += author.child_value("name");
         }
-        article.authors = StyleLatex(ReplaceLatexAccents(authors_str));
+        article.authors = LatexToMarkdown(authors_str);
 
         // <published> = arXiv processing/announcement date of v1 (the posting date).
         // Not the peer-reviewed journal date; that is <arxiv:journal_ref>.

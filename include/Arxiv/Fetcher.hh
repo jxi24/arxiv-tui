@@ -43,7 +43,12 @@ class Fetcher {
     std::optional<time_point> ParseDate(const std::string& date) const;
     std::optional<time_point> ParseAtomDate(const std::string& date) const;
     std::string ReplaceLatexAccents(const std::string& text) const;
+    /// Strip LaTeX formatting commands, leaving plain text.
     std::string StyleLatex(const std::string& text) const;
+    /// Convert LaTeX formatting commands to Markdown equivalents:
+    /// \textit → *x*, \textbf → **x**, \texttt → `x`, \st → ~~x~~.
+    /// $...$ math spans are preserved unchanged.
+    std::string LatexToMarkdown(const std::string& text) const;
     std::string ConstructPaperUrl(const std::string& paper_id, const std::string& format) const;
 
   private:
