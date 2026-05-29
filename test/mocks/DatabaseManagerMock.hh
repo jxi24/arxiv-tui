@@ -80,6 +80,9 @@ class DatabaseManagerMock : public Arxiv::DatabaseManager {
     MAKE_MOCK1(GetArticlesForProject, std::vector<Arxiv::Article>(const std::string&), override);
     MAKE_MOCK2(ToggleBookmark, void(const std::string&, bool), override);
     MAKE_MOCK1(DeleteArticle, void(const std::string&), override);
+    MAKE_MOCK1(MarkArticleRead, void(const std::string&), override);
+    MAKE_MOCK0(GetUnreadArticles, std::vector<Arxiv::Article>(), override);
+    MAKE_MOCK1(PruneArticles, void(int), override);
     MAKE_MOCK1(AddProject, void(const std::string&), override);
     MAKE_MOCK1(RemoveProject, void(const std::string&), override);
     MAKE_MOCK0(GetProjects, std::vector<std::string>(), override);

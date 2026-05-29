@@ -67,6 +67,10 @@ void Config::load_from_file(const std::string& config_file) {
         scroll_margin_ = config["scroll_margin"].as<int>();
     }
 
+    if (config["max_article_age_days"]) {
+        max_article_age_days_ = config["max_article_age_days"].as<int>();
+    }
+
     // Load key mappings
     if (config["key_mappings"]) {
         key_mappings_.clear();
@@ -102,6 +106,7 @@ void Config::save_to_file(const std::string& config_file) const {
     config["retrain_interval"] = retrain_interval_;
     config["auto_refresh_minutes"] = auto_refresh_minutes_;
     config["scroll_margin"] = scroll_margin_;
+    config["max_article_age_days"] = max_article_age_days_;
     if (!obsidian_vault_.empty()) {
         config["obsidian_vault"] = obsidian_vault_;
     }

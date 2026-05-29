@@ -89,7 +89,9 @@ void ArxivApp::SetupArticlePane() {
                 if (m_recorder)
                     m_recorder->RecordDownloadArticle(article.id());
                 bool success = core.DownloadArticle(article.id());
-                if (!success) {
+                if (success) {
+                    core.MarkArticleRead(article.link);
+                } else {
                     dialog_depth = Dialog::Error;
                     err_msg = fmt::format("Failed to download article: {}", article.id());
                 }
@@ -159,7 +161,8 @@ void ArxivApp::SetupArticlePane() {
                 }
             } else {
                 title = "  " + title + score_badge;
-                menu_items.push_back(text(title) | color(TextColors::text()));
+                auto col = article.read ? TextColors::subtext() : TextColors::text();
+                menu_items.push_back(text(title) | color(col));
             }
         }
 

@@ -26,6 +26,8 @@ struct Article {
     // submission) per arXiv's announce_type / dc:type. The New Articles view
     // hides these so users only see truly fresh submissions.
     bool is_replacement{false};
+    // True when the article has been opened in the detail pane or downloaded.
+    bool read{false};
 
     Article() = default;
 

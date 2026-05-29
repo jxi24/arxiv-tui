@@ -474,6 +474,7 @@ TEST_CASE("AppCore edge cases: SetFilterIndex bounds", "[app][edge]") {
     db_ptr->setArticles(sample_articles);
     db_ptr->setBookmarkedArticles({});
     db_ptr->setProjects({});
+    ALLOW_CALL(*db_ptr, GetUnreadArticles()).RETURN(std::vector<Arxiv::Article>{});
 
     Arxiv::AppCore core(config, std::move(db), std::move(fetcher));
 
@@ -754,6 +755,85 @@ TEST_CASE("AppCore::AddSelectedToProject", "[app][projects]") {
         core.AddSelectedToProject("Proj");
 
         REQUIRE(linked == sample_articles[1].link);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// v0.8: read/unread, pruning
+// ---------------------------------------------------------------------------
+
+TEST_CASE("AppCore::MarkArticleRead", "[app][read]") {
+    Config config("test/fixtures/test_config.yml");
+    auto db = std::make_unique<DatabaseManagerMock>();
+    auto fetcher = std::make_unique<FetcherMock>();
+    auto* db_ptr = db.get();
+
+    ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(sample_articles);
+    ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{});
+
+    SECTION("Delegates to DatabaseManager::MarkArticleRead") {
+        std::string marked;
+        ALLOW_CALL(*db_ptr, MarkArticleRead(ANY(std::string))).LR_SIDE_EFFECT(marked = _1);
+
+        AppCore core(config, std::move(db), std::move(fetcher));
+        core.MarkArticleRead(sample_articles[0].link);
+        REQUIRE(marked == sample_articles[0].link);
+    }
+}
+
+TEST_CASE("AppCore Unread filter", "[app][filter]") {
+    Config config("test/fixtures/test_config.yml");
+    auto db = std::make_unique<DatabaseManagerMock>();
+    auto fetcher = std::make_unique<FetcherMock>();
+    auto* db_ptr = db.get();
+
+    std::vector<Article> unread_articles = {sample_articles[1]};
+
+    ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(sample_articles);
+    ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{});
+    ALLOW_CALL(*db_ptr, GetUnreadArticles()).RETURN(unread_articles);
+
+    SECTION("Unread filter shows only unread articles") {
+        AppCore core(config, std::move(db), std::move(fetcher));
+        core.SetFilterIndex(AppCore::FilterView::Unread);
+        auto articles = core.GetCurrentArticles();
+        REQUIRE(articles.size() == 1);
+        REQUIRE(articles[0].link == sample_articles[1].link);
+    }
+}
+
+TEST_CASE("AppCore startup pruning", "[app][prune]") {
+    SECTION("Calls PruneArticles with configured max_article_age_days") {
+        auto db = std::make_unique<DatabaseManagerMock>();
+        auto fetcher = std::make_unique<FetcherMock>();
+        auto* db_ptr = db.get();
+
+        ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(sample_articles);
+        ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{});
+
+        int pruned_days = -1;
+        ALLOW_CALL(*db_ptr, PruneArticles(ANY(int))).LR_SIDE_EFFECT(pruned_days = _1);
+
+        Config cfg("test/fixtures/test_config.yml");
+        cfg.set_max_article_age_days(45);
+        AppCore core(cfg, std::move(db), std::move(fetcher));
+        REQUIRE(pruned_days == 45);
+    }
+
+    SECTION("Does not call PruneArticles when max_article_age_days is 0") {
+        auto db = std::make_unique<DatabaseManagerMock>();
+        auto fetcher = std::make_unique<FetcherMock>();
+        auto* db_ptr = db.get();
+
+        Config config("test/fixtures/test_config.yml");
+        ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(sample_articles);
+        ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{});
+
+        bool called = false;
+        ALLOW_CALL(*db_ptr, PruneArticles(ANY(int))).LR_SIDE_EFFECT(called = true);
+
+        AppCore core(config, std::move(db), std::move(fetcher));
+        REQUIRE_FALSE(called);
     }
 }
 

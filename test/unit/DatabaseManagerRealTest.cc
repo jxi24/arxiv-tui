@@ -105,6 +105,92 @@ TEST_CASE("Real DB: bookmarking", "[database][real]") {
 }
 
 // ---------------------------------------------------------------------------
+// Read / unread tracking
+// ---------------------------------------------------------------------------
+TEST_CASE("Real DB: read/unread tracking", "[database][real]") {
+    DatabaseManager db(":memory:");
+    db.AddArticle(sample_articles[0]);
+    db.AddArticle(sample_articles[1]);
+
+    SECTION("Articles start unread") {
+        auto articles = db.GetRecent(-1);
+        for (const auto& a : articles)
+            REQUIRE_FALSE(a.read);
+    }
+
+    SECTION("MarkArticleRead sets the read flag") {
+        db.MarkArticleRead(sample_articles[0].link);
+        auto articles = db.GetRecent(-1);
+        auto it = std::find_if(articles.begin(), articles.end(), [](const auto& a) {
+            return a.link == sample_articles[0].link;
+        });
+        REQUIRE(it != articles.end());
+        REQUIRE(it->read);
+    }
+
+    SECTION("MarkArticleRead is idempotent") {
+        db.MarkArticleRead(sample_articles[0].link);
+        REQUIRE_NOTHROW(db.MarkArticleRead(sample_articles[0].link));
+    }
+
+    SECTION("GetUnreadArticles returns only unread articles") {
+        db.MarkArticleRead(sample_articles[0].link);
+        auto unread = db.GetUnreadArticles();
+        REQUIRE(unread.size() == 1);
+        REQUIRE(unread[0].link == sample_articles[1].link);
+    }
+
+    SECTION("GetUnreadArticles returns all when nothing is read") {
+        REQUIRE(db.GetUnreadArticles().size() == 2);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Article pruning
+// ---------------------------------------------------------------------------
+TEST_CASE("Real DB: PruneArticles", "[database][real]") {
+    DatabaseManager db(":memory:");
+
+    // Build an article with an old date (100 days ago)
+    Article old = sample_articles[0];
+    old.link = "https://arxiv.org/abs/old.0001";
+    old.date = std::chrono::system_clock::now() - std::chrono::hours(24 * 100);
+    db.AddArticle(old);
+    db.AddArticle(sample_articles[1]); // recent
+
+    SECTION("Old unprotected article is deleted") {
+        db.PruneArticles(30);
+        auto articles = db.GetRecent(-1);
+        REQUIRE(articles.size() == 1);
+        REQUIRE(articles[0].link == sample_articles[1].link);
+    }
+
+    SECTION("Old bookmarked article is preserved") {
+        db.ToggleBookmark(old.link, true);
+        db.PruneArticles(30);
+        REQUIRE(db.GetRecent(-1).size() == 2);
+    }
+
+    SECTION("Old rated article is preserved") {
+        db.SetRating(old.link, 4);
+        db.PruneArticles(30);
+        REQUIRE(db.GetRecent(-1).size() == 2);
+    }
+
+    SECTION("Old article in a project is preserved") {
+        db.AddProject("Keepers");
+        db.LinkArticleToProject(old.link, "Keepers");
+        db.PruneArticles(30);
+        REQUIRE(db.GetRecent(-1).size() == 2);
+    }
+
+    SECTION("PruneArticles(0) is a no-op") {
+        db.PruneArticles(0);
+        REQUIRE(db.GetRecent(-1).size() == 2);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Article deletion
 // ---------------------------------------------------------------------------
 TEST_CASE("Real DB: DeleteArticle", "[database][real]") {

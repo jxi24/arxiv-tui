@@ -51,6 +51,7 @@ int main(int argc, char* argv[]) {
     std::string export_today_path;
     std::string export_yaml_path;
     bool trace_mode = false;
+    bool fetch_only = false;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--replay") == 0 && i + 1 < argc) {
             replay_file = argv[++i];
@@ -60,6 +61,8 @@ int main(int argc, char* argv[]) {
             export_yaml_path = argv[++i];
         } else if (std::strcmp(argv[i], "--trace") == 0) {
             trace_mode = true;
+        } else if (std::strcmp(argv[i], "--fetch") == 0) {
+            fetch_only = true;
         }
     }
 
@@ -79,6 +82,19 @@ int main(int argc, char* argv[]) {
         config.set_download_dir((paths.data_dir / "downloads").string());
     config.set_db_file((paths.data_dir / "articles.db").string());
     config.set_ranker_file((paths.data_dir / "ranker.bin").string());
+
+    // Headless feed fetch: update the DB and exit without opening the TUI.
+    // Suitable for use in a cron job to keep the database current.
+    if (fetch_only) {
+        spdlog::info("Fetch-only mode: fetching articles");
+        Arxiv::Fetcher fetcher(config.get_topics(), config.get_download_dir());
+        Arxiv::DatabaseManager db(config.get_db_file());
+        auto articles = fetcher.Fetch();
+        db.AddArticles(articles);
+        std::cout << "Fetched " << articles.size() << " article(s).\n";
+        spdlog::info("Fetch-only mode: done ({} articles)", articles.size());
+        return 0;
+    }
 
     // Headless digest export
     if (!export_today_path.empty() || !export_yaml_path.empty()) {

@@ -27,9 +27,10 @@ namespace {
 // The article column list appears in nearly every SELECT — keep it in one
 // place so adding a column does not require touching seven query strings.
 constexpr const char* ARTICLE_COLUMNS =
-    "link, title, authors, abstract, date, bookmarked, category, is_replacement";
+    "link, title, authors, abstract, date, bookmarked, category, is_replacement, read_at";
 constexpr const char* ARTICLE_COLUMNS_A =
-    "a.link, a.title, a.authors, a.abstract, a.date, a.bookmarked, a.category, a.is_replacement";
+    "a.link, a.title, a.authors, a.abstract, a.date, a.bookmarked, a.category, a.is_replacement,"
+    " a.read_at";
 
 /// RAII wrapper around a prepared sqlite3_stmt. Construction prepares the
 /// statement (throws on failure); destruction always finalizes.
@@ -189,6 +190,7 @@ DatabaseManager::DatabaseManager(const std::string& path) {
                value TEXT NOT NULL DEFAULT ''))");
 
     MigrateNormalizeLinks();
+    MigrateAddReadAt();
 
     spdlog::info("[Database]: Initialized");
 }
@@ -431,6 +433,46 @@ void DatabaseManager::DeleteArticle(const std::string& link) {
     a.bind(1, link).step_done();
 }
 
+void DatabaseManager::MigrateAddReadAt() {
+    try {
+        ExecuteSQL("ALTER TABLE articles ADD COLUMN read_at INTEGER DEFAULT NULL");
+    } catch (const std::exception&) {
+        // Column already exists — ignore
+    }
+}
+
+void DatabaseManager::MarkArticleRead(const std::string& link) {
+    spdlog::debug("[Database]: Marking article read {}", link);
+    Stmt stmt(
+        db,
+        "UPDATE articles SET read_at = strftime('%s', 'now') WHERE link = ? AND read_at IS NULL",
+        "MarkArticleRead");
+    stmt.bind(1, link).step_done();
+}
+
+std::vector<Arxiv::Article> DatabaseManager::GetUnreadArticles() {
+    std::vector<Article> articles;
+    std::string sql =
+        std::string("SELECT ") + ARTICLE_COLUMNS + " FROM articles WHERE read_at IS NULL";
+    Stmt stmt(db, sql.c_str(), "GetUnreadArticles");
+    stmt.for_each([&](sqlite3_stmt* s) { articles.push_back(RowToArticle(s)); });
+    return articles;
+}
+
+void DatabaseManager::PruneArticles(int max_age_days) {
+    if (max_age_days <= 0)
+        return;
+    spdlog::info("[Database]: Pruning articles older than {} days", max_age_days);
+    Stmt stmt(db,
+              "DELETE FROM articles "
+              "WHERE date < strftime('%s', 'now') - ? * 86400 "
+              "AND bookmarked = 0 "
+              "AND link NOT IN (SELECT article_link FROM article_ratings) "
+              "AND link NOT IN (SELECT article_link FROM project_articles)",
+              "PruneArticles");
+    stmt.bind(1, max_age_days).step_done();
+}
+
 void DatabaseManager::AddProject(const std::string& project_name) {
     Stmt stmt(db, "INSERT OR REPLACE INTO projects (name) VALUES (?)", "AddProject");
     stmt.bind(1, project_name).step_done();
@@ -515,6 +557,7 @@ Arxiv::Article DatabaseManager::RowToArticle(sqlite3_stmt* stmt) {
     article.bookmarked = sqlite3_column_int(stmt, 5) != 0;
     article.category = ExtractColumn(stmt, 6);
     article.is_replacement = sqlite3_column_int(stmt, 7) != 0;
+    article.read = (sqlite3_column_type(stmt, 8) != SQLITE_NULL);
 
     return article;
 }
@@ -611,8 +654,8 @@ DatabaseManager::RatedArticleList DatabaseManager::GetRatedArticles() {
     Stmt stmt(db, sql.c_str(), "GetRatedArticles");
     stmt.for_each([&](sqlite3_stmt* s) {
         Article article = RowToArticle(s);
-        // ARTICLE_COLUMNS_A has 8 columns; rating is column 8 (index 8).
-        int rating = sqlite3_column_int(s, 8);
+        // ARTICLE_COLUMNS_A has 9 columns (0-8); rating is column 9.
+        int rating = sqlite3_column_int(s, 9);
         result.emplace_back(std::move(article), rating);
     });
     spdlog::debug("[Database]: Found {} rated articles", result.size());

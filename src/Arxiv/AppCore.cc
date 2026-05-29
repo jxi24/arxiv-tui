@@ -75,6 +75,10 @@ AppCore::AppCore(const Config& config,
         m_recorder->RecordEvent("appcore/metadata_loaded",
                                 "prev_fetch=" + prev_fetch + " anchor=" + anchor);
 
+    // Prune old articles before showing the list.
+    if (m_config.get_max_article_age_days() > 0)
+        m_db->PruneArticles(m_config.get_max_article_age_days());
+
     // Show whatever is already in the local DB immediately.
     RefreshFilterOptions();
     FetchArticles();
@@ -305,6 +309,9 @@ void AppCore::FetchArticles() {
         }
         break;
     }
+    case FilterView::Unread:
+        m_current_articles = m_db->GetUnreadArticles();
+        break;
     case FilterView::Project:
         m_current_articles = GetArticlesForProject(GetProjectNameForFilter(m_filter_index));
         break;
@@ -515,6 +522,16 @@ AppCore::FilterView AppCore::GetFilterView() const {
     return static_cast<FilterView>(m_filter_index);
 }
 
+void AppCore::MarkArticleRead(const std::string& link) {
+    m_db->MarkArticleRead(link);
+    auto it = std::find_if(m_current_articles.begin(),
+                           m_current_articles.end(),
+                           [&](const Article& a) { return a.link == link; });
+    if (it != m_current_articles.end())
+        it->read = true;
+    RefreshTitles();
+}
+
 void AppCore::SetFilterIndex(FilterView view) { SetFilterIndex(static_cast<int>(view)); }
 
 void AppCore::SetArticleIndex(int index) {
@@ -564,7 +581,8 @@ void AppCore::RefreshFilterOptions() {
                         "Search",
                         "Recommended",
                         "Followed Authors",
-                        "New Articles"};
+                        "New Articles",
+                        "Unread"};
     m_filter_project_names.clear();
 
     // Build hierarchy from projects table

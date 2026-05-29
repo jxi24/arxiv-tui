@@ -33,6 +33,11 @@ class DatabaseManager {
                                                 bool search_abstract = true);
     virtual void ToggleBookmark(const std::string& link, bool bookmarked = true);
     virtual void DeleteArticle(const std::string& link);
+    virtual void MarkArticleRead(const std::string& link);
+    virtual std::vector<Article> GetUnreadArticles();
+    // Delete articles older than max_age_days that are not bookmarked, rated,
+    // or in any project. Pass 0 to disable (no-op).
+    virtual void PruneArticles(int max_age_days);
 
     // Rating management
     virtual void SetRating(const std::string& link, int rating);
@@ -89,6 +94,7 @@ class DatabaseManager {
     Article RowToArticle(sqlite3_stmt* stmt);
     const char* ExtractColumn(sqlite3_stmt* stmt, int index);
     void MigrateNormalizeLinks();
+    void MigrateAddReadAt();
 
     static int TraceCallback(unsigned type, void*, void* p, void*);
 };

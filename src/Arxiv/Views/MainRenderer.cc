@@ -68,6 +68,9 @@ void ArxivApp::SetupMainRenderer() {
         case AppCore::FilterView::NewArticles:
             filter_label = "New Articles";
             break;
+        case AppCore::FilterView::Unread:
+            filter_label = "Unread";
+            break;
         case AppCore::FilterView::Project:
             filter_label = core.GetProjectNameForFilter(core.GetFilterIndex());
             break;
@@ -481,9 +484,16 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
         return true;
     }
 
-    // Show detail toggle
+    // Show detail toggle — mark focused article as read when detail opens
     if (key_bindings.matches(event, KeyBindings::Action::ShowDetail)) {
         show_detail = !show_detail;
+        if (show_detail) {
+            auto articles = core.GetCurrentArticles();
+            if (!articles.empty()) {
+                const auto& link = articles[static_cast<size_t>(core.GetArticleIndex())].link;
+                core.MarkArticleRead(link);
+            }
+        }
         return true;
     }
 

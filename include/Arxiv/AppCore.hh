@@ -54,12 +54,14 @@ class AppCore {
         Recommended = 5,
         FollowedAuthors = 6,
         NewArticles = 7,
-        Project = 8, // sentinel: any index >= 8 is a project
+        Unread = 8,
+        Project = 9, // sentinel: any index >= 9 is a project
     };
 
     // Article management
     void FetchArticles();
     void ToggleBookmark(const std::string& article_link);
+    void MarkArticleRead(const std::string& article_link);
     bool DownloadArticle(const std::string& article_id);
     std::string GetBibtex(const Article& article);
     std::vector<Article> GetCurrentArticles() const;

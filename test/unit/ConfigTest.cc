@@ -144,3 +144,26 @@ TEST_CASE("Config: topics round-trip through save/load", "[config]") {
     REQUIRE(loaded.get_topics() == std::vector<std::string>{"hep-ph", "cs.LG", "quant-ph"});
     REQUIRE(loaded.get_download_dir() == "/tmp/papers");
 }
+
+// ---------------------------------------------------------------------------
+// Config: max_article_age_days
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Config: max_article_age_days defaults to 0", "[config]") {
+    TempConfig tmp;
+    Config cfg;
+    cfg.save_to_file(tmp.path);
+
+    Config loaded(tmp.path);
+    REQUIRE(loaded.get_max_article_age_days() == 0);
+}
+
+TEST_CASE("Config: max_article_age_days round-trips through save/load", "[config]") {
+    TempConfig tmp;
+    Config cfg;
+    cfg.set_max_article_age_days(30);
+    cfg.save_to_file(tmp.path);
+
+    Config loaded(tmp.path);
+    REQUIRE(loaded.get_max_article_age_days() == 30);
+}
