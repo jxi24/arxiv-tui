@@ -12,7 +12,9 @@ A keyboard-driven terminal user interface for browsing, managing, and downloadin
 - **Full-text search** — search across titles, authors, and abstracts
 - **Fuzzy search** — in-process fuzzy matching surfaces near-miss results in the search filter
 - **Author subscriptions** — follow specific authors in addition to category feeds
-- **Bookmarks** — mark papers for later reading
+- **Bookmarks** — mark papers for later reading; bulk-bookmark multiple articles at once
+- **Multi-article selection** — select articles with `Space`, then apply bulk actions: bookmark, add to project, or delete
+- **Article deletion** — remove individual articles or entire selections from the local database
 - **Projects** — group related articles into named collections with sub-projects, per-article notes, and export/import (Markdown, plain text, JSON)
 - **PDF download** — fetch papers directly to a configurable local directory
 - **Configurable key bindings** — remap every action via a YAML file
@@ -21,21 +23,22 @@ A keyboard-driven terminal user interface for browsing, managing, and downloadin
 - **BibTeX export** — generate `.bib` files for individual articles, selections, or entire projects, with automatic InspireHEP lookup and metadata fallback
 - **Auto-refresh** — configurable background feed refresh interval (0 = disabled)
 - **Replay system and crash handler** — all UI actions are recorded to a JSONL replay log; on a crash, a report with backtrace and full replay is saved for debugging
+- **Link deduplication** — incoming RSS and Atom feeds are normalised to a canonical URL form on ingestion, and any existing duplicates are cleaned up automatically on first run
 
 ---
 
 ## Screenshots
 
 ```
-┌─ Filter ──────┬──────────────── Articles ──────────────────────┬──── Detail ────┐
-│ All           │ Higgs boson production at NLO [4.2★]  Doe  2024│ Higgs boson    │
-│ Bookmarks     │ QCD corrections to top pair   [3.8★]  Smith2024│ production at  │
-│ Today         │ Lattice QCD at finite density [3.1★]  Lee  2024│ NLO            │
-│ Range         │                                                 │                │
-│ Search        │                                                 │ J. Doe et al.  │
-│ Recommended   │                                                 │                │
-│ my-project    │                                                 │                │
-└───────────────┴─────────────────────────────────────────────────┴────────────────┘
+┌─ Filter ──────┬──────────────── Articles ─── [2 selected] ──────┬──── Detail ────┐
+│ All           │ [*] Higgs boson production   [4.2★]  Doe   2024 │ Higgs boson    │
+│ Bookmarks     │ [*] QCD corrections to top   [3.8★]  Smith 2024 │ production at  │
+│ Today         │     Lattice QCD at finite    [3.1★]  Lee   2024 │ NLO            │
+│ Range         │                                                   │                │
+│ Search        │                                                   │ J. Doe et al.  │
+│ Recommended   │                                                   │                │
+│ my-project    │                                                   │                │
+└───────────────┴───────────────────────────────────────────────────┴────────────────┘
 ```
 
 ---
@@ -150,11 +153,11 @@ arxiv-tui --replay ~/.local/state/arxiv-tui/crash_20260101_120000_SIGSEGV.txt
 
 ## Configuration
 
-On first launch, arxiv-tui creates `.arxiv-tui.yml` in your working directory:
+On first launch, arxiv-tui creates `config.yml` at `~/.config/arxiv-tui/config.yml`:
 
 ```yaml
 article_settings:
-  download_dir: downloads
+  download_dir: /home/user/.local/share/arxiv-tui/downloads
   topics:
     - hep-ph
     - hep-ex
@@ -171,14 +174,20 @@ key_mappings:
     key: k
   - action: quit
     key: q
+  - action: bookmark
+    key: b
   - action: create_project
     key: p
   - action: delete_project
     key: x
+  - action: delete_article
+    key: D
   - action: download_article
     key: d
   - action: show_detail
     key: a
+  - action: toggle_selection
+    key: " "
 ```
 
 **`topics`** accepts any valid arXiv category identifier, e.g. `cs.LG`, `quant-ph`, `math.AG`.
@@ -197,27 +206,65 @@ key_mappings:
 
 ## Key Bindings
 
+### Navigation
+
 | Key | Action |
 |-----|--------|
 | `j` / `k` | Next / previous article |
 | `h` / `l` | Move focus left / right between panes |
-| `b` | Toggle bookmark on selected article |
-| `d` | Download article PDF |
 | `a` | Toggle detail view |
-| `p` | Open project management dialog |
-| `x` | Delete selected project |
-| `r` | Set date range filter |
-| `/` | Open search dialog |
-| `n` | Rate selected article (1–5 stars) |
-| `R` | Force a full retrain of the ranking model |
-| `c` | Export current article as BibTeX |
-| `N` | Edit article note (within a project) |
-| `e` | Open project export dialog (Markdown / plain text / BibTeX / JSON) |
-| `I` | Import a project from JSON |
 | `?` | Toggle help overlay |
 | `q` | Quit |
 
-All bindings except `R` (force retrain) are remappable in `.arxiv-tui.yml`.
+### Article actions
+
+| Key | Action |
+|-----|--------|
+| `Space` | Toggle selection on current article |
+| `b` | Bookmark current article (or all selected if a selection is active) |
+| `D` | Delete current article (or all selected), with confirmation |
+| `d` | Download article PDF |
+| `n` | Rate article 1–5 stars |
+| `c` | Export article as BibTeX |
+| `N` | Edit per-article note (within a project) |
+
+### Selection and bulk actions
+
+Select any number of articles with `Space`. While a selection is active, the article pane header shows `[N selected]`.
+
+| Key | Bulk behaviour |
+|-----|---------------|
+| `b` | Bookmark all selected articles |
+| `p` | Open project dialog in bulk-add mode — confirm links all selected to the checked projects |
+| `D` | Delete all selected articles (confirmation required) |
+| `g` | Export selected articles as a Markdown digest + PDF bundle |
+| `o` | Export selected articles to an Obsidian vault |
+
+### Filtering and search
+
+| Key | Action |
+|-----|--------|
+| `/` | Open search dialog |
+| `r` | Set date range filter (when Date Range filter is active) |
+| `t` | Toggle category filter |
+
+### Projects
+
+| Key | Action |
+|-----|--------|
+| `p` | Assign/remove current article from projects |
+| `x` | Delete the focused project |
+| `e` | Export project (Markdown / plain text / BibTeX / JSON) |
+| `I` | Import project from JSON |
+
+### Ranking and settings
+
+| Key | Action |
+|-----|--------|
+| `R` | Force full retrain of the ranking model |
+| `S` | Open settings dialog |
+
+All bindings are remappable in `config.yml` via the `key_mappings` section.
 
 ---
 
@@ -231,7 +278,7 @@ variables: `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, and `XDG_STATE_HOME`.
 | File | Description |
 |------|-------------|
 | `config.yml` | Configuration (created on first run in `~/.config/arxiv-tui/`) |
-| `articles.db` | SQLite database of fetched articles and ratings |
+| `articles.db` | SQLite database of fetched articles, ratings, projects, and notes |
 | `ranker.bin` | Saved ranking model weights (created after first retrain) |
 | `downloads/` | Default PDF download directory |
 | `arxiv_tui.log` | Rotating application log (up to 3 × 5 MB files) |
@@ -350,6 +397,9 @@ Hooks: trailing whitespace, LF line endings, valid YAML/TOML, clang-format, REUS
 - **Author subscriptions** (v0.6) — follow specific authors alongside category feeds
 - **REUSE/SPDX compliance** — all source files carry `SPDX-FileCopyrightText` and `SPDX-License-Identifier` headers; `reuse lint` passes clean
 - **CI pipeline** — GitHub Actions workflows for build/test, ASan+UBSan, TSan, clang-tidy, clang-format, and REUSE; ccache and CPM caching keep runs fast
+- **Multi-article selection and bulk actions** (v0.7) — select articles with `Space`; bulk bookmark, bulk project assignment, and bulk delete with confirmation
+- **Article deletion** (v0.7) — delete individual articles or entire selections from the local database; all associated ratings, notes, and project memberships are removed
+- **Link deduplication** (v0.7) — arXiv links are normalised to canonical form (`https`, no version suffix) on ingestion; a one-time startup migration merges any existing duplicates in the database
 
 ---
 
