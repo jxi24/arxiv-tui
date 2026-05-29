@@ -56,7 +56,7 @@ CPMAddPackage(
     GITHUB_REPOSITORY jbeder/yaml-cpp
     GIT_TAG a83cd31
     OPTIONS
-        "YAML_BUILD_SHARED_LIBS ON"
+        "YAML_BUILD_SHARED_LIBS OFF"
         "YAML_CPP_BUILD_TESTS OFF"
         "YAML_CPP_BUILD_TOOLS OFF"
 )

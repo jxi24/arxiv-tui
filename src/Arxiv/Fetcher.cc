@@ -155,6 +155,25 @@ std::string Fetcher::GetPaperAbstract(const std::string& paper_id) {
     }
 }
 
+std::string Fetcher::NormalizeLink(const std::string& link) {
+    std::string result = link;
+
+    // Normalize scheme to https
+    if (result.substr(0, 7) == "http://")
+        result.replace(0, 7, "https://");
+
+    // Strip trailing version suffix: "v" followed only by digits
+    auto v_pos = result.rfind('v');
+    if (v_pos != std::string::npos && v_pos + 1 < result.size()) {
+        std::string_view suffix(result.c_str() + v_pos + 1);
+        bool all_digits = !suffix.empty() && std::all_of(suffix.begin(), suffix.end(), ::isdigit);
+        if (all_digits)
+            result.erase(v_pos);
+    }
+
+    return result;
+}
+
 std::string Fetcher::ConstructPaperUrl(const std::string& paper_id,
                                        const std::string& format) const {
     return fmt::format("https://arxiv.org/{}/{}", format, paper_id);
@@ -211,7 +230,7 @@ std::vector<Article> Fetcher::ParseFeed(const std::string& xml_content) {
 
             // Extract basic fields using node values
             article.title = StyleLatex(ReplaceLatexAccents(item.child_value("title")));
-            article.link = item.child_value("link");
+            article.link = NormalizeLink(item.child_value("link"));
             std::string abstract_text = item.child_value("description");
             // Find the position of "Abstract:" and remove everything up to and including it
             size_t abstract_pos = abstract_text.find("Abstract:");
@@ -620,8 +639,9 @@ std::vector<Article> Fetcher::ParseAtomFeed(const std::string& xml_content) {
     for (auto entry : feed.children("entry")) {
         Article article;
 
-        // <id> holds the canonical URL, e.g. http://arxiv.org/abs/2605.12345v1
-        article.link = entry.child_value("id");
+        // <id> holds the URL e.g. http://arxiv.org/abs/2605.12345v1; normalize it.
+        std::string raw_link = entry.child_value("id");
+        article.link = NormalizeLink(raw_link);
 
         article.title = StyleLatex(ReplaceLatexAccents(entry.child_value("title")));
         article.abstract = StyleLatex(ReplaceLatexAccents(entry.child_value("summary")));
@@ -660,9 +680,9 @@ std::vector<Article> Fetcher::ParseAtomFeed(const std::string& xml_content) {
         if (ann.find("replace") != std::string::npos) {
             article.is_replacement = true;
         } else if (ann.empty()) {
-            auto v_pos = article.link.rfind('v');
-            if (v_pos != std::string::npos && v_pos + 1 < article.link.size()) {
-                std::string ver = article.link.substr(v_pos + 1);
+            auto v_pos = raw_link.rfind('v');
+            if (v_pos != std::string::npos && v_pos + 1 < raw_link.size()) {
+                std::string ver = raw_link.substr(v_pos + 1);
                 bool all_digits = !ver.empty() && std::all_of(ver.begin(), ver.end(), [](char c) {
                     return std::isdigit(c);
                 });

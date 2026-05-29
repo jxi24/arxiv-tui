@@ -33,6 +33,10 @@ class Fetcher {
     /// empty string if the lookup fails (caller should generate fallback BibTeX).
     virtual std::string FetchBibTeX(const std::string& paper_id);
 
+    /// Normalize an arXiv link to canonical form: https scheme, no version suffix.
+    /// e.g. "http://arxiv.org/abs/2605.28788v1" → "https://arxiv.org/abs/2605.28788"
+    static std::string NormalizeLink(const std::string& link);
+
   private:
     static constexpr bool testing = false;
     std::vector<std::string> m_topics;

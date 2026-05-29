@@ -9,7 +9,10 @@
 #include <catch2/matchers/catch_matchers.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <chrono>
+#include <cstdio>
+#include <filesystem>
 #include <fixtures/test_data.hh>
+#include <sqlite3.h>
 
 // Tests against the *real* DatabaseManager implementation (in-memory SQLite).
 // No mocking — these verify actual SQL behaviour.
@@ -292,5 +295,132 @@ TEST_CASE("Real DB: GetProjectsForArticle", "[database][real]") {
         db.LinkArticleToProject(sample_articles[0].link, "Alpha");
         REQUIRE_NOTHROW(db.LinkArticleToProject(sample_articles[0].link, "Alpha"));
         REQUIRE(db.GetProjectsForArticle(sample_articles[0].link).size() == 1);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Link normalization migration
+// Uses a temporary file-based SQLite DB so non-canonical links can be seeded
+// before DatabaseManager's constructor runs its one-time migration.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+struct TempDb {
+    std::filesystem::path path;
+    sqlite3* handle = nullptr;
+
+    TempDb() {
+        path = std::filesystem::temp_directory_path() /
+               ("arxiv_migrate_test_" + std::to_string(std::rand()) + ".db");
+        sqlite3_open(path.c_str(), &handle);
+    }
+    ~TempDb() {
+        if (handle)
+            sqlite3_close(handle);
+        std::filesystem::remove(path);
+    }
+
+    void exec(const char* sql) { sqlite3_exec(handle, sql, nullptr, nullptr, nullptr); }
+};
+
+} // namespace
+
+TEST_CASE("DB migration: normalize article links", "[database][migration]") {
+    TempDb tmp;
+
+    // Seed the database with the pre-migration table layout + non-canonical links.
+    tmp.exec(R"(CREATE TABLE articles (
+        link TEXT PRIMARY KEY, title TEXT, authors TEXT, abstract TEXT,
+        date INTEGER, bookmarked INTEGER DEFAULT 0,
+        relevance_score REAL DEFAULT 0.0, category TEXT DEFAULT '',
+        is_replacement INTEGER DEFAULT 0))");
+    tmp.exec("CREATE TABLE projects (name TEXT PRIMARY KEY, parent TEXT DEFAULT '')");
+    tmp.exec(R"(CREATE TABLE project_articles (
+        project_name TEXT, article_link TEXT,
+        PRIMARY KEY (project_name, article_link)))");
+    tmp.exec(R"(CREATE TABLE article_ratings (
+        article_link TEXT PRIMARY KEY, rating INTEGER NOT NULL))");
+    tmp.exec(R"(CREATE TABLE project_notes (
+        project_name TEXT, article_link TEXT, note TEXT,
+        PRIMARY KEY (project_name, article_link)))");
+    tmp.exec("CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL DEFAULT '')");
+
+    SECTION("http link with version is renamed to canonical https form") {
+        tmp.exec("INSERT INTO articles (link, title) VALUES "
+                 "('http://arxiv.org/abs/2605.28788v1', 'Test Paper')");
+        sqlite3_close(tmp.handle);
+        tmp.handle = nullptr;
+
+        DatabaseManager db(tmp.path.string());
+        auto articles = db.GetRecent(-1);
+
+        REQUIRE(articles.size() == 1);
+        REQUIRE(articles[0].link == "https://arxiv.org/abs/2605.28788");
+    }
+
+    SECTION("canonical link already exists: bookmark merged from non-canonical") {
+        // canonical exists but is not bookmarked; http version is bookmarked
+        tmp.exec("INSERT INTO articles (link, title, bookmarked) VALUES "
+                 "('https://arxiv.org/abs/2605.28788', 'Test Paper', 0)");
+        tmp.exec("INSERT INTO articles (link, title, bookmarked) VALUES "
+                 "('http://arxiv.org/abs/2605.28788v1', 'Test Paper', 1)");
+        sqlite3_close(tmp.handle);
+        tmp.handle = nullptr;
+
+        DatabaseManager db(tmp.path.string());
+        auto articles = db.GetRecent(-1);
+
+        REQUIRE(articles.size() == 1);
+        REQUIRE(articles[0].link == "https://arxiv.org/abs/2605.28788");
+        REQUIRE(articles[0].bookmarked == true);
+    }
+
+    SECTION("canonical link already exists: rating merged from non-canonical") {
+        tmp.exec("INSERT INTO articles (link, title) VALUES "
+                 "('https://arxiv.org/abs/2605.28788', 'Test Paper')");
+        tmp.exec("INSERT INTO articles (link, title) VALUES "
+                 "('http://arxiv.org/abs/2605.28788v1', 'Test Paper')");
+        tmp.exec("INSERT INTO article_ratings VALUES "
+                 "('http://arxiv.org/abs/2605.28788v1', 4)");
+        sqlite3_close(tmp.handle);
+        tmp.handle = nullptr;
+
+        DatabaseManager db(tmp.path.string());
+        REQUIRE(db.GetRating("https://arxiv.org/abs/2605.28788") == 4);
+    }
+
+    SECTION("canonical link already exists: project link merged from non-canonical") {
+        tmp.exec("INSERT INTO articles (link, title) VALUES "
+                 "('https://arxiv.org/abs/2605.28788', 'Test Paper')");
+        tmp.exec("INSERT INTO articles (link, title) VALUES "
+                 "('http://arxiv.org/abs/2605.28788v1', 'Test Paper')");
+        tmp.exec("INSERT INTO projects VALUES ('MyProject', '')");
+        tmp.exec("INSERT INTO project_articles VALUES "
+                 "('MyProject', 'http://arxiv.org/abs/2605.28788v1')");
+        sqlite3_close(tmp.handle);
+        tmp.handle = nullptr;
+
+        DatabaseManager db(tmp.path.string());
+        auto projects = db.GetProjectsForArticle("https://arxiv.org/abs/2605.28788");
+        REQUIRE(projects.size() == 1);
+        REQUIRE(projects[0] == "MyProject");
+    }
+
+    SECTION("migration is idempotent: running twice leaves DB unchanged") {
+        tmp.exec("INSERT INTO articles (link, title) VALUES "
+                 "('http://arxiv.org/abs/2605.28788v1', 'Test Paper')");
+        sqlite3_close(tmp.handle);
+        tmp.handle = nullptr;
+
+        {
+            DatabaseManager db1(tmp.path.string());
+            REQUIRE(db1.GetRecent(-1).size() == 1);
+        }
+        // Second open should not fail or duplicate anything
+        DatabaseManager db2(tmp.path.string());
+        auto articles = db2.GetRecent(-1);
+        REQUIRE(articles.size() == 1);
+        REQUIRE(articles[0].link == "https://arxiv.org/abs/2605.28788");
     }
 }

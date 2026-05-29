@@ -91,3 +91,30 @@ TEST_CASE("Abstract retrieval", "[fetcher]") {
         REQUIRE(abstract.empty());
     }
 }
+
+TEST_CASE("Link normalization", "[fetcher]") {
+    SECTION("Strips version suffix from http link") {
+        REQUIRE(Fetcher::NormalizeLink("http://arxiv.org/abs/2605.28788v1") ==
+                "https://arxiv.org/abs/2605.28788");
+    }
+
+    SECTION("Strips version suffix from https link") {
+        REQUIRE(Fetcher::NormalizeLink("https://arxiv.org/abs/2605.28788v2") ==
+                "https://arxiv.org/abs/2605.28788");
+    }
+
+    SECTION("Normalizes http to https when no version present") {
+        REQUIRE(Fetcher::NormalizeLink("http://arxiv.org/abs/2605.28788") ==
+                "https://arxiv.org/abs/2605.28788");
+    }
+
+    SECTION("Leaves canonical https link unchanged") {
+        REQUIRE(Fetcher::NormalizeLink("https://arxiv.org/abs/2605.28788") ==
+                "https://arxiv.org/abs/2605.28788");
+    }
+
+    SECTION("Does not strip trailing non-version suffix") {
+        REQUIRE(Fetcher::NormalizeLink("https://arxiv.org/abs/2605.28788abc") ==
+                "https://arxiv.org/abs/2605.28788abc");
+    }
+}

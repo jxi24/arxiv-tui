@@ -87,6 +87,7 @@ class DatabaseManager {
     void Query(const std::string& query);
     Article RowToArticle(sqlite3_stmt* stmt);
     const char* ExtractColumn(sqlite3_stmt* stmt, int index);
+    void MigrateNormalizeLinks();
 
     static int TraceCallback(unsigned type, void*, void* p, void*);
 };

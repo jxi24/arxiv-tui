@@ -54,6 +54,11 @@ target_link_libraries(unit_tests PRIVATE
     libarxiv-tui
 )
 
+# Use DT_RPATH instead of DT_RUNPATH so the build-tree libraries take precedence
+# over LD_LIBRARY_PATH. This is required for catch_discover_tests, which runs the
+# binary during the build before any ctest ENVIRONMENT properties take effect.
+target_link_options(unit_tests PRIVATE -Wl,--disable-new-dtags)
+
 # Add include directories for test files
 target_include_directories(unit_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/include
@@ -78,6 +83,7 @@ target_link_libraries(integration_tests PRIVATE
     arxiv_tui_warnings
     libarxiv-tui
 )
+target_link_options(integration_tests PRIVATE -Wl,--disable-new-dtags)
 
 target_include_directories(integration_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/include

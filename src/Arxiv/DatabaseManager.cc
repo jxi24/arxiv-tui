@@ -7,6 +7,7 @@
 #include "Arxiv/Article.hh"
 #include "Arxiv/Fetcher.hh"
 
+#include <algorithm>
 #include <chrono>
 #include <ctime>
 #include <sqlite3.h>
@@ -187,7 +188,142 @@ DatabaseManager::DatabaseManager(const std::string& path) {
                key   TEXT PRIMARY KEY,
                value TEXT NOT NULL DEFAULT ''))");
 
+    MigrateNormalizeLinks();
+
     spdlog::info("[Database]: Initialized");
+}
+
+void DatabaseManager::MigrateNormalizeLinks() {
+    // One-time migration: normalize all article links to canonical form
+    // (https scheme, no version suffix). Tracked by a metadata key so it
+    // only runs once even if the DB is opened many times.
+    {
+        Stmt check(db,
+                   "SELECT value FROM metadata WHERE key = 'migration_normalize_links'",
+                   "MigrateNormalizeLinks/check");
+        if (check.step() == SQLITE_ROW)
+            return;
+    }
+
+    // Collect every link that differs from its canonical form.
+    std::vector<std::pair<std::string, std::string>> to_rename;
+    {
+        Stmt sel(db, "SELECT link FROM articles", "MigrateNormalizeLinks/select");
+        sel.for_each([&](sqlite3_stmt* s) {
+            std::string link = reinterpret_cast<const char*>(sqlite3_column_text(s, 0));
+            std::string canonical = link;
+
+            if (canonical.substr(0, 7) == "http://")
+                canonical.replace(0, 7, "https://");
+
+            auto v = canonical.rfind('v');
+            if (v != std::string::npos && v + 1 < canonical.size()) {
+                std::string_view tail(canonical.c_str() + v + 1);
+                if (!tail.empty() && std::all_of(tail.begin(), tail.end(), ::isdigit))
+                    canonical.erase(v);
+            }
+
+            if (canonical != link)
+                to_rename.emplace_back(link, canonical);
+        });
+    }
+
+    for (auto& [old_link, canonical] : to_rename) {
+        bool canonical_exists = false;
+        {
+            Stmt ex(db, "SELECT 1 FROM articles WHERE link = ?", "MigrateNormalizeLinks/exists");
+            ex.bind(1, canonical);
+            canonical_exists = (ex.step() == SQLITE_ROW);
+        }
+
+        if (canonical_exists) {
+            // Merge: propagate bookmark if the non-canonical copy has it set.
+            {
+                Stmt bm(db,
+                        "SELECT bookmarked FROM articles WHERE link = ?",
+                        "MigrateNormalizeLinks/bm");
+                bm.bind(1, old_link);
+                if (bm.step() == SQLITE_ROW && sqlite3_column_int(bm.raw(), 0)) {
+                    Stmt set(db,
+                             "UPDATE articles SET bookmarked = 1 WHERE link = ?",
+                             "MigrateNormalizeLinks/setbm");
+                    set.bind(1, canonical).step_done();
+                }
+            }
+            // Merge rating (canonical wins on conflict).
+            Stmt mr(db,
+                    "INSERT OR IGNORE INTO article_ratings (article_link, rating) "
+                    "SELECT ?, rating FROM article_ratings WHERE article_link = ?",
+                    "MigrateNormalizeLinks/mergerating");
+            mr.bind(1, canonical).bind(2, old_link).step_done();
+
+            // Merge project memberships.
+            Stmt mpa(db,
+                     "INSERT OR IGNORE INTO project_articles (project_name, article_link) "
+                     "SELECT project_name, ? FROM project_articles WHERE article_link = ?",
+                     "MigrateNormalizeLinks/mergepа");
+            mpa.bind(1, canonical).bind(2, old_link).step_done();
+
+            // Merge project notes (canonical wins on conflict).
+            Stmt mn(db,
+                    "INSERT OR IGNORE INTO project_notes (project_name, article_link, note) "
+                    "SELECT project_name, ?, note FROM project_notes WHERE article_link = ?",
+                    "MigrateNormalizeLinks/mergenotes");
+            mn.bind(1, canonical).bind(2, old_link).step_done();
+
+            // Remove all FK rows for the old link, then the article itself.
+            Stmt dpa(db,
+                     "DELETE FROM project_articles WHERE article_link = ?",
+                     "MigrateNormalizeLinks/dpa");
+            dpa.bind(1, old_link).step_done();
+            Stmt dr(db,
+                    "DELETE FROM article_ratings WHERE article_link = ?",
+                    "MigrateNormalizeLinks/dr");
+            dr.bind(1, old_link).step_done();
+            Stmt dn(
+                db, "DELETE FROM project_notes WHERE article_link = ?", "MigrateNormalizeLinks/dn");
+            dn.bind(1, old_link).step_done();
+            Stmt da(db, "DELETE FROM articles WHERE link = ?", "MigrateNormalizeLinks/da");
+            da.bind(1, old_link).step_done();
+        } else {
+            // No collision — copy article under canonical link, re-point FK rows, delete old.
+            Stmt ins(db,
+                     "INSERT INTO articles "
+                     "(link,title,authors,abstract,date,bookmarked,relevance_score,category,"
+                     "is_replacement) "
+                     "SELECT ?,title,authors,abstract,date,bookmarked,relevance_score,category,"
+                     "is_replacement FROM articles WHERE link = ?",
+                     "MigrateNormalizeLinks/insert");
+            ins.bind(1, canonical).bind(2, old_link).step_done();
+
+            Stmt upa(db,
+                     "UPDATE project_articles SET article_link = ? WHERE article_link = ?",
+                     "MigrateNormalizeLinks/upa");
+            upa.bind(1, canonical).bind(2, old_link).step_done();
+            Stmt ur(db,
+                    "UPDATE article_ratings SET article_link = ? WHERE article_link = ?",
+                    "MigrateNormalizeLinks/ur");
+            ur.bind(1, canonical).bind(2, old_link).step_done();
+            Stmt un(db,
+                    "UPDATE project_notes SET article_link = ? WHERE article_link = ?",
+                    "MigrateNormalizeLinks/un");
+            un.bind(1, canonical).bind(2, old_link).step_done();
+
+            Stmt del(db, "DELETE FROM articles WHERE link = ?", "MigrateNormalizeLinks/del");
+            del.bind(1, old_link).step_done();
+        }
+
+        spdlog::info("[Database]: Normalized link: {} -> {}", old_link, canonical);
+    }
+
+    Stmt mark(db,
+              "INSERT OR REPLACE INTO metadata (key, value) "
+              "VALUES ('migration_normalize_links', 'done')",
+              "MigrateNormalizeLinks/mark");
+    mark.step_done();
+
+    if (!to_rename.empty())
+        spdlog::info("[Database]: Link normalization migrated {} article(s)", to_rename.size());
 }
 
 DatabaseManager::~DatabaseManager() {
