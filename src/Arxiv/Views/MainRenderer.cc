@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 #include "Arxiv/App.hh"
+#include "Arxiv/Clipboard.hh"
 #include "Arxiv/Views/Colors.hh"
 
 #include <chrono>
@@ -70,6 +71,9 @@ void ArxivApp::SetupMainRenderer() {
             break;
         case AppCore::FilterView::Unread:
             filter_label = "Unread";
+            break;
+        case AppCore::FilterView::TagBase:
+            filter_label = "#" + core.GetTagNameForFilter(core.GetFilterIndex());
             break;
         case AppCore::FilterView::Project:
             filter_label = core.GetProjectNameForFilter(core.GetFilterIndex());
@@ -310,23 +314,29 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
         return true;
     }
 
-    // Export BibTeX for current article
+    // BibTeX for current article: copy to clipboard, fall back to file
     if (key_bindings.matches(event, KeyBindings::Action::ExportBibTeX)) {
         auto articles = core.GetCurrentArticles();
         if (!articles.empty()) {
             const auto& art = articles[static_cast<size_t>(core.GetArticleIndex())];
-            std::string path = art.id() + ".bib";
-            bool ok = core.ExportArticleBibTeX(art, path);
-            if (m_recorder)
-                m_recorder->RecordExportArticleBibTeX(art.link, path);
-            if (ok) {
-                spdlog::info("export_article_bibtex link={} path={}", art.link, path);
-                success_msg = "Exported to " + path;
+            std::string bibtex = core.GetBibtex(art);
+            std::string backend = Clipboard::DetectBackend(m_config.get_clipboard_backend());
+            if (!backend.empty() && Clipboard::Copy(bibtex, backend)) {
+                spdlog::info("bibtex_to_clipboard link={} backend={}", art.link, backend);
+                success_msg = "BibTeX copied to clipboard";
                 dialog_depth = Dialog::Success;
             } else {
-                spdlog::warn("export_article_bibtex failed link={} path={}", art.link, path);
-                err_msg = "BibTeX export failed: " + path;
-                dialog_depth = Dialog::Error;
+                std::string path = art.id() + ".bib";
+                bool ok = core.ExportArticleBibTeX(art, path);
+                if (m_recorder)
+                    m_recorder->RecordExportArticleBibTeX(art.link, path);
+                if (ok) {
+                    success_msg = "BibTeX saved to " + path;
+                    dialog_depth = Dialog::Success;
+                } else {
+                    err_msg = "BibTeX export failed: " + path;
+                    dialog_depth = Dialog::Error;
+                }
             }
         }
         return true;

@@ -41,6 +41,7 @@ class Config {
     const std::string& get_keywords_file() const { return keywords_file_; }
     const std::string& get_ranker_file() const { return ranker_file_; }
     const std::string& get_obsidian_vault() const { return obsidian_vault_; }
+    const std::string& get_clipboard_backend() const { return clipboard_backend_; }
     int get_auto_refresh_minutes() const { return auto_refresh_minutes_; }
     int get_scroll_margin() const { return scroll_margin_; }
     int get_max_article_age_days() const { return max_article_age_days_; }
@@ -55,6 +56,7 @@ class Config {
     void set_keywords_file(const std::string& path) { keywords_file_ = path; }
     void set_ranker_file(const std::string& path) { ranker_file_ = path; }
     void set_obsidian_vault(const std::string& path) { obsidian_vault_ = path; }
+    void set_clipboard_backend(const std::string& b) { clipboard_backend_ = b; }
     void set_auto_refresh_minutes(int m) { auto_refresh_minutes_ = m; }
     void set_scroll_margin(int n) { scroll_margin_ = n; }
     void set_max_article_age_days(int n) { max_article_age_days_ = n; }
@@ -75,6 +77,7 @@ class Config {
     int auto_refresh_minutes_{0};
     int scroll_margin_{3};
     int max_article_age_days_{0};
+    std::string clipboard_backend_;
 };
 
 } // namespace Arxiv

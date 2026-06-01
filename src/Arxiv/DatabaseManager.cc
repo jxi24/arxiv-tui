@@ -11,6 +11,7 @@
 #include <chrono>
 #include <ctime>
 #include <sqlite3.h>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -191,6 +192,9 @@ DatabaseManager::DatabaseManager(const std::string& path) {
 
     MigrateNormalizeLinks();
     MigrateAddReadAt();
+    MigrateAddProjectBibPath();
+    CreateTagTables();
+    MigrateAddFTS5();
 
     spdlog::info("[Database]: Initialized");
 }
@@ -439,6 +443,155 @@ void DatabaseManager::MigrateAddReadAt() {
     } catch (const std::exception&) {
         // Column already exists — ignore
     }
+}
+
+void DatabaseManager::CreateTagTables() {
+    ExecuteSQL(R"(CREATE TABLE IF NOT EXISTS tags (
+               name TEXT PRIMARY KEY))");
+    ExecuteSQL(R"(CREATE TABLE IF NOT EXISTS article_tags (
+               article_link TEXT,
+               tag_name TEXT,
+               PRIMARY KEY (article_link, tag_name),
+               FOREIGN KEY (article_link) REFERENCES articles(link),
+               FOREIGN KEY (tag_name) REFERENCES tags(name)))");
+}
+
+void DatabaseManager::AddTag(const std::string& name) {
+    Stmt stmt(db, "INSERT OR IGNORE INTO tags (name) VALUES (?)", "AddTag");
+    stmt.bind(1, name).step_done();
+}
+
+void DatabaseManager::RemoveTag(const std::string& name) {
+    Stmt at(db, "DELETE FROM article_tags WHERE tag_name = ?", "RemoveTag/at");
+    at.bind(1, name).step_done();
+    Stmt t(db, "DELETE FROM tags WHERE name = ?", "RemoveTag");
+    t.bind(1, name).step_done();
+}
+
+std::vector<std::string> DatabaseManager::GetTags() {
+    std::vector<std::string> tags;
+    Stmt stmt(db, "SELECT name FROM tags ORDER BY name", "GetTags");
+    stmt.for_each([&](sqlite3_stmt* s) {
+        const char* v = reinterpret_cast<const char*>(sqlite3_column_text(s, 0));
+        if (v)
+            tags.emplace_back(v);
+    });
+    return tags;
+}
+
+std::vector<std::string> DatabaseManager::GetTagsForArticle(const std::string& link) {
+    std::vector<std::string> tags;
+    Stmt stmt(db,
+              "SELECT tag_name FROM article_tags WHERE article_link = ? ORDER BY tag_name",
+              "GetTagsForArticle");
+    stmt.bind(1, link);
+    stmt.for_each([&](sqlite3_stmt* s) {
+        const char* v = reinterpret_cast<const char*>(sqlite3_column_text(s, 0));
+        if (v)
+            tags.emplace_back(v);
+    });
+    return tags;
+}
+
+void DatabaseManager::LinkArticleToTag(const std::string& link, const std::string& tag) {
+    // Ensure the tag exists before linking.
+    AddTag(tag);
+    Stmt stmt(db,
+              "INSERT OR IGNORE INTO article_tags (article_link, tag_name) VALUES (?, ?)",
+              "LinkArticleToTag");
+    stmt.bind(1, link).bind(2, tag).step_done();
+}
+
+void DatabaseManager::UnlinkArticleFromTag(const std::string& link, const std::string& tag) {
+    Stmt stmt(db,
+              "DELETE FROM article_tags WHERE article_link = ? AND tag_name = ?",
+              "UnlinkArticleFromTag");
+    stmt.bind(1, link).bind(2, tag).step_done();
+}
+
+std::vector<Arxiv::Article> DatabaseManager::GetArticlesForTag(const std::string& tag) {
+    std::vector<Article> articles;
+    std::string sql = std::string("SELECT ") + ARTICLE_COLUMNS_A +
+                      " FROM articles a"
+                      " JOIN article_tags at ON a.link = at.article_link"
+                      " WHERE at.tag_name = ?";
+    Stmt stmt(db, sql.c_str(), "GetArticlesForTag");
+    stmt.bind(1, tag);
+    stmt.for_each([&](sqlite3_stmt* s) { articles.push_back(RowToArticle(s)); });
+    return articles;
+}
+
+void DatabaseManager::MigrateAddProjectBibPath() {
+    try {
+        ExecuteSQL("ALTER TABLE projects ADD COLUMN bib_path TEXT DEFAULT ''");
+    } catch (const std::exception&) {
+        // Column already exists — ignore
+    }
+}
+
+std::string DatabaseManager::GetProjectBibPath(const std::string& project_name) {
+    Stmt stmt(db, "SELECT bib_path FROM projects WHERE name = ?", "GetProjectBibPath");
+    stmt.bind(1, project_name);
+    if (stmt.step() == SQLITE_ROW) {
+        const char* val = reinterpret_cast<const char*>(sqlite3_column_text(stmt.raw(), 0));
+        return val ? val : "";
+    }
+    return "";
+}
+
+void DatabaseManager::SetProjectBibPath(const std::string& project_name, const std::string& path) {
+    Stmt stmt(db, "UPDATE projects SET bib_path = ? WHERE name = ?", "SetProjectBibPath");
+    stmt.bind(1, path).bind(2, project_name).step_done();
+}
+
+void DatabaseManager::MigrateAddFTS5() {
+    // Check whether the FTS5 virtual table already exists.
+    {
+        Stmt check(db,
+                   "SELECT value FROM metadata WHERE key = 'migration_fts5_v1'",
+                   "MigrateAddFTS5/check");
+        if (check.step() == SQLITE_ROW)
+            return;
+    }
+
+    spdlog::info("[Database]: Building FTS5 full-text index");
+
+    // Content table: FTS5 mirrors the articles table, updated via triggers.
+    ExecuteSQL(R"(CREATE VIRTUAL TABLE IF NOT EXISTS articles_fts
+        USING fts5(title, authors, abstract,
+                   content=articles, content_rowid=rowid))");
+
+    // Triggers keep the FTS index in sync with articles.
+    ExecuteSQL(R"(CREATE TRIGGER IF NOT EXISTS articles_ai
+        AFTER INSERT ON articles BEGIN
+            INSERT INTO articles_fts(rowid, title, authors, abstract)
+            VALUES (new.rowid, new.title, new.authors, new.abstract);
+        END)");
+
+    ExecuteSQL(R"(CREATE TRIGGER IF NOT EXISTS articles_ad
+        AFTER DELETE ON articles BEGIN
+            INSERT INTO articles_fts(articles_fts, rowid, title, authors, abstract)
+            VALUES ('delete', old.rowid, old.title, old.authors, old.abstract);
+        END)");
+
+    ExecuteSQL(R"(CREATE TRIGGER IF NOT EXISTS articles_au
+        AFTER UPDATE ON articles BEGIN
+            INSERT INTO articles_fts(articles_fts, rowid, title, authors, abstract)
+            VALUES ('delete', old.rowid, old.title, old.authors, old.abstract);
+            INSERT INTO articles_fts(rowid, title, authors, abstract)
+            VALUES (new.rowid, new.title, new.authors, new.abstract);
+        END)");
+
+    // Populate FTS with existing articles.
+    ExecuteSQL(R"(INSERT INTO articles_fts(rowid, title, authors, abstract)
+        SELECT rowid, title, authors, abstract FROM articles)");
+
+    Stmt mark(db,
+              "INSERT OR REPLACE INTO metadata (key, value) "
+              "VALUES ('migration_fts5_v1', 'done')",
+              "MigrateAddFTS5/mark");
+    mark.step_done();
+    spdlog::info("[Database]: FTS5 index ready");
 }
 
 void DatabaseManager::MarkArticleRead(const std::string& link) {
@@ -708,53 +861,66 @@ std::vector<Arxiv::Article> DatabaseManager::SearchArticles(const std::string& q
                                                             bool search_abstract) {
     std::vector<Article> articles;
 
-    std::vector<std::string> conditions;
-    if (search_title)
-        conditions.push_back("title LIKE ? ESCAPE '\\'");
-    if (search_authors)
-        conditions.push_back("authors LIKE ? ESCAPE '\\'");
-    if (search_abstract)
-        conditions.push_back("abstract LIKE ? ESCAPE '\\'");
-
-    if (conditions.empty()) {
+    if (!search_title && !search_authors && !search_abstract) {
         spdlog::warn("[Database]: No search fields selected");
         return articles;
     }
 
-    std::string where_clause = "WHERE " + conditions[0];
-    for (size_t i = 1; i < conditions.size(); ++i)
-        where_clause += " OR " + conditions[i];
-
-    std::string sql = std::string("SELECT ") + ARTICLE_COLUMNS + " FROM articles " + where_clause +
-                      " ORDER BY date DESC";
-
-    spdlog::debug("[Database]: Searching for '{}' in title: {}, authors: {}, abstract: {}",
+    spdlog::debug("[Database]: FTS5 search '{}' title:{} authors:{} abstract:{}",
                   query,
                   search_title,
                   search_authors,
                   search_abstract);
 
-    // Escape LIKE metacharacters in the query itself
-    std::string escaped_query;
-    escaped_query.reserve(query.size() + 4);
-    for (char c : query) {
-        if (c == '%' || c == '_' || c == '\\')
-            escaped_query += '\\';
-        escaped_query += c;
+    // Build the FTS5 column filter prefix for the MATCH expression.
+    // When all three fields are searched, no prefix is needed (searches all).
+    std::string col_filter;
+    if (!(search_title && search_authors && search_abstract)) {
+        std::string cols;
+        if (search_title)
+            cols += " title";
+        if (search_authors)
+            cols += " authors";
+        if (search_abstract)
+            cols += " abstract";
+        col_filter = "{" + cols.substr(1) + "} : ";
     }
-    std::string pattern = "%" + escaped_query + "%";
+
+    // Wrap each token in double-quotes so FTS5 treats it as a phrase token,
+    // not as an operator.  This makes multi-word queries behave like substring
+    // matches rather than boolean AND.
+    // Build a per-token AND query so that "quantum gravity" means
+    // articles containing BOTH words, not either.
+    std::string fts_query;
+    {
+        std::istringstream iss(query);
+        std::string token;
+        while (iss >> token) {
+            if (!fts_query.empty())
+                fts_query += " AND ";
+            std::string escaped;
+            for (char c : token) {
+                if (c == '"')
+                    escaped += '"';
+                escaped += c;
+            }
+            fts_query += col_filter + '"' + escaped + '"';
+        }
+    }
+    if (fts_query.empty())
+        return articles;
+
+    std::string sql = std::string("SELECT ") + ARTICLE_COLUMNS_A +
+                      " FROM articles a"
+                      " JOIN articles_fts ON articles_fts.rowid = a.rowid"
+                      " WHERE articles_fts MATCH ?"
+                      " ORDER BY bm25(articles_fts)";
 
     Stmt stmt(db, sql.c_str(), "SearchArticles");
-    int param = 1;
-    if (search_title)
-        stmt.bind(param++, pattern);
-    if (search_authors)
-        stmt.bind(param++, pattern);
-    if (search_abstract)
-        stmt.bind(param++, pattern);
+    stmt.bind(1, fts_query);
     stmt.for_each([&](sqlite3_stmt* s) { articles.push_back(RowToArticle(s)); });
 
-    spdlog::debug("[Database]: Found {} articles matching search criteria", articles.size());
+    spdlog::debug("[Database]: Found {} articles", articles.size());
     return articles;
 }
 

@@ -475,6 +475,7 @@ TEST_CASE("AppCore edge cases: SetFilterIndex bounds", "[app][edge]") {
     db_ptr->setBookmarkedArticles({});
     db_ptr->setProjects({});
     ALLOW_CALL(*db_ptr, GetUnreadArticles()).RETURN(std::vector<Arxiv::Article>{});
+    ALLOW_CALL(*db_ptr, GetTags()).RETURN(std::vector<std::string>{});
 
     Arxiv::AppCore core(config, std::move(db), std::move(fetcher));
 

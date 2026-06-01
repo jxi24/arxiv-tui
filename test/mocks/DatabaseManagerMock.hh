@@ -70,6 +70,24 @@ class DatabaseManagerMock : public Arxiv::DatabaseManager {
             NAMED_ALLOW_CALL(*this, GetMetadata(ANY(std::string))).RETURN(std::string{}));
         m_expectations.push_back(NAMED_ALLOW_CALL(*this, GetArticlesSince(ANY(std::string)))
                                      .RETURN(std::vector<Arxiv::Article>{}));
+        // Tag defaults
+        m_expectations.push_back(
+            NAMED_ALLOW_CALL(*this, GetTags()).RETURN(std::vector<std::string>{}));
+        m_expectations.push_back(NAMED_ALLOW_CALL(*this, AddTag(ANY(std::string))));
+        m_expectations.push_back(NAMED_ALLOW_CALL(*this, RemoveTag(ANY(std::string))));
+        m_expectations.push_back(NAMED_ALLOW_CALL(*this, GetTagsForArticle(ANY(std::string)))
+                                     .RETURN(std::vector<std::string>{}));
+        m_expectations.push_back(
+            NAMED_ALLOW_CALL(*this, LinkArticleToTag(ANY(std::string), ANY(std::string))));
+        m_expectations.push_back(
+            NAMED_ALLOW_CALL(*this, UnlinkArticleFromTag(ANY(std::string), ANY(std::string))));
+        m_expectations.push_back(NAMED_ALLOW_CALL(*this, GetArticlesForTag(ANY(std::string)))
+                                     .RETURN(std::vector<Arxiv::Article>{}));
+        // Project bib_path defaults
+        m_expectations.push_back(
+            NAMED_ALLOW_CALL(*this, GetProjectBibPath(ANY(std::string))).RETURN(std::string{}));
+        m_expectations.push_back(
+            NAMED_ALLOW_CALL(*this, SetProjectBibPath(ANY(std::string), ANY(std::string))));
     }
 
     // Mock methods using trompeloeil
@@ -98,6 +116,15 @@ class DatabaseManagerMock : public Arxiv::DatabaseManager {
 
     MAKE_MOCK1(GetProjectParent, std::string(const std::string&), override);
     MAKE_MOCK2(SetProjectParent, void(const std::string&, const std::string&), override);
+    MAKE_MOCK1(GetProjectBibPath, std::string(const std::string&), override);
+    MAKE_MOCK2(SetProjectBibPath, void(const std::string&, const std::string&), override);
+    MAKE_MOCK1(AddTag, void(const std::string&), override);
+    MAKE_MOCK1(RemoveTag, void(const std::string&), override);
+    MAKE_MOCK0(GetTags, std::vector<std::string>(), override);
+    MAKE_MOCK1(GetTagsForArticle, std::vector<std::string>(const std::string&), override);
+    MAKE_MOCK2(LinkArticleToTag, void(const std::string&, const std::string&), override);
+    MAKE_MOCK2(UnlinkArticleFromTag, void(const std::string&, const std::string&), override);
+    MAKE_MOCK1(GetArticlesForTag, std::vector<Arxiv::Article>(const std::string&), override);
     MAKE_MOCK3(SetProjectNote,
                void(const std::string&, const std::string&, const std::string&),
                override);

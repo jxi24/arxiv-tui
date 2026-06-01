@@ -60,6 +60,8 @@ class DatabaseManager {
     virtual std::vector<std::string> GetProjects();
     virtual std::string GetProjectParent(const std::string& project_name);
     virtual void SetProjectParent(const std::string& project_name, const std::string& parent);
+    virtual std::string GetProjectBibPath(const std::string& project_name);
+    virtual void SetProjectBibPath(const std::string& project_name, const std::string& path);
     virtual void LinkArticleToProject(const std::string& article_link,
                                       const std::string& project_name);
     virtual void UnlinkArticleFromProject(const std::string& article_link,
@@ -76,6 +78,15 @@ class DatabaseManager {
     // Application metadata (persistent key-value store)
     virtual void SetMetadata(const std::string& key, const std::string& value);
     virtual std::string GetMetadata(const std::string& key);
+
+    // Tag management
+    virtual void AddTag(const std::string& name);
+    virtual void RemoveTag(const std::string& name);
+    virtual std::vector<std::string> GetTags();
+    virtual std::vector<std::string> GetTagsForArticle(const std::string& article_link);
+    virtual void LinkArticleToTag(const std::string& article_link, const std::string& tag_name);
+    virtual void UnlinkArticleFromTag(const std::string& article_link, const std::string& tag_name);
+    virtual std::vector<Article> GetArticlesForTag(const std::string& tag_name);
 
     // Articles submitted on or after the given UTC date ("YYYY-MM-DD")
     virtual std::vector<Article> GetArticlesSince(const std::string& utc_date);
@@ -95,6 +106,9 @@ class DatabaseManager {
     const char* ExtractColumn(sqlite3_stmt* stmt, int index);
     void MigrateNormalizeLinks();
     void MigrateAddReadAt();
+    void MigrateAddFTS5();
+    void MigrateAddProjectBibPath();
+    void CreateTagTables();
 
     static int TraceCallback(unsigned type, void*, void* p, void*);
 };

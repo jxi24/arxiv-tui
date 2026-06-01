@@ -55,7 +55,12 @@ class AppCore {
         FollowedAuthors = 6,
         NewArticles = 7,
         Unread = 8,
-        Project = 9, // sentinel: any index >= 9 is a project
+        // Filter indices [TagBase, m_project_start_index) are tags.
+        // Filter indices [m_project_start_index, ...) are projects.
+        // GetFilterView() uses those runtime boundaries — TagBase and Project
+        // are used only as return-value tags in switch statements.
+        TagBase = 9,
+        Project = 100, // sentinel returned by GetFilterView() for project indices
     };
 
     // Article management
@@ -94,6 +99,15 @@ class AppCore {
     std::vector<Article> GetArticlesForProject(const std::string& project_name) const;
     std::vector<std::string> GetProjectsForArticle(const std::string& article_link) const;
 
+    // Tag management
+    void AddTag(const std::string& name);
+    void RemoveTag(const std::string& name);
+    std::vector<std::string> GetTags() const;
+    std::vector<std::string> GetTagsForArticle(const std::string& article_link) const;
+    void LinkArticleToTag(const std::string& article_link, const std::string& tag_name);
+    void UnlinkArticleFromTag(const std::string& article_link, const std::string& tag_name);
+    std::string GetTagNameForFilter(int filter_index) const;
+
     // Project notes
     void SetProjectNote(const std::string& project_name,
                         const std::string& article_link,
@@ -112,7 +126,7 @@ class AppCore {
     bool ExportArticleBibTeX(const Article& article, const std::string& output_path) const;
     bool ExportArticlesBibTeX(const std::vector<Article>& articles,
                               const std::string& output_path) const;
-    bool ExportProjectBibTeX(const std::string& project_name, const std::string& output_path) const;
+    bool ExportProjectBibTeX(const std::string& project_name, const std::string& output_path);
 
     // Daily-digest export
     bool ExportDailyDigest(const std::string& output_path) const;
@@ -258,6 +272,8 @@ class AppCore {
     std::vector<Article> m_current_articles;
     std::vector<std::string> m_current_titles;
     std::vector<std::string> m_filter_options;
+    std::vector<std::string> m_filter_tag_names;
+    int m_project_start_index{static_cast<int>(FilterView::TagBase)};
     // Actual project names parallel to filter_options[6+] (display may be indented for
     // sub-projects)
     std::vector<std::string> m_filter_project_names;

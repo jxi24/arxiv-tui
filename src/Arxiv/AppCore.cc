@@ -312,6 +312,9 @@ void AppCore::FetchArticles() {
     case FilterView::Unread:
         m_current_articles = m_db->GetUnreadArticles();
         break;
+    case FilterView::TagBase:
+        m_current_articles = m_db->GetArticlesForTag(GetTagNameForFilter(m_filter_index));
+        break;
     case FilterView::Project:
         m_current_articles = GetArticlesForProject(GetProjectNameForFilter(m_filter_index));
         break;
@@ -479,6 +482,34 @@ void AppCore::RemoveProject(const std::string& project_name) {
 void AppCore::LinkArticleToProject(const std::string& article_link,
                                    const std::string& project_name) {
     m_db->LinkArticleToProject(article_link, project_name);
+
+    // Auto-append to the project's .bib file if one has been exported before.
+    std::string bib_path = m_db->GetProjectBibPath(project_name);
+    if (!bib_path.empty() && std::filesystem::exists(bib_path)) {
+        // Find the article in the current list (fast path) or fall back to DB.
+        Article article;
+        auto it = std::find_if(m_current_articles.begin(),
+                               m_current_articles.end(),
+                               [&](const Article& a) { return a.link == article_link; });
+        if (it != m_current_articles.end()) {
+            article = *it;
+        } else {
+            auto all = m_db->GetRecent(-1);
+            auto jt = std::find_if(
+                all.begin(), all.end(), [&](const Article& a) { return a.link == article_link; });
+            if (jt == all.end()) {
+                NotifyArticleUpdate();
+                return;
+            }
+            article = *jt;
+        }
+        std::ofstream f(bib_path, std::ios::app);
+        if (f.is_open()) {
+            f << "\n" << GetBibtex(article);
+            spdlog::info("[AppCore]: Appended BibTeX for {} to {}", article_link, bib_path);
+        }
+    }
+
     NotifyArticleUpdate();
 }
 
@@ -489,6 +520,45 @@ void AppCore::UnlinkArticleFromProject(const std::string& article_link,
 }
 
 std::vector<std::string> AppCore::GetProjects() const { return m_db->GetProjects(); }
+
+// ---------------------------------------------------------------------------
+// Tag management
+// ---------------------------------------------------------------------------
+
+void AppCore::AddTag(const std::string& name) {
+    m_db->AddTag(name);
+    RefreshFilterOptions();
+    FetchArticles();
+}
+
+void AppCore::RemoveTag(const std::string& name) {
+    m_db->RemoveTag(name);
+    RefreshFilterOptions();
+    FetchArticles();
+}
+
+std::vector<std::string> AppCore::GetTags() const { return m_db->GetTags(); }
+
+std::vector<std::string> AppCore::GetTagsForArticle(const std::string& link) const {
+    return m_db->GetTagsForArticle(link);
+}
+
+void AppCore::LinkArticleToTag(const std::string& link, const std::string& tag) {
+    m_db->LinkArticleToTag(link, tag);
+    NotifyArticleUpdate();
+}
+
+void AppCore::UnlinkArticleFromTag(const std::string& link, const std::string& tag) {
+    m_db->UnlinkArticleFromTag(link, tag);
+    NotifyArticleUpdate();
+}
+
+std::string AppCore::GetTagNameForFilter(int index) const {
+    int tag_idx = index - static_cast<int>(FilterView::TagBase);
+    if (tag_idx >= 0 && static_cast<size_t>(tag_idx) < m_filter_tag_names.size())
+        return m_filter_tag_names[static_cast<size_t>(tag_idx)];
+    return "";
+}
 
 std::vector<Article> AppCore::GetArticlesForProject(const std::string& project_name) const {
     return m_db->GetArticlesForProject(project_name);
@@ -517,8 +587,10 @@ int AppCore::GetFilterIndex() const { return m_filter_index; }
 int& AppCore::GetFilterIndex() { return m_filter_index; }
 
 AppCore::FilterView AppCore::GetFilterView() const {
-    if (m_filter_index >= static_cast<int>(FilterView::Project))
+    if (m_filter_index >= m_project_start_index)
         return FilterView::Project;
+    if (m_filter_index >= static_cast<int>(FilterView::TagBase) && !m_filter_tag_names.empty())
+        return FilterView::TagBase;
     return static_cast<FilterView>(m_filter_index);
 }
 
@@ -583,7 +655,16 @@ void AppCore::RefreshFilterOptions() {
                         "Followed Authors",
                         "New Articles",
                         "Unread"};
+    m_filter_tag_names.clear();
     m_filter_project_names.clear();
+
+    // Add tags (indices 9, 10, ...)
+    for (const auto& tag : m_db->GetTags()) {
+        m_filter_options.push_back("#" + tag);
+        m_filter_tag_names.push_back(tag);
+    }
+    m_project_start_index =
+        static_cast<int>(FilterView::TagBase) + static_cast<int>(m_filter_tag_names.size());
 
     // Build hierarchy from projects table
     auto all_projects = m_db->GetProjects();
@@ -783,7 +864,7 @@ std::string AppCore::GetProjectNote(const std::string& project_name,
 }
 
 std::string AppCore::GetProjectNameForFilter(int index) const {
-    int proj_index = index - static_cast<int>(FilterView::Project); // 0-based into project list
+    int proj_index = index - m_project_start_index; // 0-based into project list
     if (proj_index >= 0 && static_cast<size_t>(proj_index) < m_filter_project_names.size()) {
         return m_filter_project_names[static_cast<size_t>(proj_index)];
     }
@@ -1042,9 +1123,11 @@ bool AppCore::ExportArticleBibTeX(const Article& article, const std::string& out
     return ExportArticlesBibTeX({article}, output_path);
 }
 
-bool AppCore::ExportProjectBibTeX(const std::string& project_name,
-                                  const std::string& output_path) const {
-    return ExportArticlesBibTeX(m_db->GetArticlesForProject(project_name), output_path);
+bool AppCore::ExportProjectBibTeX(const std::string& project_name, const std::string& output_path) {
+    bool ok = ExportArticlesBibTeX(m_db->GetArticlesForProject(project_name), output_path);
+    if (ok)
+        m_db->SetProjectBibPath(project_name, output_path);
+    return ok;
 }
 
 // ---------------------------------------------------------------------------

@@ -191,6 +191,78 @@ TEST_CASE("Real DB: PruneArticles", "[database][real]") {
 }
 
 // ---------------------------------------------------------------------------
+// Tags
+// ---------------------------------------------------------------------------
+TEST_CASE("Real DB: tag management", "[database][real][tags]") {
+    DatabaseManager db(":memory:");
+    db.AddArticle(sample_articles[0]);
+    db.AddArticle(sample_articles[1]);
+
+    SECTION("AddTag / GetTags round-trip") {
+        db.AddTag("quantum");
+        db.AddTag("lattice");
+        auto tags = db.GetTags();
+        REQUIRE(tags.size() == 2);
+        REQUIRE(std::find(tags.begin(), tags.end(), "quantum") != tags.end());
+    }
+
+    SECTION("RemoveTag removes the tag and all article associations") {
+        db.AddTag("qcd");
+        db.LinkArticleToTag(sample_articles[0].link, "qcd");
+        db.RemoveTag("qcd");
+        REQUIRE(db.GetTags().empty());
+        REQUIRE(db.GetTagsForArticle(sample_articles[0].link).empty());
+    }
+
+    SECTION("LinkArticleToTag / GetTagsForArticle round-trip") {
+        db.AddTag("higgs");
+        db.LinkArticleToTag(sample_articles[0].link, "higgs");
+        auto tags = db.GetTagsForArticle(sample_articles[0].link);
+        REQUIRE(tags.size() == 1);
+        REQUIRE(tags[0] == "higgs");
+    }
+
+    SECTION("UnlinkArticleFromTag removes association") {
+        db.AddTag("top");
+        db.LinkArticleToTag(sample_articles[0].link, "top");
+        db.UnlinkArticleFromTag(sample_articles[0].link, "top");
+        REQUIRE(db.GetTagsForArticle(sample_articles[0].link).empty());
+    }
+
+    SECTION("GetArticlesForTag returns tagged articles") {
+        db.AddTag("bsm");
+        db.LinkArticleToTag(sample_articles[0].link, "bsm");
+        db.LinkArticleToTag(sample_articles[1].link, "bsm");
+        auto articles = db.GetArticlesForTag("bsm");
+        REQUIRE(articles.size() == 2);
+    }
+
+    SECTION("Linking the same tag twice is idempotent") {
+        db.AddTag("dup");
+        db.LinkArticleToTag(sample_articles[0].link, "dup");
+        REQUIRE_NOTHROW(db.LinkArticleToTag(sample_articles[0].link, "dup"));
+        REQUIRE(db.GetTagsForArticle(sample_articles[0].link).size() == 1);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Auto-update project .bib
+// ---------------------------------------------------------------------------
+TEST_CASE("Real DB: project bib_path", "[database][real]") {
+    DatabaseManager db(":memory:");
+    db.AddProject("TestProj");
+
+    SECTION("GetProjectBibPath returns empty by default") {
+        REQUIRE(db.GetProjectBibPath("TestProj").empty());
+    }
+
+    SECTION("SetProjectBibPath / GetProjectBibPath round-trip") {
+        db.SetProjectBibPath("TestProj", "/tmp/test.bib");
+        REQUIRE(db.GetProjectBibPath("TestProj") == "/tmp/test.bib");
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Article deletion
 // ---------------------------------------------------------------------------
 TEST_CASE("Real DB: DeleteArticle", "[database][real]") {

@@ -27,6 +27,7 @@ add_executable(unit_tests
     unit/DatabaseManagerTest.cc
     unit/DatabaseManagerRealTest.cc
     unit/DatabaseManagerIntegrationTest.cc
+    unit/ClipboardTest.cc
     unit/FetcherTest.cc
     unit/FetcherRealTest.cc
     unit/AppTest.cc
