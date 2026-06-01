@@ -19,9 +19,9 @@ A keyboard-driven terminal user interface for browsing, managing, and downloadin
 - **PDF download** — fetch papers directly to a configurable local directory
 - **Configurable key bindings** — remap every action via a YAML file
 - **Scrolling detail pane** — read full titles and abstracts without leaving the terminal
-- **Personalised ranking** — rate articles 1–5 stars; a lightweight neural network learns your preferences and surfaces today's most relevant papers in the Recommended filter
+- **Personalised ranking** — rate articles 1–5 stars; bulk-rate an entire selection at once; a lightweight neural network learns your preferences and surfaces today's most relevant papers in the Recommended filter
 - **BibTeX export** — generate `.bib` files for individual articles, selections, or entire projects, with automatic InspireHEP lookup and metadata fallback
-- **Read/unread tracking** — articles are marked read when the detail pane opens or a PDF is downloaded; read articles render dimmer so unread papers stand out; an **Unread** filter shows everything not yet read
+- **Read/unread tracking** — articles are marked read when the detail pane opens, when you navigate while the detail pane is open, or when a PDF is downloaded; read articles render dimmer so unread papers stand out; an **Unread** filter shows everything not yet read
 - **Auto-refresh** — configurable background feed refresh interval (0 = disabled)
 - **`--fetch` headless mode** — `arxiv-tui --fetch` updates the database and exits without opening the TUI, enabling cron-based refresh
 - **Database pruning** — optional `max_article_age_days` config key automatically removes old articles on startup unless they are bookmarked, rated, or in a project
@@ -240,7 +240,7 @@ key_mappings:
 | `b` | Bookmark current article (or all selected if a selection is active) |
 | `D` | Delete current article (or all selected), with confirmation |
 | `d` | Download article PDF |
-| `n` | Rate article 1–5 stars |
+| `n` | Rate article 1–5 stars (rates all selected if a selection is active) |
 | `c` | Export article as BibTeX |
 | `N` | Edit per-article note (within a project) |
 
@@ -251,6 +251,7 @@ Select any number of articles with `Space`. While a selection is active, the art
 | Key | Bulk behaviour |
 |-----|---------------|
 | `b` | Bookmark all selected articles |
+| `n` | Rate all selected articles with a single score |
 | `p` | Open project dialog in bulk-add mode — confirm links all selected to the checked projects |
 | `D` | Delete all selected articles (confirmation required) |
 | `g` | Export selected articles as a Markdown digest + PDF bundle |
@@ -264,7 +265,7 @@ Select any number of articles with `Space`. While a selection is active, the art
 | `r` | Set date range filter (when Date Range filter is active) |
 | `t` | Toggle category filter |
 
-The filter pane includes an **Unread** entry that shows only articles not yet read. Articles are marked read automatically when the detail pane is opened or a PDF is downloaded.
+The filter pane includes an **Unread** entry that shows only articles not yet read. Articles are marked read automatically when the detail pane is opened, when you scroll through articles while the detail pane is open, or when a PDF is downloaded.
 
 ### Projects
 
@@ -358,7 +359,7 @@ arxiv-tui includes a built-in personalised ranking system that learns from the a
 
 ### How it works
 
-1. **Rate articles** — press `n` on any article to give it a score from 1 to 5 stars.
+1. **Rate articles** — press `n` on any article to give it a score from 1 to 5 stars. With a selection active, `n` opens a "Rate Selection" dialog that applies the chosen score to all selected articles at once.
 2. **Automatic learning** — once you have rated at least 3 articles, and every `retrain_interval` new ratings thereafter, the model retrains in the background on a separate thread so the TUI stays responsive. A `[Training…]` badge appears in the article pane header while training is in progress, and a `[N rating(s) pending]` counter shows how many more ratings are needed to trigger the next retrain.
 3. **Recommended filter** — select **Recommended** in the filter pane to see today's articles that score at or above `recommend_threshold`. Articles are sorted by predicted score, and each entry shows a `[X.X★]` badge.
 4. **Force retrain** — press `R` at any time to immediately trigger a full cold-start retrain (rebuilds the vocabulary and resets the network weights). Use this when the corpus has grown significantly or scores feel stale.
@@ -418,26 +419,22 @@ Hooks: trailing whitespace, LF line endings, valid YAML/TOML, clang-format, REUS
 - **Multi-article selection and bulk actions** (v0.7) — select articles with `Space`; bulk bookmark, bulk project assignment, and bulk delete with confirmation
 - **Article deletion** (v0.7) — delete individual articles or entire selections from the local database; all associated ratings, notes, and project memberships are removed
 - **Link deduplication** (v0.7) — arXiv links are normalised to canonical form (`https`, no version suffix) on ingestion; a one-time startup migration merges any existing duplicates in the database
-- **Read/unread tracking** (v0.8) — `read_at` timestamp recorded when the detail pane opens or a PDF downloads; **Unread** filter shows unseen articles; read articles render dimmer in the list; on-startup DB migration requires no manual action
+- **Read/unread tracking** (v0.8) — `read_at` timestamp recorded when the detail pane opens, when navigating while it is open, or when a PDF downloads; **Unread** filter shows unseen articles; read articles render dimmer in the list; on-startup DB migration requires no manual action
 - **`--fetch` headless mode** (v0.8) — `arxiv-tui --fetch` updates the database and exits, enabling cron-based feed refresh without opening the TUI
 - **Database pruning** (v0.8) — `max_article_age_days` config key (default 0 = off) automatically removes old unprotected articles on startup, keeping the database lean
+- **Clipboard integration** (v0.9) — pressing `c` copies BibTeX directly to the system clipboard via `xclip`, `xsel`, or `wl-clipboard`; `ARXIV_TUI_CLIPBOARD` env var selects the backend; file export remains available as a fallback
+- **FTS5 full-text search** (v0.9) — SQLite FTS5 extension replaces `LIKE '%query%'` with ranked, stemmed full-text search over titles, authors, and abstracts; no new dependency required
+- **Tag system** (v0.9) — user-defined labels outside the project hierarchy; articles can carry multiple tags; tags appear as filters alongside projects and are included in BibTeX exports
+- **Auto-update project `.bib`** (v0.9) — adding an article to a project that has a previously exported `.bib` automatically appends the new entry without a manual re-export
+- **Bulk rating** (v0.9) — `n` with a selection active opens a "Rate Selection" dialog and applies the chosen score to all selected articles in one operation, triggering a single model retrain check
 
 ---
 
 ## Roadmap to v1.0
 
-### v0.9 — Integration and power use
-
-Connecting the tool to the rest of a research workflow.
-
-- **Clipboard integration** — pressing `c` on an article copies its BibTeX directly to the system clipboard (via `xclip`, `xsel`, or `wl-clipboard`); a `ARXIV_TUI_CLIPBOARD` env var selects the backend; writing to a file remains available as a fallback
-- **FTS5 full-text search** — replace the current `LIKE '%query%'` search with SQLite's built-in FTS5 extension for ranked, stemmed full-text search over titles, authors, and abstracts; no new dependency required
-- **Tag system** — user-defined labels that live outside the project hierarchy; an article can have multiple tags; tags appear as a filter alongside projects and can be exported with BibTeX metadata
-- **Auto-update project `.bib`** — when an article is added to a project that has a previously exported `.bib` file, append the new entry automatically without requiring a manual re-export
-
 ### v1.0 — Polish and completeness
 
-The features that make the tool feel finished rather than functional.
+The features that make the tool feel finished rather than just functional.
 
 - **Undo for destructive actions** — `u` undoes the last delete or bulk-delete by restoring the article row, its rating, project memberships, and notes from an in-memory ring buffer; the buffer holds the last 10 operations
 - **Configurable article list columns** — allow the config to specify which columns appear in the article list (title, authors, date, category, score) and in what order; this makes the layout useful on narrow terminals and for non-physics categories where the arXiv ID is more informative than the date
