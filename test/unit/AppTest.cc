@@ -273,6 +273,46 @@ TEST_CASE("AppCore rating and recommendation", "[app][ranking]") {
         REQUIRE_FALSE(core.IsRankerTrained());
         REQUIRE(core.GetPredictedScore(articles[0]) == 0.0f);
     }
+
+    SECTION("RateSelected rates all selected articles with the given rating") {
+        auto articles = core.GetCurrentArticles();
+        REQUIRE(articles.size() >= 2);
+        const std::string& link0 = articles[0].link;
+        const std::string& link1 = articles[1].link;
+
+        core.ToggleSelection(link0);
+        core.ToggleSelection(link1);
+
+        ALLOW_CALL(*db_ptr, GetRecent(-1)).RETURN(sample_articles);
+        REQUIRE_CALL(*db_ptr, SetRating(link0, 3));
+        REQUIRE_CALL(*db_ptr, SetRating(link1, 3));
+
+        core.RateSelected(3);
+    }
+
+    SECTION("RateSelected with no selection rates the focused article") {
+        auto articles = core.GetCurrentArticles();
+        REQUIRE_FALSE(articles.empty());
+        const std::string& link = articles[0].link;
+
+        REQUIRE(core.GetSelectionCount() == 0);
+        ALLOW_CALL(*db_ptr, GetRecent(-1)).RETURN(sample_articles);
+        REQUIRE_CALL(*db_ptr, SetRating(link, 2));
+
+        core.RateSelected(2);
+    }
+
+    SECTION("RateSelected out of range is rejected") {
+        auto articles = core.GetCurrentArticles();
+        REQUIRE_FALSE(articles.empty());
+        const std::string& link = articles[0].link;
+        core.ToggleSelection(link);
+
+        FORBID_CALL(*db_ptr, SetRating(link, ANY(int)));
+
+        core.RateSelected(0);
+        core.RateSelected(6);
+    }
 }
 
 TEST_CASE("AppCore sub-project hierarchy", "[app][projects]") {

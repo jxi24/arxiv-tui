@@ -744,6 +744,35 @@ void AppCore::RateArticle(const std::string& article_link, int rating) {
     }
 }
 
+void AppCore::RateSelected(int rating) {
+    if (rating < 1 || rating > 5)
+        return;
+
+    std::vector<std::string> targets;
+    if (!m_selected_links.empty()) {
+        targets.assign(m_selected_links.begin(), m_selected_links.end());
+    } else if (!m_current_articles.empty()) {
+        targets.push_back(m_current_articles[static_cast<size_t>(m_article_index)].link);
+    }
+
+    for (const auto& link : targets) {
+        m_db->SetRating(link, rating);
+        spdlog::info("[AppCore]: Rated article {} with {}", link, rating);
+        ++m_ratings_since_train;
+    }
+
+    spdlog::debug("[AppCore]: {} new rating(s) pending (threshold: {})",
+                  m_ratings_since_train,
+                  m_retrain_interval);
+
+    if (m_ratings_since_train >= m_retrain_interval) {
+        m_ratings_since_train = 0;
+        SpawnTrainingThread(/*warm_start=*/true);
+    } else {
+        NotifyArticleUpdate();
+    }
+}
+
 void AppCore::ForceRetrain() {
     spdlog::info("[AppCore]: Full retrain requested");
     m_ratings_since_train = 0;

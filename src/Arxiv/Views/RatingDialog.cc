@@ -16,12 +16,22 @@ void ArxivApp::SetupRatingDialog() {
             return emptyElement();
 
         auto articles = core.GetCurrentArticles();
-        std::string article_title =
-            articles.empty() ? "" : articles[static_cast<size_t>(core.GetArticleIndex())].title;
-        int current_rating =
-            articles.empty()
-                ? 0
-                : core.GetArticleRating(articles[static_cast<size_t>(core.GetArticleIndex())].link);
+        std::size_t sel_count = core.GetSelectionCount();
+        bool bulk = sel_count > 0;
+
+        std::string subtitle;
+        int current_rating = 0;
+        if (bulk) {
+            subtitle =
+                std::to_string(sel_count) + " article" + (sel_count > 1 ? "s" : "") + " selected";
+        } else {
+            subtitle =
+                articles.empty() ? "" : articles[static_cast<size_t>(core.GetArticleIndex())].title;
+            current_rating = articles.empty()
+                                 ? 0
+                                 : core.GetArticleRating(
+                                       articles[static_cast<size_t>(core.GetArticleIndex())].link);
+        }
 
         std::vector<Element> stars;
         for (int i = 1; i <= 5; ++i) {
@@ -30,22 +40,25 @@ void ArxivApp::SetupRatingDialog() {
             if (i == pending_rating) {
                 item = text("> " + label) | bold | color(TextColors::primary());
             }
-            if (i == current_rating) {
+            if (!bulk && i == current_rating) {
                 item = item | color(TextColors::secondary());
             }
             stars.push_back(item);
         }
 
+        std::string rating_line =
+            bulk ? ""
+                 : (current_rating > 0 ? "Current rating: " + std::to_string(current_rating) + "/5"
+                                       : "Not yet rated");
+
         return vbox({
-                   text("Rate Article") | bold | color(TextColors::primary()),
+                   text(bulk ? "Rate Selection" : "Rate Article") | bold |
+                       color(TextColors::primary()),
                    separator() | color(TextColors::border()),
-                   paragraph(article_title) | color(TextColors::subtext()),
+                   paragraph(subtitle) | color(TextColors::subtext()),
                    separator() | color(TextColors::border()),
-                   text(current_rating > 0
-                            ? "Current rating: " + std::to_string(current_rating) + "/5"
-                            : "Not yet rated") |
-                       color(TextColors::subtext()),
-                   separator() | color(TextColors::border()),
+                   bulk ? emptyElement() : text(rating_line) | color(TextColors::subtext()),
+                   bulk ? emptyElement() : separator() | color(TextColors::border()),
                    vbox(stars),
                    separator() | color(TextColors::border()),
                    text("j/k to select, Enter to save, Esc to cancel") |
@@ -59,14 +72,20 @@ void ArxivApp::SetupRatingDialog() {
 bool ArxivApp::HandleRatingEvent(ftxui::Event event) {
     if (event == Event::Return) {
         if (pending_rating >= 1 && pending_rating <= 5) {
-            auto articles = core.GetCurrentArticles();
-            if (!articles.empty()) {
-                const std::string& link =
-                    articles[static_cast<size_t>(core.GetArticleIndex())].link;
-                spdlog::info("rate_article link={} rating={}", link, pending_rating);
-                core.RateArticle(link, pending_rating);
-                if (m_recorder)
-                    m_recorder->RecordRateArticle(link, pending_rating);
+            if (core.GetSelectionCount() > 0) {
+                spdlog::info(
+                    "rate_selected count={} rating={}", core.GetSelectionCount(), pending_rating);
+                core.RateSelected(pending_rating);
+            } else {
+                auto articles = core.GetCurrentArticles();
+                if (!articles.empty()) {
+                    const std::string& link =
+                        articles[static_cast<size_t>(core.GetArticleIndex())].link;
+                    spdlog::info("rate_article link={} rating={}", link, pending_rating);
+                    core.RateArticle(link, pending_rating);
+                    if (m_recorder)
+                        m_recorder->RecordRateArticle(link, pending_rating);
+                }
             }
         }
         dialog_depth = Dialog::None;

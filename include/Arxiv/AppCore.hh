@@ -75,6 +75,9 @@ class AppCore {
 
     // Rating and ranking
     void RateArticle(const std::string& article_link, int rating);
+    // Rate all selected articles (or the focused article if no selection) with
+    // the given score, triggering a single retrain check after all ratings are saved.
+    void RateSelected(int rating);
     int GetArticleRating(const std::string& article_link) const;
     float GetPredictedScore(const Article& article) const;
     bool IsRankerTrained() const;
