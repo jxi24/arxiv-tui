@@ -159,3 +159,26 @@ TEST_CASE("AppCore::ExportDailyDigestYAML returns false for unwritable path", "[
     bool ok = core->ExportDailyDigestYAML("/no_such_dir/digest.yaml");
     REQUIRE_FALSE(ok);
 }
+
+TEST_CASE("AppCore::ExportDailyDigestYAML escapes quotes in article fields", "[digest]") {
+    // Exercises the escape_yaml lambda's '"' branch (line 1252).
+    DatabaseManagerMock* db_ptr = nullptr;
+    FetcherMock* fetcher_ptr = nullptr;
+    auto core = make_core(db_ptr, fetcher_ptr);
+
+    fs::path tmp = fs::temp_directory_path() / "digest_escape_test.yaml";
+    fs::remove(tmp);
+
+    Arxiv::Article special = arxiv_tui::test::fixtures::sample_articles[0];
+    special.title = "A \"quoted\" title";
+    special.authors = "O'Brien, \"Alias\"";
+    ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(std::vector<Arxiv::Article>{special});
+
+    bool ok = core->ExportDailyDigestYAML(tmp.string());
+    REQUIRE(ok);
+
+    std::string content = read_file(tmp);
+    REQUIRE_THAT(content, ContainsSubstring("\\\"quoted\\\""));
+
+    fs::remove(tmp);
+}

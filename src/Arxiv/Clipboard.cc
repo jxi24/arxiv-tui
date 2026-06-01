@@ -5,6 +5,7 @@
 #include "Arxiv/Clipboard.hh"
 
 #include <array>
+#include <csignal>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -69,7 +70,12 @@ bool Clipboard::Copy(const std::string& text, const std::string& backend) {
         return false;
     }
 
+    // Ignore SIGPIPE so that writing to a pipe whose reader has already
+    // exited (e.g. a nonexistent backend command) doesn't kill the process.
+    auto old_sigpipe = std::signal(SIGPIPE, SIG_IGN);
     std::fwrite(text.c_str(), 1, text.size(), pipe);
+    if (old_sigpipe != SIG_ERR)
+        std::signal(SIGPIPE, old_sigpipe);
     int ret = ::pclose(pipe);
     if (ret != 0) {
         spdlog::warn("[Clipboard]: Backend '{}' exited with status {}", resolved, ret);

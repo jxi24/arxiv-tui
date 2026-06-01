@@ -1011,6 +1011,35 @@ TEST_CASE("AppCore::ExportSelectedToObsidian", "[app][export]") {
         AppCore core(config, std::move(db), std::move(fetcher));
         REQUIRE(core.ExportSelectedToObsidian().empty());
     }
+
+    SECTION("Escapes special characters in YAML frontmatter") {
+        // Exercises yaml_quote (backslash, quote, newline branches) and
+        // yaml_inline_list (multi-category comma path).
+        auto vault = std::filesystem::temp_directory_path() / "arxiv_obsidian_special";
+        std::filesystem::remove_all(vault);
+
+        Config config("test/fixtures/test_config.yml");
+        config.set_obsidian_vault(vault.string());
+
+        Arxiv::Article special = sample_articles[0];
+        special.title = "A \"quoted\" title with \\backslash";
+        special.category = "hep-ph, hep-lat";
+
+        auto db = std::make_unique<DatabaseManagerMock>();
+        auto fetcher = std::make_unique<FetcherMock>();
+        auto* db_ptr = db.get();
+
+        ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(std::vector<Arxiv::Article>{special});
+        ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{});
+        ALLOW_CALL(*fetcher.get(), DownloadPaper(ANY(std::string), ANY(std::string))).RETURN(false);
+
+        AppCore core(config, std::move(db), std::move(fetcher));
+        core.ToggleSelection(special.link);
+        auto path = core.ExportSelectedToObsidian();
+
+        REQUIRE_FALSE(path.empty());
+        std::filesystem::remove_all(vault);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1089,6 +1118,94 @@ TEST_CASE("AppCore startup pruning", "[app][prune]") {
 
         AppCore core(config, std::move(db), std::move(fetcher));
         REQUIRE_FALSE(called);
+    }
+}
+
+TEST_CASE("AppCore::RateSelected triggers retrain at threshold", "[app][ranking]") {
+    Config config("test/fixtures/test_config.yml");
+    config.set_retrain_interval(2);
+    config.set_ranker_file("/tmp/arxiv_tui_ratesel_retrain_" + std::to_string(::getpid()) + ".bin");
+    std::remove(config.get_ranker_file().c_str());
+
+    auto db = std::make_unique<DatabaseManagerMock>();
+    auto fetcher = std::make_unique<FetcherMock>();
+    auto* db_ptr = db.get();
+
+    db_ptr->setArticles(sample_articles);
+    db_ptr->setBookmarkedArticles({});
+    db_ptr->setProjects({});
+
+    Arxiv::AppCore core(config, std::move(db), std::move(fetcher));
+
+    SECTION("Reaches retrain threshold when selection covers enough articles") {
+        auto articles = core.GetCurrentArticles();
+        REQUIRE(articles.size() >= 2);
+
+        core.ToggleSelection(articles[0].link);
+        core.ToggleSelection(articles[1].link);
+
+        // Two articles × rating = 2 ratings → reaches retrain_interval of 2.
+        Arxiv::DatabaseManager::RatedArticleList rated = {{articles[0], 4}, {articles[1], 4}};
+        ALLOW_CALL(*db_ptr, SetRating(ANY(std::string), ANY(int)));
+        ALLOW_CALL(*db_ptr, GetRatedArticles()).RETURN(rated);
+        ALLOW_CALL(*db_ptr, GetRecent(-1)).RETURN(sample_articles);
+
+        REQUIRE_NOTHROW(core.RateSelected(4));
+    }
+}
+
+TEST_CASE("AppCore::ToggleSelection deselect and ClearSelections", "[app][selection]") {
+    Config config("test/fixtures/test_config.yml");
+
+    auto db = std::make_unique<DatabaseManagerMock>();
+    auto fetcher = std::make_unique<FetcherMock>();
+    auto* db_ptr = db.get();
+
+    ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(sample_articles);
+    ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{});
+
+    Arxiv::AppCore core(config, std::move(db), std::move(fetcher));
+    const std::string& link = sample_articles[0].link;
+
+    SECTION("ToggleSelection removes an already-selected article") {
+        core.ToggleSelection(link);
+        REQUIRE(core.IsSelected(link));
+        core.ToggleSelection(link); // deselect
+        REQUIRE_FALSE(core.IsSelected(link));
+        REQUIRE(core.GetSelectionCount() == 0);
+    }
+
+    SECTION("ClearSelections removes all selected articles") {
+        core.ToggleSelection(sample_articles[0].link);
+        core.ToggleSelection(sample_articles[1].link);
+        REQUIRE(core.GetSelectionCount() == 2);
+        core.ClearSelections();
+        REQUIRE(core.GetSelectionCount() == 0);
+    }
+}
+
+TEST_CASE("AppCore::BookmarkSelected falls back to focused article when no selection",
+          "[app][bookmark]") {
+    Config config("test/fixtures/test_config.yml");
+
+    auto db = std::make_unique<DatabaseManagerMock>();
+    auto fetcher = std::make_unique<FetcherMock>();
+    auto* db_ptr = db.get();
+
+    ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(sample_articles);
+    ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{});
+
+    std::vector<std::string> bookmarked_links;
+    ALLOW_CALL(*db_ptr, ToggleBookmark(ANY(std::string), ANY(bool)))
+        .LR_SIDE_EFFECT(bookmarked_links.push_back(_1));
+
+    Arxiv::AppCore core(config, std::move(db), std::move(fetcher));
+
+    SECTION("Bookmarks focused article when no selection is active") {
+        REQUIRE(core.GetSelectionCount() == 0);
+        core.BookmarkSelected(true);
+        REQUIRE(bookmarked_links.size() == 1);
+        REQUIRE(bookmarked_links[0] == sample_articles[0].link);
     }
 }
 

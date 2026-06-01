@@ -39,4 +39,12 @@ TEST_CASE("Clipboard::Copy graceful failure", "[clipboard]") {
     SECTION("Does not throw on failure") {
         REQUIRE_NOTHROW(Clipboard::Copy("text", "arxiv_nonexistent_clipboard_tool_xyz"));
     }
+
+    SECTION("Returns false when no backend is configured and none is available") {
+        ::unsetenv("ARXIV_TUI_CLIPBOARD");
+        // Only run when no clipboard tool is installed (CI / headless environments).
+        if (Clipboard::DetectBackend("").empty()) {
+            REQUIRE_FALSE(Clipboard::Copy("text", ""));
+        }
+    }
 }
