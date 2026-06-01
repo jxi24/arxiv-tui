@@ -31,6 +31,18 @@ TEST_CASE("Clipboard::DetectBackend", "[clipboard]") {
     }
 }
 
+TEST_CASE("Clipboard::Copy exercises xclip and xsel pipe commands", "[clipboard]") {
+    // These calls cover the xclip/xsel branches of pipe_command even when
+    // those tools are not installed; popen opens a shell that exits with 127.
+    SECTION("xclip backend returns false when xclip is unavailable") {
+        REQUIRE_NOTHROW(Clipboard::Copy("text", "xclip"));
+    }
+
+    SECTION("xsel backend returns false when xsel is unavailable") {
+        REQUIRE_NOTHROW(Clipboard::Copy("text", "xsel"));
+    }
+}
+
 TEST_CASE("Clipboard::Copy graceful failure", "[clipboard]") {
     SECTION("Returns false when backend is an obviously nonexistent program") {
         REQUIRE_FALSE(Clipboard::Copy("hello", "arxiv_nonexistent_clipboard_tool_xyz"));

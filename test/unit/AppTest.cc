@@ -1022,8 +1022,8 @@ TEST_CASE("AppCore::ExportSelectedToObsidian", "[app][export]") {
         config.set_obsidian_vault(vault.string());
 
         Arxiv::Article special = sample_articles[0];
-        special.title = "A \"quoted\" title with \\backslash";
-        special.category = "hep-ph, hep-lat";
+        special.title = "A \"quoted\" title with \\backslash\nand newline";
+        special.category = "hep-ph, hep-lat,";
 
         auto db = std::make_unique<DatabaseManagerMock>();
         auto fetcher = std::make_unique<FetcherMock>();
@@ -1206,6 +1206,48 @@ TEST_CASE("AppCore::BookmarkSelected falls back to focused article when no selec
         core.BookmarkSelected(true);
         REQUIRE(bookmarked_links.size() == 1);
         REQUIRE(bookmarked_links[0] == sample_articles[0].link);
+    }
+}
+
+TEST_CASE("AppCore inline accessor coverage", "[app][accessors]") {
+    Config config("test/fixtures/test_config.yml");
+    auto db = std::make_unique<DatabaseManagerMock>();
+    auto fetcher = std::make_unique<FetcherMock>();
+    auto* db_ptr = db.get();
+
+    ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(sample_articles);
+    ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{});
+
+    AppCore core(config, std::move(db), std::move(fetcher));
+
+    SECTION("IsTraining returns false initially") { REQUIRE_FALSE(core.IsTraining()); }
+
+    SECTION("PendingRatings returns 0 initially") { REQUIRE(core.PendingRatings() == 0); }
+
+    SECTION("GetDateRange and ClearDateRange round-trip") {
+        core.SetDateRange("2026-01-01", "2026-06-01");
+        auto [s, e] = core.GetDateRange();
+        REQUIRE(s == "2026-01-01");
+        REQUIRE(e == "2026-06-01");
+        core.ClearDateRange();
+        auto [s2, e2] = core.GetDateRange();
+        REQUIRE(s2.empty());
+        REQUIRE(e2.empty());
+    }
+
+    SECTION("GetSearchQuery and ClearSearch round-trip") {
+        ALLOW_CALL(*db_ptr, SearchArticles(ANY(std::string), ANY(bool), ANY(bool), ANY(bool)))
+            .RETURN(sample_articles);
+        core.SetSearchQuery("Higgs");
+        REQUIRE(core.GetSearchQuery() == "Higgs");
+        core.ClearSearch();
+        REQUIRE(core.GetSearchQuery().empty());
+    }
+
+    SECTION("IsCategoryActive reflects configured topics") {
+        auto topics = config.get_topics();
+        REQUIRE_FALSE(topics.empty());
+        REQUIRE(core.IsCategoryActive(topics[0]));
     }
 }
 
