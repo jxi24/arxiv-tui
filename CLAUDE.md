@@ -390,3 +390,22 @@ Edit `.arxiv-tui.yml` and add the topic string under `articles.topics`. Topics c
 - Do not mix UI logic into `AppCore` — it should remain testable without FTXUI.
 - Do not use `using namespace std;` globally; prefer explicit `std::` qualifiers.
 - Do not commit `articles.db`, `arxiv_tui.log`, `replay.jsonl`, `ranker.bin`, or the `build/` directory.
+
+---
+
+## Completed Milestones
+
+A brief record of what has been implemented. Consult `README.md` for user-facing detail; this section is for AI context on current codebase state.
+
+| Version | Features |
+|---------|----------|
+| v0.3 | Personalised ranking — TF-IDF + MLP, 1–5 star ratings, Recommended filter, warm-start retrain, `ranker.bin` persistence |
+| v0.4 | Hierarchical sub-projects, per-article notes scoped to a project, Markdown / plain text / JSON export and import |
+| v0.5 | BibTeX export (individual, selection, project) with InspireHEP lookup; JSONL replay recorder, `--replay` mode, signal-based crash handler |
+| v0.6 | Auto-refresh background thread, scroll margin config, fuzzy search, author subscriptions (follow/unfollow) |
+| v0.7 | Multi-article selection (`Space`), bulk bookmark / project-assign / delete; article deletion with cascade; arXiv link normalisation and deduplication |
+| v0.8 | Read/unread tracking (`read_at` timestamp), Unread filter, dimmed read articles, `--fetch` headless mode, `max_article_age_days` pruning |
+| v0.9 | System clipboard integration (`xclip`/`xsel`/`wl-clipboard`), FTS5 full-text search, tag system, auto-update project `.bib` on article add, bulk rating (rate entire selection at once) |
+
+### Post-v0.9 fixes (unreleased)
+- **Read-on-scroll** — articles are now marked read whenever the user navigates (`j`/`k`) while the detail pane is open, not only when the pane is first opened (`src/Arxiv/Views/ArticlePane.cc`).
