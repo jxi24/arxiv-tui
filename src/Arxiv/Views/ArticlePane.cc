@@ -25,6 +25,11 @@ void ArxivApp::SetupArticlePane() {
                 if (m_recorder)
                     m_recorder->RecordSetArticleIndex(idx);
                 title_start_position = 0;
+                if (show_detail) {
+                    auto articles = core.GetCurrentArticles();
+                    if (!articles.empty())
+                        core.MarkArticleRead(articles[static_cast<size_t>(idx)].link);
+                }
                 return true;
             }
             if (key_bindings.matches(event, KeyBindings::Action::Previous)) {
@@ -33,6 +38,11 @@ void ArxivApp::SetupArticlePane() {
                 if (m_recorder)
                     m_recorder->RecordSetArticleIndex(idx);
                 title_start_position = 0;
+                if (show_detail) {
+                    auto articles = core.GetCurrentArticles();
+                    if (!articles.empty())
+                        core.MarkArticleRead(articles[static_cast<size_t>(idx)].link);
+                }
                 return true;
             }
             if (key_bindings.matches(event, KeyBindings::Action::Bookmark)) {

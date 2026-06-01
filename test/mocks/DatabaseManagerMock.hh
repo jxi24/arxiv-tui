@@ -207,6 +207,11 @@ class DatabaseManagerMock : public Arxiv::DatabaseManager {
             NAMED_ALLOW_CALL(*this, ListBookmarked()).RETURN(m_bookmarked_articles));
     }
 
+    void setUnreadArticles(const std::vector<Arxiv::Article>& articles) {
+        m_expectations.push_back(NAMED_ALLOW_CALL(*this, GetUnreadArticles()).RETURN(articles));
+        m_expectations.push_back(NAMED_ALLOW_CALL(*this, MarkArticleRead(ANY(std::string))));
+    }
+
   private:
     std::vector<std::unique_ptr<trompeloeil::expectation>> m_expectations;
     std::vector<Arxiv::Article> m_articles;

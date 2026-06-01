@@ -17,6 +17,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
+#include "fixtures/test_data.hh"
 #include "mocks/DatabaseManagerMock.hh"
 #include "mocks/FetcherMock.hh"
 
@@ -42,6 +43,26 @@ static std::unique_ptr<ArxivApp> make_app(Config cfg = make_test_config()) {
     KeyBindings kb{std::vector<Config::KeyMapping>{}};
     return std::make_unique<ArxivApp>(
         std::move(cfg), std::move(db), std::move(fetcher), std::move(kb));
+}
+
+// Helper that exposes the mock pointer for expectation setup.
+struct AppWithMocks {
+    DatabaseManagerMock* db;
+    std::unique_ptr<ArxivApp> app;
+};
+
+static AppWithMocks make_app_with_articles(Config cfg = make_test_config()) {
+    auto db = std::make_unique<DatabaseManagerMock>();
+    auto* db_ptr = db.get();
+    auto fetcher = std::make_unique<FetcherMock>();
+    db_ptr->setArticles(arxiv_tui::test::fixtures::sample_articles);
+    db_ptr->setBookmarkedArticles({});
+    db_ptr->setProjects({});
+    db_ptr->setUnreadArticles(arxiv_tui::test::fixtures::sample_articles);
+    KeyBindings kb{std::vector<Config::KeyMapping>{}};
+    auto app = std::make_unique<ArxivApp>(
+        std::move(cfg), std::move(db), std::move(fetcher), std::move(kb));
+    return {db_ptr, std::move(app)};
 }
 
 // Render the event_handler component to a string at a fixed 120×40 size.
@@ -138,4 +159,23 @@ TEST_CASE("ArxivApp: settings dialog Topics section shows configured topics", "[
     std::string output = render(*app);
     REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("hep-ph"));
     REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("cs.LG"));
+}
+
+// ---------------------------------------------------------------------------
+// Read marking: navigating while detail panel is open marks articles as read
+// ---------------------------------------------------------------------------
+
+TEST_CASE("ArxivApp: navigating with detail panel open marks article as read",
+          "[tui][read][detail]") {
+    auto [db_ptr, app] = make_app_with_articles();
+    auto handler = app->GetEventHandler();
+
+    // Move focus to the article pane (default key: l), then open the detail panel.
+    handler->OnEvent(Event::Character("l"));
+    handler->OnEvent(Event::Character("a"));
+
+    // Navigating to the next article while the panel is open must mark it as read.
+    const std::string& second_link = arxiv_tui::test::fixtures::sample_articles[1].link;
+    REQUIRE_CALL(*db_ptr, MarkArticleRead(second_link));
+    handler->OnEvent(Event::Character("j"));
 }
