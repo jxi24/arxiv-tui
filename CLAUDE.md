@@ -407,5 +407,26 @@ A brief record of what has been implemented. Consult `README.md` for user-facing
 | v0.8 | Read/unread tracking (`read_at` timestamp), Unread filter, dimmed read articles, `--fetch` headless mode, `max_article_age_days` pruning |
 | v0.9 | System clipboard integration (`xclip`/`xsel`/`wl-clipboard`), FTS5 full-text search, tag system, auto-update project `.bib` on article add, bulk rating (rate entire selection at once) |
 
-### Post-v0.9 fixes (unreleased)
+### Post-v0.9 fixes (tagged v0.9.1)
 - **Read-on-scroll** — articles are now marked read whenever the user navigates (`j`/`k`) while the detail pane is open, not only when the pane is first opened (`src/Arxiv/Views/ArticlePane.cc`).
+- **Bulk rating** — pressing `n` with a selection active opens a "Rate Selection" dialog and applies the score to all selected articles in one operation.
+
+---
+
+## Release Tagging
+
+Tags use **semantic versioning** (`vMAJOR.MINOR.PATCH`). Before tagging a release, Claude must ask the user:
+
+> "Is this a **major** (breaking change), **minor** (new feature), or **patch** (bug fix / small improvement) release?"
+
+Then create and push the tag based on the answer:
+
+```bash
+git tag vX.Y.Z
+git push origin vX.Y.Z
+```
+
+Guidelines:
+- **Patch** (`PATCH++`) — bug fixes, test additions, documentation, CI fixes, performance tweaks; no new user-visible behaviour.
+- **Minor** (`MINOR++`, reset `PATCH` to 0) — new user-facing features that are backwards-compatible.
+- **Major** (`MAJOR++`, reset `MINOR` and `PATCH` to 0) — breaking changes to config format, database schema, or CLI interface.
