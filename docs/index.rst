@@ -8,17 +8,10 @@ A keyboard-driven terminal user interface for browsing, managing, and
 downloading arXiv research papers — built in C++17 with
 `FTXUI <https://github.com/ArthurSonzogni/FTXUI>`_.
 
-.. code-block:: text
-
-   ┌─ Filter ──────┬──────────────── Articles ─── [2 selected] ──────┬──── Detail ────┐
-   │ All           │ [*] Higgs boson production   [4.2★]  Doe   2024 │ Higgs boson    │
-   │ Bookmarks     │ [*] QCD corrections to top   [3.8★]  Smith 2024 │ production at  │
-   │ Today         │     Lattice QCD at finite    [3.1★]  Lee   2024 │ NLO            │
-   │ Range         │                                                   │                │
-   │ Search        │                                                   │ J. Doe et al.  │
-   │ Recommended   │                                                   │                │
-   │ my-project    │                                                   │                │
-   └───────────────┴───────────────────────────────────────────────────┴────────────────┘
+.. image:: _static/tui-overview.png
+   :alt: arxiv-tui interface showing the filter pane, article list, and detail pane
+   :align: center
+   :width: 100%
 
 **Highlights**
 
