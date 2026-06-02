@@ -52,12 +52,18 @@ jobs:
             echo "name=main" >> "$GITHUB_OUTPUT"
           fi
 
-      # Collect every vX.Y.Z tag that already exists on the remote so we
-      # can build the version switcher list.  We include "main" too.
+      # Collect every vX.Y.Z tag whose git tree contains a docs/ directory,
+      # plus "main".  Tags created before the docs site was added are excluded
+      # so the root redirect never points to a folder that was never deployed.
       - name: Collect all version names
         id: all_versions
         run: |
-          TAGS=$(git tag --list 'v*' --sort=-version:refname | tr '\n' ',')
+          TAGS=""
+          for tag in $(git tag --list 'v*' --sort=version:refname); do
+            if git ls-tree "$tag" --name-only 2>/dev/null | grep -q '^docs$'; then
+              TAGS="${TAGS}${tag},"
+            fi
+          done
           echo "tags=${TAGS}main" >> "$GITHUB_OUTPUT"
 
       # Build the Sphinx site for this version, injecting the version list
