@@ -411,6 +411,10 @@ A brief record of what has been implemented. Consult `README.md` for user-facing
 - **Read-on-scroll** — articles are now marked read whenever the user navigates (`j`/`k`) while the detail pane is open, not only when the pane is first opened (`src/Arxiv/Views/ArticlePane.cc`).
 - **Bulk rating** — pressing `n` with a selection active opens a "Rate Selection" dialog and applies the score to all selected articles in one operation.
 
+### v0.9.3 — TSan race fix and logo
+- **Auto-refresh race fix** — `StartAutoRefresh` now acquires `m_refresh_mutex` once before the loop; `StopAutoRefresh` acquires it before writing `m_refresh_running`. Eliminates the lost-wakeup race that caused the TSan CI to time out.
+- **Project logo** — SVG logo added to `assets/` and wired into the Sphinx docs site as `html_logo`/`html_favicon`.
+
 ### v0.9.2 — Documentation site
 - **Sphinx docs site** — full documentation published to GitHub Pages via `docs/` (Furo theme). Covers installation, configuration, key bindings, features, ranking system, contributing guide, and changelog.
 - **Versioned docs** — GitHub Actions workflow (`docs.yml`) builds on every push to `main` and every `v*` tag; each version deploys to its own subdirectory on `gh-pages` with a root redirect to the latest release. Tags without a `docs/` directory are skipped so the redirect never points to a missing folder.
