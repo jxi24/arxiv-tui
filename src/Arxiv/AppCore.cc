@@ -1623,22 +1623,34 @@ void AppCore::StartAutoRefresh() {
         return;
     m_refresh_running.store(true);
     m_refresh_thread = std::thread([this] {
+        // Hold the mutex for the entire loop so that StopAutoRefresh() can
+        // only write m_refresh_running while the mutex is free (i.e. while
+        // the thread is either inside wait_for or inside FetchArticles with
+        // the lock temporarily released).  This prevents the lost-wakeup
+        // race where notify_all() fires before wait_for() begins.
+        std::unique_lock<std::mutex> lock(m_refresh_mutex);
         while (m_refresh_running.load()) {
-            std::unique_lock<std::mutex> lock(m_refresh_mutex);
             int minutes = m_auto_refresh_minutes > 0 ? m_auto_refresh_minutes : 60;
             m_refresh_cv.wait_for(
                 lock, std::chrono::minutes(minutes), [this] { return !m_refresh_running.load(); });
             if (m_refresh_running.load()) {
+                lock.unlock();
                 FetchArticles();
+                lock.lock();
             }
         }
     });
 }
 
 void AppCore::StopAutoRefresh() {
-    if (!m_refresh_running.load())
-        return;
-    m_refresh_running.store(false);
+    {
+        // Acquire the mutex before writing the flag so the write is
+        // synchronised with the thread's mutex-protected predicate check.
+        std::lock_guard<std::mutex> lock(m_refresh_mutex);
+        if (!m_refresh_running.load())
+            return;
+        m_refresh_running.store(false);
+    }
     m_refresh_cv.notify_all();
     if (m_refresh_thread.joinable()) {
         m_refresh_thread.join();
