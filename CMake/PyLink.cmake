@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: GPL-3.0-only
 
-# Create a macro for properly linking the libraries for the pybind11 modules 
+# Create a macro for properly linking the libraries for the pybind11 modules
 macro(pylink target includes libraries)
     target_include_directories(${target} PRIVATE ${includes})
     set_target_properties(${target} PROPERTIES BUILD_WITH_INSTALL_RPATH TRUE)
