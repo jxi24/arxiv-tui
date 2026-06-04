@@ -2,6 +2,9 @@
 #
 # SPDX-License-Identifier: GPL-3.0-only
 
+import json
+import os
+
 project = "arxiv-tui"
 copyright = "2024-2026 Josh Isaacson"
 author = "Josh Isaacson"
@@ -35,10 +38,10 @@ html_sidebars = {
     ]
 }
 
-# Populated by the CI workflow via -D html_context.versions and
-# html_context.current_version so the versioning sidebar works correctly.
-# Locally these stay empty and the sidebar is simply hidden.
+# Populated by the CI workflow via SPHINX_VERSIONS (JSON array) and
+# SPHINX_CURRENT_VERSION env vars. Locally these stay empty and the sidebar
+# is simply hidden.
 html_context = {
-    "versions": [],       # list of {"name": str, "url": str}
-    "current_version": "",
+    "versions": json.loads(os.environ.get("SPHINX_VERSIONS", "[]")),
+    "current_version": os.environ.get("SPHINX_CURRENT_VERSION", ""),
 }

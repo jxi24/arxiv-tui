@@ -42,14 +42,14 @@ jobs:
         run: pip install -r docs/requirements.txt
 
       # Determine the version name for this build.
-      # On a tag push it is the tag (e.g. v0.9.1); on main it is "main".
+      # On a tag push it is the tag (e.g. v0.9.1); on main it is "latest".
       - name: Determine version name
         id: version
         run: |
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
             echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           else
-            echo "name=main" >> "$GITHUB_OUTPUT"
+            echo "name=latest" >> "$GITHUB_OUTPUT"
           fi
 
       # Collect every vX.Y.Z tag whose git tree contains a docs/ directory,
@@ -64,7 +64,7 @@ jobs:
               TAGS="${TAGS}${tag},"
             fi
           done
-          echo "tags=${TAGS}main" >> "$GITHUB_OUTPUT"
+          echo "tags=${TAGS}latest" >> "$GITHUB_OUTPUT"
 
       # Build the Sphinx site for this version, injecting the version list
       # and the current version into html_context so the sidebar switcher works.
@@ -73,9 +73,11 @@ jobs:
           VERSION_NAME: ${{ steps.version.outputs.name }}
           ALL_VERSIONS: ${{ steps.all_versions.outputs.tags }}
         run: |
-          # Build a JSON-like string for html_context.versions.
+          # Build a JSON array for SPHINX_VERSIONS consumed by conf.py.
           # Format expected by _templates/versioning.html:
-          #   [{"name": "v0.9.1", "url": "../v0.9.1/"}, ...]
+          #   [{"name": "v0.9.1", "url": "../v0.9.1/index.html"}, ...]
+          # Note: sphinx-build -D only supports scalar strings, so versions are
+          # passed via env vars and parsed as JSON in conf.py instead.
           python3 - <<'PYEOF'
           import os, json
 
@@ -83,10 +85,10 @@ jobs:
           raw = os.environ["ALL_VERSIONS"].rstrip(",")
           names = [n for n in raw.split(",") if n]
 
-          # Move "main" to the end so tags sort before it.
-          if "main" in names:
-              names.remove("main")
-              names.append("main")
+          # Move "latest" to the end so tags sort before it.
+          if "latest" in names:
+              names.remove("latest")
+              names.append("latest")
 
           versions_json = json.dumps([
               {"name": n, "url": f"../{n}/index.html"} for n in names
@@ -106,37 +108,28 @@ jobs:
           print(d['current'])
           ")
 
+          SPHINX_VERSIONS="${VERSIONS_JSON}" \
+          SPHINX_CURRENT_VERSION="${CURRENT}" \
           sphinx-build \
-            -D "html_context.versions=${VERSIONS_JSON}" \
-            -D "html_context.current_version=${CURRENT}" \
             -D "version=${VERSION_NAME}" \
             -D "release=${VERSION_NAME}" \
             docs \
             "_build/html/${VERSION_NAME}"
 
-      # Write a root index.html that redirects to the latest semver tag,
-      # or to "main" if no tags exist yet.
+      # Write a root index.html that redirects to "latest" (the main branch build).
       - name: Write root redirect
-        env:
-          ALL_VERSIONS: ${{ steps.all_versions.outputs.tags }}
         run: |
-          LATEST=$(python3 -c "
-          import os, re
-          tags = [t for t in os.environ['ALL_VERSIONS'].split(',') if re.match(r'^v\d+', t)]
-          tags.sort(key=lambda s: [int(x) for x in re.findall(r'\d+', s)], reverse=True)
-          print(tags[0] if tags else 'main')
-          ")
           mkdir -p _build/html
           cat > _build/html/index.html <<EOF
           <!DOCTYPE html>
           <html>
             <head>
               <meta charset="utf-8">
-              <meta http-equiv="refresh" content="0; url=${LATEST}/index.html">
+              <meta http-equiv="refresh" content="0; url=latest/index.html">
               <title>arxiv-tui docs</title>
             </head>
             <body>
-              <p>Redirecting to <a href="${LATEST}/index.html">${LATEST}</a>…</p>
+              <p>Redirecting to <a href="latest/index.html">latest</a>…</p>
             </body>
           </html>
           EOF

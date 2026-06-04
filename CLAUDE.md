@@ -411,6 +411,13 @@ A brief record of what has been implemented. Consult `README.md` for user-facing
 - **Read-on-scroll** — articles are now marked read whenever the user navigates (`j`/`k`) while the detail pane is open, not only when the pane is first opened (`src/Arxiv/Views/ArticlePane.cc`).
 - **Bulk rating** — pressing `n` with a selection active opens a "Rate Selection" dialog and applies the score to all selected articles in one operation.
 
+### v0.9.5 — Docs versioning sidebar fix + "latest" default
+- **Versioning sidebar bug fix** — `sphinx-build -D` only accepts scalar strings, so passing a JSON array via `-D html_context.versions=...` stored a raw string in Jinja2 context; iterating over it yielded invisible `<li>` elements all linking to the current page. Fixed by reading `SPHINX_VERSIONS` / `SPHINX_CURRENT_VERSION` env vars in `conf.py` and parsing with `json.loads()`.
+- **"latest" label for main** — main-branch docs now deploy to the `latest/` subdirectory and appear as "latest" in the sidebar. The root redirect always points to `latest/` instead of the most recent semver tag.
+
+### v0.9.4 — Undo-delete ring buffer
+- **Undo-delete** — `u` key restores the most recently deleted article(s) from a ring buffer; wired in `ArticlePane` and exposed through `AppCore`.
+
 ### v0.9.3 — TSan race fix and logo
 - **Auto-refresh race fix** — `StartAutoRefresh` now acquires `m_refresh_mutex` once before the loop; `StopAutoRefresh` acquires it before writing `m_refresh_running`. Eliminates the lost-wakeup race that caused the TSan CI to time out.
 - **Project logo** — SVG logo added to `assets/` and wired into the Sphinx docs site as `html_logo`/`html_favicon`.
