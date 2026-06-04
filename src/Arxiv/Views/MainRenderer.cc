@@ -403,6 +403,22 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
         return true;
     }
 
+    // Export selected articles as a .tar.gz archive (digest + PDFs)
+    if (key_bindings.matches(event, KeyBindings::Action::ExportDigestArchive)) {
+        std::string archive = core.ExportSelectedDigestArchive();
+        if (archive.empty()) {
+            err_msg = core.GetSelectionCount() == 0 ? "No articles selected (Space to select)"
+                                                    : "Failed to create digest archive";
+            spdlog::warn("export_digest_archive failed: {}", err_msg);
+            dialog_depth = Dialog::Error;
+        } else {
+            spdlog::info("export_digest_archive path={}", archive);
+            success_msg = "Archive exported to " + archive;
+            dialog_depth = Dialog::Success;
+        }
+        return true;
+    }
+
     // Export selected articles into the configured Obsidian vault
     if (key_bindings.matches(event, KeyBindings::Action::ExportToObsidian)) {
         std::string path = core.ExportSelectedToObsidian();

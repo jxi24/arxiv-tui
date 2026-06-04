@@ -44,7 +44,8 @@ class KeyBindings {
         Settings,
         GenerateBibtex,
         DeleteArticle,
-        UndoDelete
+        UndoDelete,
+        ExportDigestArchive
     };
 
     KeyBindings() = default;
@@ -58,6 +59,11 @@ class KeyBindings {
 
     // Get all bindings as a vector of pairs (action name, key)
     std::vector<std::pair<std::string, std::string>> get_all_bindings() const;
+
+    // Return only bindings whose action name or key contains query (case-insensitive).
+    // Empty query returns all bindings.
+    std::vector<std::pair<std::string, std::string>>
+    filter_bindings(const std::string& query) const;
 
     // Check if an event matches a specific action
     bool matches(const ftxui::Event& event, Action action) const;

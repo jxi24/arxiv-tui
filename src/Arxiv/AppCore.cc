@@ -1491,6 +1491,27 @@ std::string yaml_inline_list(const std::string& csv) {
 
 } // namespace
 
+std::string AppCore::ExportSelectedDigestArchive() {
+    std::string dir = ExportSelectedDigest();
+    if (dir.empty())
+        return "";
+
+    namespace fs = std::filesystem;
+    fs::path dir_path(dir);
+    fs::path archive = dir_path.parent_path() / (dir_path.filename().string() + ".tar.gz");
+
+    // Pack the digest directory into a .tar.gz alongside it.
+    std::string cmd = "tar -czf \"" + archive.string() + "\" -C \"" +
+                      dir_path.parent_path().string() + "\" \"" + dir_path.filename().string() +
+                      "\" 2>/dev/null";
+    if (std::system(cmd.c_str()) != 0) {
+        spdlog::error("[AppCore]: tar failed for digest archive {}", archive.string());
+        return "";
+    }
+    spdlog::info("[AppCore]: Digest archive written to {}", archive.string());
+    return archive.string();
+}
+
 std::string AppCore::ExportSelectedToObsidian() {
     const std::string& vault = m_config.get_obsidian_vault();
     if (vault.empty()) {

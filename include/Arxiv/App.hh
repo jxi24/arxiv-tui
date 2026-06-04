@@ -87,6 +87,7 @@ class ArxivApp {
     std::string parent_for_new_project;
     bool show_detail = false;
     bool show_help = false;
+    std::string help_search_query;
     std::set<std::string> selected_projects;
     int selected_project_index = 0;
     std::map<std::string, bool> checkbox_states;

@@ -15,7 +15,7 @@ void ArxivApp::SetupHelpDialog() {
         if (!show_help)
             return emptyElement();
 
-        auto bindings = key_bindings.get_all_bindings();
+        auto bindings = key_bindings.filter_bindings(help_search_query);
 
         for (auto& [_, key] : bindings) {
             if (key == " ")
@@ -44,26 +44,41 @@ void ArxivApp::SetupHelpDialog() {
             separator() | color(TextColors::border()),
         };
 
-        for (size_t i = 0; i < columns[0].size(); ++i) {
-            Elements row;
-            for (int col = 0; col < 3; ++col) {
-                if (i < columns[col].size()) {
-                    row.push_back(columns[col][i]);
-                } else {
-                    row.push_back(text("") | size(WIDTH, EQUAL, column_width));
+        // Search box
+        std::string search_display =
+            help_search_query.empty() ? "Filter: (type to search)" : "Filter: " + help_search_query;
+        dialog_content.push_back(
+            text(search_display) |
+            color(help_search_query.empty() ? TextColors::subtext() : TextColors::primary()));
+        dialog_content.push_back(separator() | color(TextColors::border()));
+
+        if (bindings.empty()) {
+            dialog_content.push_back(text("No bindings match \"" + help_search_query + "\"") |
+                                     center | color(TextColors::subtext()));
+        } else {
+            for (size_t i = 0; i < columns[0].size(); ++i) {
+                Elements row;
+                for (int col = 0; col < 3; ++col) {
+                    if (i < columns[col].size()) {
+                        row.push_back(columns[col][i]);
+                    } else {
+                        row.push_back(text("") | size(WIDTH, EQUAL, column_width));
+                    }
+                    if (col < 2)
+                        row.push_back(text(" | ") | color(TextColors::border()));
                 }
-                if (col < 2)
-                    row.push_back(text(" | ") | color(TextColors::border()));
+                dialog_content.push_back(hbox(row));
             }
-            dialog_content.push_back(hbox(row));
         }
 
         dialog_content.push_back(separator() | color(TextColors::border()));
         dialog_content.push_back(hbox({
-                                     text("Press ") | color(TextColors::subtext()),
+                                     text("Type to filter  ") | color(TextColors::subtext()),
+                                     text("Backspace") | bold | color(TextColors::primary()),
+                                     text(" clear  ") | color(TextColors::subtext()),
                                      text(key_bindings.get_key(KeyBindings::Action::ShowHelp)) |
                                          bold | color(TextColors::primary()),
-                                     text(" to close") | color(TextColors::subtext()),
+                                     text(" close") | color(TextColors::subtext()),
                                  }) |
                                  center);
 
@@ -74,7 +89,20 @@ void ArxivApp::SetupHelpDialog() {
 
 bool ArxivApp::HandleHelpEvent(ftxui::Event event) {
     if (key_bindings.matches(event, KeyBindings::Action::ShowHelp) || event == Event::Escape) {
-        show_help = false;
+        if (!help_search_query.empty()) {
+            help_search_query.clear(); // first Escape clears the search
+        } else {
+            show_help = false;
+        }
+        return true;
+    }
+    if (event == Event::Backspace) {
+        if (!help_search_query.empty())
+            help_search_query.pop_back();
+        return true;
+    }
+    if (event.is_character()) {
+        help_search_query += event.character();
         return true;
     }
     return true; // block all other events while help is shown

@@ -411,6 +411,11 @@ A brief record of what has been implemented. Consult `README.md` for user-facing
 - **Read-on-scroll** — articles are now marked read whenever the user navigates (`j`/`k`) while the detail pane is open, not only when the pane is first opened (`src/Arxiv/Views/ArticlePane.cc`).
 - **Bulk rating** — pressing `n` with a selection active opens a "Rate Selection" dialog and applies the score to all selected articles in one operation.
 
+### v0.9.6 — Help overlay search + export digest as archive
+- **Help overlay search** — typing while the `?` overlay is open filters the key-bindings list in real time (case-insensitive substring match on action name or key). Backspace trims the query; first Escape clears it, second closes the overlay. Implemented via `KeyBindings::filter_bindings(query)`.
+- **Export digest as archive** — new `G` key binding (`ExportDigestArchive`) calls `AppCore::ExportSelectedDigestArchive()` which builds the selected-digest directory and packs it into a `<date>.tar.gz` beside it using `tar -czf`.
+- **REUSE CI fix** — replaced `fsfe/reuse-action@v5` (Docker Hub pull, flaky network) with a direct `pip install reuse && reuse lint` step.
+
 ### v0.9.5 — Docs versioning sidebar fix + "latest" default
 - **Versioning sidebar bug fix** — `sphinx-build -D` only accepts scalar strings, so passing a JSON array via `-D html_context.versions=...` stored a raw string in Jinja2 context; iterating over it yielded invisible `<li>` elements all linking to the current page. Fixed by reading `SPHINX_VERSIONS` / `SPHINX_CURRENT_VERSION` env vars in `conf.py` and parsing with `json.loads()`.
 - **"latest" label for main** — main-branch docs now deploy to the `latest/` subdirectory and appear as "latest" in the sidebar. The root redirect always points to `latest/` instead of the most recent semver tag.

@@ -247,6 +247,11 @@ class AppCore {
     // Returns the digest directory's path on success, empty on failure.
     std::string ExportSelectedDigest();
 
+    // Same as ExportSelectedDigest but also packs the output directory into
+    //     <download_dir>/<YYYY-MM-DD>.tar.gz
+    // and returns the archive path on success, empty on failure.
+    std::string ExportSelectedDigestArchive();
+
     // Export the current selection into the configured Obsidian vault. Each
     // article becomes a Markdown note with YAML frontmatter at
     //     <vault>/arxiv-tui/<YYYY-MM-DD>/<arxiv_id>.md

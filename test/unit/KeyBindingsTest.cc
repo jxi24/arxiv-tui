@@ -44,7 +44,8 @@ TEST_CASE("KeyBindings: defaults are populated for every action", "[keybindings]
                    Action::Settings,
                    Action::GenerateBibtex,
                    Action::DeleteArticle,
-                   Action::UndoDelete}) {
+                   Action::UndoDelete,
+                   Action::ExportDigestArchive}) {
         INFO("action enum value = " << static_cast<int>(a));
         REQUIRE_FALSE(kb.get_key(a).empty());
     }
@@ -82,6 +83,7 @@ TEST_CASE("KeyBindings: user overrides apply to every action", "[keybindings]") 
         {"export_to_obsidian", "O"},
         {"delete_article", "Z"},
         {"undo_delete", "U"},
+        {"export_digest_archive", "G"},
     };
 
     std::vector<Config::KeyMapping> mappings;
@@ -120,6 +122,7 @@ TEST_CASE("KeyBindings: user overrides apply to every action", "[keybindings]") 
         {"export_to_obsidian", Action::ExportToObsidian},
         {"delete_article", Action::DeleteArticle},
         {"undo_delete", Action::UndoDelete},
+        {"export_digest_archive", Action::ExportDigestArchive},
     };
 
     for (size_t i = 0; i < overrides.size(); ++i) {
@@ -157,7 +160,8 @@ TEST_CASE("KeyBindings: get_action_name covers every action", "[keybindings]") {
                    Action::Settings,
                    Action::GenerateBibtex,
                    Action::DeleteArticle,
-                   Action::UndoDelete}) {
+                   Action::UndoDelete,
+                   Action::ExportDigestArchive}) {
         INFO("action enum value = " << static_cast<int>(a));
         const auto name = KeyBindings::get_action_name(a);
         REQUIRE_FALSE(name.empty());
@@ -189,4 +193,56 @@ TEST_CASE("KeyBindings: unknown config_name is silently ignored", "[keybindings]
     std::vector<Arxiv::Config::KeyMapping> mappings = {{"nonexistent_action", "z"}};
     // Should not throw; unknown names are skipped.
     REQUIRE_NOTHROW(KeyBindings(mappings));
+}
+
+TEST_CASE("KeyBindings::filter_bindings", "[keybindings][help-search]") {
+    KeyBindings kb(std::vector<Config::KeyMapping>{});
+
+    SECTION("empty query returns all bindings") {
+        auto all = kb.get_all_bindings();
+        auto filtered = kb.filter_bindings("");
+        REQUIRE(filtered.size() == all.size());
+    }
+
+    SECTION("query matching an action name substring returns only those entries") {
+        auto filtered = kb.filter_bindings("next");
+        REQUIRE_FALSE(filtered.empty());
+        for (const auto& [name, key] : filtered) {
+            std::string lower = name;
+            for (auto& c : lower)
+                c = static_cast<char>(std::tolower(c));
+            REQUIRE(lower.find("next") != std::string::npos);
+        }
+    }
+
+    SECTION("query matching a key substring returns those entries") {
+        // 'j' is the default key for Next — filter by that key
+        auto filtered = kb.filter_bindings("j");
+        REQUIRE_FALSE(filtered.empty());
+        bool found = false;
+        for (const auto& [name, key] : filtered) {
+            std::string lower_key = key;
+            for (auto& c : lower_key)
+                c = static_cast<char>(std::tolower(c));
+            if (lower_key.find("j") != std::string::npos)
+                found = true;
+        }
+        REQUIRE(found);
+    }
+
+    SECTION("case-insensitive match on action name") {
+        auto lower = kb.filter_bindings("export");
+        auto upper = kb.filter_bindings("EXPORT");
+        REQUIRE(lower.size() == upper.size());
+    }
+
+    SECTION("query with no match returns empty list") {
+        auto filtered = kb.filter_bindings("zzz_no_such_binding_xyz");
+        REQUIRE(filtered.empty());
+    }
+}
+
+TEST_CASE("KeyBindings: ExportDigestArchive action exists with default key", "[keybindings]") {
+    KeyBindings kb(std::vector<Config::KeyMapping>{});
+    REQUIRE_FALSE(kb.get_key(Action::ExportDigestArchive).empty());
 }

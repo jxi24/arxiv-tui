@@ -6,7 +6,9 @@
 
 #include "Arxiv/Config.hh"
 
+#include <algorithm>
 #include <array>
+#include <cctype>
 #include <string_view>
 
 namespace Arxiv {
@@ -24,7 +26,7 @@ struct ActionInfo {
 
 using Action = KeyBindings::Action;
 
-constexpr std::array<ActionInfo, 29> kActionTable = {{
+constexpr std::array<ActionInfo, 30> kActionTable = {{
     {Action::Next, "next", "j", "Next"},
     {Action::Previous, "previous", "k", "Previous"},
     {Action::Quit, "quit", "q", "Quit"},
@@ -54,6 +56,7 @@ constexpr std::array<ActionInfo, 29> kActionTable = {{
     {Action::GenerateBibtex, "generate_bibtex", "c", "Generate BibTeX"},
     {Action::DeleteArticle, "delete_article", "D", "Delete Article"},
     {Action::UndoDelete, "undo_delete", "u", "Undo Delete"},
+    {Action::ExportDigestArchive, "export_digest_archive", "G", "Export Digest Archive"},
 }};
 
 const ActionInfo* find_by_config_name(std::string_view name) {
@@ -107,6 +110,32 @@ std::vector<std::pair<std::string, std::string>> KeyBindings::get_all_bindings()
     result.reserve(bindings_.size());
     for (const auto& [action, key] : bindings_) {
         result.emplace_back(get_action_name(action), key);
+    }
+    return result;
+}
+
+std::vector<std::pair<std::string, std::string>>
+KeyBindings::filter_bindings(const std::string& query) const {
+    if (query.empty())
+        return get_all_bindings();
+
+    std::string lower_query = query;
+    for (auto& c : lower_query)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+    std::vector<std::pair<std::string, std::string>> result;
+    for (const auto& [action, key] : bindings_) {
+        std::string name = get_action_name(action);
+        std::string lower_name = name;
+        for (auto& c : lower_name)
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        std::string lower_key = key;
+        for (auto& c : lower_key)
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (lower_name.find(lower_query) != std::string::npos ||
+            lower_key.find(lower_query) != std::string::npos) {
+            result.emplace_back(name, key);
+        }
     }
     return result;
 }

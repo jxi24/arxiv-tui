@@ -182,3 +182,48 @@ TEST_CASE("AppCore::ExportDailyDigestYAML escapes quotes in article fields", "[d
 
     fs::remove(tmp);
 }
+
+// ---------------------------------------------------------------------------
+// ExportSelectedDigestArchive
+// ---------------------------------------------------------------------------
+
+TEST_CASE("AppCore::ExportSelectedDigestArchive returns empty when nothing selected",
+          "[digest][archive]") {
+    DatabaseManagerMock* db_ptr = nullptr;
+    FetcherMock* fetcher_ptr = nullptr;
+    auto core = make_core(db_ptr, fetcher_ptr);
+
+    ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(arxiv_tui::test::fixtures::sample_articles);
+
+    REQUIRE(core->ExportSelectedDigestArchive().empty());
+}
+
+TEST_CASE("AppCore::ExportSelectedDigestArchive produces a .tar.gz archive", "[digest][archive]") {
+    fs::path tmp_dir = fs::temp_directory_path() / "arxiv_archive_test";
+    fs::remove_all(tmp_dir);
+
+    Arxiv::Config cfg;
+    cfg.set_topics({"cs.AI"});
+    cfg.set_download_dir(tmp_dir.string());
+
+    auto db_ptr_owned = std::make_unique<DatabaseManagerMock>();
+    auto fet_ptr_owned = std::make_unique<FetcherMock>();
+    auto* db_ptr = db_ptr_owned.get();
+    auto* fet_ptr = fet_ptr_owned.get();
+
+    ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(arxiv_tui::test::fixtures::sample_articles);
+    ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{});
+    ALLOW_CALL(*fet_ptr, DownloadPaper(ANY(std::string), ANY(std::string))).RETURN(false);
+
+    Arxiv::AppCore core(cfg, std::move(db_ptr_owned), std::move(fet_ptr_owned));
+    core.ToggleSelection(arxiv_tui::test::fixtures::sample_articles[0].link);
+
+    auto archive_path = core.ExportSelectedDigestArchive();
+
+    REQUIRE_FALSE(archive_path.empty());
+    REQUIRE(fs::exists(archive_path));
+    REQUIRE_THAT(archive_path, EndsWith(".tar.gz"));
+
+    fs::remove_all(tmp_dir);
+    fs::remove(archive_path);
+}

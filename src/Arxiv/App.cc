@@ -80,7 +80,11 @@ void ArxivApp::UpdateVisibleRange() {
     }
 }
 
-void ArxivApp::ToggleHelp() { show_help = !show_help; }
+void ArxivApp::ToggleHelp() {
+    show_help = !show_help;
+    if (show_help)
+        help_search_query.clear();
+}
 
 void ArxivApp::SetupUI() {
     SetupFilterPane();
