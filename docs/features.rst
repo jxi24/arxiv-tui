@@ -160,3 +160,26 @@ Set ``max_article_age_days`` in ``config.yml`` to automatically remove old
 articles on startup. Articles are exempt from pruning if they are bookmarked,
 rated, or assigned to a project. Set the value to ``0`` (the default) to
 disable pruning entirely.
+
+Undo delete
+-----------
+
+Press ``u`` to restore the most recently deleted article (or bulk-deleted
+selection). The full state is restored:
+
+- The article row itself (title, authors, abstract, date, category, bookmark flag)
+- Its star rating, if it had one
+- All project memberships, with the per-article note for each project
+- All tags
+
+Undo history is held in a ring buffer in memory. When the buffer is full, the
+oldest entry is silently evicted to make room for the new one. The buffer size
+is configurable:
+
+.. code-block:: yaml
+
+   undo_buffer_size: 10   # default; set to 0 to disable undo entirely
+
+Changing ``undo_buffer_size`` at runtime (via the settings dialog) clears the
+existing history. The buffer is session-scoped — it does not persist across
+restarts.

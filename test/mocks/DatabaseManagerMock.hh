@@ -45,6 +45,8 @@ class DatabaseManagerMock : public Arxiv::DatabaseManager {
             NAMED_ALLOW_CALL(*this, ToggleBookmark(ANY(std::string), ANY(bool))));
         m_expectations.push_back(NAMED_ALLOW_CALL(*this, AddProject(ANY(std::string))));
         m_expectations.push_back(NAMED_ALLOW_CALL(*this, RemoveProject(ANY(std::string))));
+        m_expectations.push_back(NAMED_ALLOW_CALL(*this, GetProjectsForArticle(ANY(std::string)))
+                                     .RETURN(std::vector<std::string>{}));
         m_expectations.push_back(
             NAMED_ALLOW_CALL(*this, LinkArticleToProject(ANY(std::string), ANY(std::string))));
         m_expectations.push_back(

@@ -45,6 +45,7 @@ class Config {
     int get_auto_refresh_minutes() const { return auto_refresh_minutes_; }
     int get_scroll_margin() const { return scroll_margin_; }
     int get_max_article_age_days() const { return max_article_age_days_; }
+    std::size_t get_undo_buffer_size() const { return undo_buffer_size_; }
 
     // Setters
     void set_download_dir(const std::string& dir) { article_settings_.download_dir = dir; }
@@ -60,6 +61,7 @@ class Config {
     void set_auto_refresh_minutes(int m) { auto_refresh_minutes_ = m; }
     void set_scroll_margin(int n) { scroll_margin_ = n; }
     void set_max_article_age_days(int n) { max_article_age_days_ = n; }
+    void set_undo_buffer_size(std::size_t n) { undo_buffer_size_ = n; }
 
     // Save/Load configuration
     void save_to_file(const std::string& config_file) const;
@@ -77,6 +79,7 @@ class Config {
     int auto_refresh_minutes_{0};
     int scroll_margin_{3};
     int max_article_age_days_{0};
+    std::size_t undo_buffer_size_{10};
     std::string clipboard_backend_;
 };
 

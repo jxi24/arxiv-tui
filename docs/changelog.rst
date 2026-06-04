@@ -4,6 +4,34 @@
 Changelog
 =========
 
+v0.9.4
+------
+
+- **Undo delete** — press ``u`` to restore the last deleted article or
+  bulk-deleted selection. The full article state is restored: the row
+  itself, its star rating, all project memberships with per-article notes,
+  and all tags. Backed by a ring buffer in memory; the buffer size is
+  configurable via ``undo_buffer_size`` in ``config.yml`` (default: 10).
+  Changing the capacity at runtime clears existing history.
+
+v0.9.3
+------
+
+- **Auto-refresh race fix** — eliminated a TSan-detected lost-wakeup race
+  in the background refresh thread that caused the thread to block for the
+  full timer interval instead of waking up promptly on ``StopAutoRefresh``.
+- **Project logo** — SVG logo added to ``assets/`` and wired into the
+  documentation site.
+
+v0.9.2
+------
+
+- **Documentation site** — full Sphinx docs published to GitHub Pages,
+  covering installation, configuration, key bindings, features, the ranking
+  system, contributing guide, and changelog. Versioned by git tag; the root
+  URL redirects to the latest release. Built automatically on every push to
+  ``main`` and on every ``v*`` tag.
+
 v0.9.1
 ------
 

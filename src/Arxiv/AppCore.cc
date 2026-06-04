@@ -47,6 +47,8 @@ AppCore::AppCore(const Config& config,
     , m_ranker_path(config.get_ranker_file())
     , m_auto_refresh_minutes(config.get_auto_refresh_minutes())
     , m_recorder(recorder) {
+    m_undo_capacity = config.get_undo_buffer_size();
+    m_undo_buffer.resize(m_undo_capacity);
 
     spdlog::info("ArxivAppCore Initialized");
     if (m_recorder)
@@ -1292,6 +1294,36 @@ void AppCore::DeleteCurrentOrSelected() {
     } else if (!m_current_articles.empty()) {
         to_delete.push_back(m_current_articles[static_cast<size_t>(m_article_index)].link);
     }
+
+    if (to_delete.empty()) {
+        return;
+    }
+
+    // Snapshot each article's full state before deletion so it can be restored.
+    if (m_undo_capacity > 0) {
+        UndoEntry entry;
+        entry.reserve(to_delete.size());
+        for (const auto& link : to_delete) {
+            auto it = std::find_if(m_current_articles.begin(),
+                                   m_current_articles.end(),
+                                   [&link](const Article& a) { return a.link == link; });
+            if (it == m_current_articles.end())
+                continue;
+
+            DeletedArticleSnapshot snap;
+            snap.article = *it;
+            snap.rating = m_db->GetRating(link);
+
+            for (const auto& proj : m_db->GetProjectsForArticle(link)) {
+                snap.project_notes.emplace_back(proj, m_db->GetProjectNote(proj, link));
+            }
+            snap.tags = m_db->GetTagsForArticle(link);
+            entry.push_back(std::move(snap));
+        }
+        if (!entry.empty())
+            PushUndo(std::move(entry));
+    }
+
     for (const auto& link : to_delete) {
         spdlog::info("[AppCore]: Deleting article {}", link);
         m_db->DeleteArticle(link);
@@ -1658,6 +1690,57 @@ void AppCore::StopAutoRefresh() {
 }
 
 bool AppCore::IsAutoRefreshing() const { return m_refresh_running.load(); }
+
+// ---------------------------------------------------------------------------
+// Undo ring buffer
+// ---------------------------------------------------------------------------
+
+void AppCore::PushUndo(UndoEntry entry) {
+    if (m_undo_capacity == 0)
+        return;
+    m_undo_buffer[m_undo_write] = std::move(entry);
+    m_undo_write = (m_undo_write + 1) % m_undo_capacity;
+    if (m_undo_count < m_undo_capacity)
+        ++m_undo_count;
+}
+
+auto AppCore::PopUndo() -> std::optional<UndoEntry> {
+    if (m_undo_count == 0)
+        return std::nullopt;
+    --m_undo_count;
+    // Step the write head back one slot — that slot holds the most-recently pushed entry.
+    m_undo_write = (m_undo_write + m_undo_capacity - 1) % m_undo_capacity;
+    return std::move(m_undo_buffer[m_undo_write]);
+}
+
+bool AppCore::CanUndo() const { return m_undo_count > 0; }
+
+void AppCore::UndoLastDelete() {
+    auto entry = PopUndo();
+    if (!entry)
+        return;
+
+    for (const auto& snap : *entry) {
+        m_db->AddArticle(snap.article);
+        if (snap.rating != 0)
+            m_db->SetRating(snap.article.link, snap.rating);
+        for (const auto& [proj, note] : snap.project_notes) {
+            m_db->LinkArticleToProject(snap.article.link, proj);
+            if (!note.empty())
+                m_db->SetProjectNote(proj, snap.article.link, note);
+        }
+        for (const auto& tag : snap.tags)
+            m_db->LinkArticleToTag(snap.article.link, tag);
+    }
+    FetchArticles();
+}
+
+void AppCore::SetUndoCapacity(std::size_t capacity) {
+    m_undo_capacity = capacity;
+    m_undo_buffer.assign(capacity, UndoEntry{});
+    m_undo_write = 0;
+    m_undo_count = 0;
+}
 
 int AppCore::GetAutoRefreshMinutes() const { return m_auto_refresh_minutes; }
 

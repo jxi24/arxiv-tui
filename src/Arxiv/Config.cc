@@ -71,6 +71,10 @@ void Config::load_from_file(const std::string& config_file) {
         max_article_age_days_ = config["max_article_age_days"].as<int>();
     }
 
+    if (config["undo_buffer_size"]) {
+        undo_buffer_size_ = config["undo_buffer_size"].as<std::size_t>();
+    }
+
     if (config["clipboard_backend"]) {
         clipboard_backend_ = config["clipboard_backend"].as<std::string>();
     }
@@ -111,6 +115,7 @@ void Config::save_to_file(const std::string& config_file) const {
     config["auto_refresh_minutes"] = auto_refresh_minutes_;
     config["scroll_margin"] = scroll_margin_;
     config["max_article_age_days"] = max_article_age_days_;
+    config["undo_buffer_size"] = undo_buffer_size_;
     if (!clipboard_backend_.empty())
         config["clipboard_backend"] = clipboard_backend_;
     if (!obsidian_vault_.empty()) {
