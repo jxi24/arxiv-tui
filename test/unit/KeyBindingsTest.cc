@@ -41,7 +41,10 @@ TEST_CASE("KeyBindings: defaults are populated for every action", "[keybindings]
                    Action::ToggleSelection,
                    Action::ExportSelectedDigest,
                    Action::ExportToObsidian,
-                   Action::Settings}) {
+                   Action::Settings,
+                   Action::GenerateBibtex,
+                   Action::DeleteArticle,
+                   Action::UndoDelete}) {
         INFO("action enum value = " << static_cast<int>(a));
         REQUIRE_FALSE(kb.get_key(a).empty());
     }
@@ -77,6 +80,8 @@ TEST_CASE("KeyBindings: user overrides apply to every action", "[keybindings]") 
         {"toggle_selection", "v"},
         {"export_selected_digest", "g"},
         {"export_to_obsidian", "O"},
+        {"delete_article", "Z"},
+        {"undo_delete", "U"},
     };
 
     std::vector<Config::KeyMapping> mappings;
@@ -113,6 +118,8 @@ TEST_CASE("KeyBindings: user overrides apply to every action", "[keybindings]") 
         {"toggle_selection", Action::ToggleSelection},
         {"export_selected_digest", Action::ExportSelectedDigest},
         {"export_to_obsidian", Action::ExportToObsidian},
+        {"delete_article", Action::DeleteArticle},
+        {"undo_delete", Action::UndoDelete},
     };
 
     for (size_t i = 0; i < overrides.size(); ++i) {
@@ -147,12 +154,20 @@ TEST_CASE("KeyBindings: get_action_name covers every action", "[keybindings]") {
                    Action::ToggleSelection,
                    Action::ExportSelectedDigest,
                    Action::ExportToObsidian,
-                   Action::Settings}) {
+                   Action::Settings,
+                   Action::GenerateBibtex,
+                   Action::DeleteArticle,
+                   Action::UndoDelete}) {
         INFO("action enum value = " << static_cast<int>(a));
         const auto name = KeyBindings::get_action_name(a);
         REQUIRE_FALSE(name.empty());
         REQUIRE(name != "Unknown");
     }
+}
+
+TEST_CASE("KeyBindings: UndoDelete defaults to u", "[keybindings]") {
+    KeyBindings kb(std::vector<Config::KeyMapping>{});
+    REQUIRE(kb.get_key(KeyBindings::Action::UndoDelete) == "u");
 }
 
 TEST_CASE("KeyBindings: get_action_name returns 'Unknown' for invalid action", "[keybindings]") {

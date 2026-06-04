@@ -43,7 +43,8 @@ class KeyBindings {
         ExportToObsidian,
         Settings,
         GenerateBibtex,
-        DeleteArticle
+        DeleteArticle,
+        UndoDelete
     };
 
     KeyBindings() = default;

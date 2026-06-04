@@ -92,6 +92,12 @@ void ArxivApp::SetupArticlePane() {
                 }
                 return true;
             }
+            if (key_bindings.matches(event, KeyBindings::Action::UndoDelete)) {
+                if (core.CanUndo()) {
+                    core.UndoLastDelete();
+                }
+                return true;
+            }
             if (key_bindings.matches(event, KeyBindings::Action::DownloadArticle)) {
                 auto article =
                     core.GetCurrentArticles()[static_cast<size_t>(core.GetArticleIndex())];

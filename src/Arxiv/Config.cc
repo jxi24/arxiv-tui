@@ -28,6 +28,7 @@ void Config::load_from_file(const std::string& config_file) {
             {"delete_project", "x"},
             {"download_article", "d"},
             {"show_detail", "a"},
+            {"undo_delete", "u"},
         };
 
         save_to_file(config_file);
