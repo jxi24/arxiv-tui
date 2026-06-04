@@ -58,6 +58,9 @@ Article actions
    * - ``D``
      - ``delete_article``
      - Delete the current article (or all selected articles) with confirmation
+   * - ``u``
+     - ``undo``
+     - Undo the last delete, restoring the article(s), rating, project memberships, and tags
    * - ``d``
      - ``download_article``
      - Download the article PDF to ``download_dir``

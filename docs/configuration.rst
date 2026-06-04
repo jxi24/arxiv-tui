@@ -81,6 +81,11 @@ Reference
     Number of context lines kept visible above and below the selected
     article when scrolling. Default: ``3``.
 
+``undo_buffer_size``
+    Number of delete operations kept in the in-memory undo ring buffer.
+    When the buffer is full, the oldest entry is evicted to make room.
+    Set to ``0`` to disable undo entirely. Default: ``10``.
+
 ``max_article_age_days``
     Maximum age (in days) of articles kept in the database. Articles older
     than this threshold are deleted on startup unless they are bookmarked,

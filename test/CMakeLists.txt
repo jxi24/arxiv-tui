@@ -45,6 +45,7 @@ add_executable(unit_tests
     unit/KeyBindingsTest.cc
     unit/ConfigTest.cc
     unit/AppTuiTest.cc
+    unit/UndoTest.cc
 )
 
 # Link against Catch2 and our library

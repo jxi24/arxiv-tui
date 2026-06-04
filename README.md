@@ -27,6 +27,7 @@ A keyboard-driven terminal user interface for browsing, managing, and downloadin
 - **Database pruning** — optional `max_article_age_days` config key automatically removes old articles on startup unless they are bookmarked, rated, or in a project
 - **Replay system and crash handler** — all UI actions are recorded to a JSONL replay log; on a crash, a report with backtrace and full replay is saved for debugging
 - **Link deduplication** — incoming RSS and Atom feeds are normalised to a canonical URL form on ingestion, and any existing duplicates are cleaned up automatically on first run
+- **Undo delete** — press `u` to restore the last deleted article (or entire bulk-deleted selection) including its rating, project memberships, notes, and tags; a configurable ring buffer (default 10 steps) keeps the last N operations available for undo
 
 ---
 
@@ -229,6 +230,7 @@ key_mappings:
 | `Space` | Toggle selection on current article |
 | `b` | Bookmark current article (or all selected if a selection is active) |
 | `D` | Delete current article (or all selected), with confirmation |
+| `u` | Undo the last delete (restores article, rating, project memberships, and tags) |
 | `d` | Download article PDF |
 | `n` | Rate article 1–5 stars (rates all selected if a selection is active) |
 | `c` | Export article as BibTeX |
@@ -417,6 +419,8 @@ Hooks: trailing whitespace, LF line endings, valid YAML/TOML, clang-format, REUS
 - **Tag system** (v0.9) — user-defined labels outside the project hierarchy; articles can carry multiple tags; tags appear as filters alongside projects and are included in BibTeX exports
 - **Auto-update project `.bib`** (v0.9) — adding an article to a project that has a previously exported `.bib` automatically appends the new entry without a manual re-export
 - **Bulk rating** (v0.9) — `n` with a selection active opens a "Rate Selection" dialog and applies the chosen score to all selected articles in one operation, triggering a single model retrain check
+- **Documentation site** (v0.9.2) — Sphinx docs site published to GitHub Pages; versioned by tag with a root redirect to the latest release
+- **Undo delete** (v0.9.4) — `u` restores the last deleted article or bulk-deleted selection, including its rating, project memberships, notes, and tags; backed by a configurable ring buffer (`undo_buffer_size`, default 10)
 
 ---
 
@@ -426,12 +430,10 @@ Hooks: trailing whitespace, LF line endings, valid YAML/TOML, clang-format, REUS
 
 The features that make the tool feel finished rather than just functional.
 
-- **Undo for destructive actions** — `u` undoes the last delete or bulk-delete by restoring the article row, its rating, project memberships, and notes from an in-memory ring buffer; the buffer holds the last 10 operations
 - **Configurable article list columns** — allow the config to specify which columns appear in the article list (title, authors, date, category, score) and in what order; this makes the layout useful on narrow terminals and for non-physics categories where the arXiv ID is more informative than the date
 - **arXiv category autocomplete** — when adding a topic in the settings dialog, offer autocomplete against the full arXiv category taxonomy (a ~200-entry static list bundled at compile time) to prevent silent typos that produce empty feeds
 - **Help overlay search** — type to filter the help overlay when the binding count makes scrolling tedious; highlights matching rows
 - **Export digest as archive** — wrap the Markdown digest and downloaded PDFs produced by `g` into a `.tar.gz` so the output can be shared as a single file
-- **Documentation site** — publish a GitHub Pages site (via a `docs/` directory or a dedicated `gh-pages` branch) covering installation, configuration reference, all key bindings, the ranking system, and a getting-started walkthrough; generated with a static site tool (e.g. MkDocs or mdBook) and deployed automatically by a GitHub Actions workflow on every push to `main`
 
 ---
 

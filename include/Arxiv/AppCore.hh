@@ -13,12 +13,15 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <cstddef>
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <set>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace Arxiv {
@@ -220,8 +223,16 @@ class AppCore {
     std::size_t GetSelectionCount() const { return m_selected_links.size(); }
 
     // Delete the focused article, or all selected articles if a selection is active.
-    // Clears the selection afterwards and refreshes the article list.
+    // Snapshots each article's full state (rating, project memberships, tags) into the
+    // undo ring buffer before deletion. Clears the selection and refreshes the list.
     void DeleteCurrentOrSelected();
+
+    // Undo support — ring buffer of delete snapshots.
+    bool CanUndo() const;
+    void UndoLastDelete();
+    std::size_t GetUndoCapacity() const { return m_undo_capacity; }
+    // Changing capacity resets the buffer (existing history is discarded).
+    void SetUndoCapacity(std::size_t capacity);
 
     // Set the bookmark state on all selected articles (or the focused article if
     // no selection is active).
@@ -253,6 +264,29 @@ class AppCore {
     std::vector<std::string> GetKeywords() const;
 
   private:
+    // Full state captured for a single deleted article, sufficient to restore it.
+    struct DeletedArticleSnapshot {
+        Article article;
+        int rating{0};
+        // Each project the article belonged to, paired with its note in that project.
+        std::vector<std::pair<std::string, std::string>> project_notes;
+        std::vector<std::string> tags;
+    };
+
+    // One undo step covers all articles deleted in a single DeleteCurrentOrSelected call.
+    using UndoEntry = std::vector<DeletedArticleSnapshot>;
+
+    // Push one step onto the ring buffer; overwrites the oldest entry when full.
+    void PushUndo(UndoEntry entry);
+    // Pop and return the most-recently-pushed entry, or nullopt if empty.
+    std::optional<UndoEntry> PopUndo();
+
+    // Ring buffer storage.
+    std::vector<UndoEntry> m_undo_buffer;
+    std::size_t m_undo_write{0}; // next write slot
+    std::size_t m_undo_count{0}; // live entries (≤ m_undo_capacity)
+    std::size_t m_undo_capacity{10};
+
     Config m_config;
     std::vector<std::string> m_topics;
     std::unique_ptr<DatabaseManager> m_db;
