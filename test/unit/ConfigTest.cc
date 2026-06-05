@@ -167,3 +167,37 @@ TEST_CASE("Config: max_article_age_days round-trips through save/load", "[config
     Config loaded(tmp.path);
     REQUIRE(loaded.get_max_article_age_days() == 30);
 }
+
+TEST_CASE("Config: article_columns defaults to title and date", "[config]") {
+    Config cfg;
+    auto cols = cfg.get_article_columns();
+    REQUIRE_FALSE(cols.empty());
+    // title must always be present in defaults
+    bool has_title = std::find(cols.begin(), cols.end(), "title") != cols.end();
+    REQUIRE(has_title);
+}
+
+TEST_CASE("Config: article_columns round-trips through save/load", "[config]") {
+    TempConfig tmp;
+    Config cfg;
+    cfg.set_article_columns({"title", "authors", "date", "category"});
+    cfg.save_to_file(tmp.path);
+
+    Config loaded(tmp.path);
+    REQUIRE(loaded.get_article_columns() ==
+            std::vector<std::string>{"title", "authors", "date", "category"});
+}
+
+TEST_CASE("Config: article_columns absent from file gives default", "[config]") {
+    TempConfig tmp;
+    // Write a minimal config that omits article_columns entirely
+    std::ofstream f(tmp.path);
+    f << "article_settings:\n  download_dir: /tmp\n  topics:\n    - cs.AI\n";
+    f.close();
+
+    Config loaded(tmp.path);
+    auto cols = loaded.get_article_columns();
+    REQUIRE_FALSE(cols.empty());
+    bool has_title = std::find(cols.begin(), cols.end(), "title") != cols.end();
+    REQUIRE(has_title);
+}

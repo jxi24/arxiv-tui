@@ -411,6 +411,9 @@ A brief record of what has been implemented. Consult `README.md` for user-facing
 - **Read-on-scroll** — articles are now marked read whenever the user navigates (`j`/`k`) while the detail pane is open, not only when the pane is first opened (`src/Arxiv/Views/ArticlePane.cc`).
 - **Bulk rating** — pressing `n` with a selection active opens a "Rate Selection" dialog and applies the score to all selected articles in one operation.
 
+### v0.9.7 — Configurable article list columns
+- **`article_columns` config key** — YAML list selecting which columns appear in the article list and in what order; available: `title`, `date`, `authors`, `category`, `id`, `score`; default `[title, date]`. A column header row renders above the list. Width is computed as `terminal − 3 (border+scrollbar) − fixed_col_widths − separators`; `title` fills the remainder.
+
 ### v0.9.6 — Help overlay search + export digest as archive
 - **Help overlay search** — typing while the `?` overlay is open filters the key-bindings list in real time (case-insensitive substring match on action name or key). Backspace trims the query; first Escape clears it, second closes the overlay. Implemented via `KeyBindings::filter_bindings(query)`.
 - **Export digest as archive** — new `G` key binding (`ExportDigestArchive`) calls `AppCore::ExportSelectedDigestArchive()` which builds the selected-digest directory and packs it into a `<date>.tar.gz` beside it using `tar -czf`.

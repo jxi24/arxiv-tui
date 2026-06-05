@@ -46,6 +46,7 @@ class Config {
     int get_scroll_margin() const { return scroll_margin_; }
     int get_max_article_age_days() const { return max_article_age_days_; }
     std::size_t get_undo_buffer_size() const { return undo_buffer_size_; }
+    const std::vector<std::string>& get_article_columns() const { return article_columns_; }
 
     // Setters
     void set_download_dir(const std::string& dir) { article_settings_.download_dir = dir; }
@@ -62,6 +63,7 @@ class Config {
     void set_scroll_margin(int n) { scroll_margin_ = n; }
     void set_max_article_age_days(int n) { max_article_age_days_ = n; }
     void set_undo_buffer_size(std::size_t n) { undo_buffer_size_ = n; }
+    void set_article_columns(const std::vector<std::string>& cols) { article_columns_ = cols; }
 
     // Save/Load configuration
     void save_to_file(const std::string& config_file) const;
@@ -81,6 +83,7 @@ class Config {
     int max_article_age_days_{0};
     std::size_t undo_buffer_size_{10};
     std::string clipboard_backend_;
+    std::vector<std::string> article_columns_{"title", "date"};
 };
 
 } // namespace Arxiv

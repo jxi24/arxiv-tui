@@ -18,6 +18,7 @@ A keyboard-driven terminal user interface for browsing, managing, and downloadin
 - **Projects** — group related articles into named collections with sub-projects, per-article notes, and export/import (Markdown, plain text, JSON)
 - **PDF download** — fetch papers directly to a configurable local directory
 - **Configurable key bindings** — remap every action via a YAML file
+- **Configurable article list columns** — choose which columns appear in the article list (title, authors, date, category, score, id) and in what order via `article_columns` in `config.yml`
 - **Scrolling detail pane** — read full titles and abstracts without leaving the terminal
 - **Personalised ranking** — rate articles 1–5 stars; bulk-rate an entire selection at once; a lightweight neural network learns your preferences and surfaces today's most relevant papers in the Recommended filter
 - **BibTeX export** — generate `.bib` files for individual articles, selections, or entire projects, with automatic InspireHEP lookup and metadata fallback
@@ -28,6 +29,8 @@ A keyboard-driven terminal user interface for browsing, managing, and downloadin
 - **Replay system and crash handler** — all UI actions are recorded to a JSONL replay log; on a crash, a report with backtrace and full replay is saved for debugging
 - **Link deduplication** — incoming RSS and Atom feeds are normalised to a canonical URL form on ingestion, and any existing duplicates are cleaned up automatically on first run
 - **Undo delete** — press `u` to restore the last deleted article (or entire bulk-deleted selection) including its rating, project memberships, notes, and tags; a configurable ring buffer (default 10 steps) keeps the last N operations available for undo
+- **Help overlay search** — type while the `?` overlay is open to filter key bindings in real time; Backspace trims the query, Escape clears it, a second Escape closes the overlay
+- **Export digest as archive** — `G` packs the selected-articles digest (Markdown + PDFs) into a portable `.tar.gz` file
 
 ---
 
@@ -78,81 +81,6 @@ cmake --build build -j$(nproc)
 sudo cmake --install build
 ```
 
-### File layout after install
-
-Regardless of prefix, runtime files are placed in standard per-user locations.
-`XDG_DATA_HOME` and `XDG_STATE_HOME` override the data and state paths at
-runtime; `XDG_CONFIG_HOME` overrides the config path.
-
-| Path | Contents |
-|------|----------|
-| `~/.config/arxiv-tui/config.yml` | Configuration (created on first run) |
-| `~/.local/share/arxiv-tui/articles.db` | Article database and ratings |
-| `~/.local/share/arxiv-tui/ranker.bin` | Trained ranking model |
-| `~/.local/share/arxiv-tui/downloads/` | Default PDF download directory |
-| `~/.local/state/arxiv-tui/arxiv_tui.log` | Rotating application log |
-| `~/.local/state/arxiv-tui/replay.jsonl` | UI action replay log |
-| `~/.local/state/arxiv-tui/crash_*.txt` | Crash reports with backtrace |
-
-The `~/.local/share` and `~/.local/state` paths above assume a `~/.local`
-prefix. A system-wide install uses `/usr/local/share` and `/usr/local/var`
-instead, but the per-user config and data files always live under `$HOME`.
-
----
-
-## Building from source (without installing)
-
-```bash
-git clone https://github.com/jxi24/arxiv-tui.git
-cd arxiv-tui
-cmake -B build
-cmake --build build -j$(nproc)
-
-# Run directly from the build tree
-./build/src/Arxiv/arxiv-tui
-```
-
-### Build with tests
-
-```bash
-cmake -B build -DARXIV_TUI_ENABLE_TESTING=ON
-cmake --build build -j$(nproc)
-ctest --test-dir build --output-on-failure
-```
-
-### Build with coverage
-
-```bash
-cmake -B build -DARXIV_TUI_ENABLE_TESTING=ON -DARXIV_TUI_COVERAGE=ON
-cmake --build build -j$(nproc)
-```
-
-### Build the ImGui/GLFW GUI companion
-
-The GUI target is not built by default (it requires X11 or Wayland headers).
-Pass `-DARXIV_TUI_BUILD_GUI=ON` to enable it; Wayland support is auto-detected.
-
-```bash
-cmake -B build -DARXIV_TUI_BUILD_GUI=ON
-cmake --build build -j$(nproc)
-```
-
-### Replay a crash report
-
-```bash
-arxiv-tui --replay ~/.local/state/arxiv-tui/crash_20260101_120000_SIGSEGV.txt
-```
-
-### Headless feed fetch (cron)
-
-```bash
-# Fetch new articles without opening the TUI and exit
-arxiv-tui --fetch
-
-# Example cron entry: refresh at 07:00 on weekdays
-0 7 * * 1-5  arxiv-tui --fetch
-```
-
 ---
 
 ## Configuration
@@ -172,6 +100,9 @@ retrain_interval: 5
 auto_refresh_minutes: 0
 scroll_margin: 3
 max_article_age_days: 0
+article_columns:
+  - title
+  - date
 key_mappings:
   - action: next
     key: j
@@ -209,6 +140,26 @@ key_mappings:
 
 **`max_article_age_days`** is the maximum age (in days) of articles kept in the database. Articles older than this threshold are deleted on startup unless they are bookmarked, rated, or assigned to a project. Set to `0` to disable pruning entirely. Default: `0`.
 
+**`article_columns`** controls which columns are shown in the article list and in what order. Available values:
+
+| Column | Description | Width |
+|--------|-------------|-------|
+| `title` | Article title (scrolls on the focused row) | flexible |
+| `date` | Publication date (`YYYY-MM-DD`) | 10 |
+| `authors` | Author list (truncated) | 24 |
+| `category` | Primary arXiv category (e.g. `hep-ph`) | 8 |
+| `id` | arXiv identifier (e.g. `2403.12345`) | 12 |
+| `score` | Predicted ranking score (Recommended view only) | 8 |
+
+Default: `[title, date]`. The `title` column is strongly recommended; without it the list shows only metadata. Example for a narrow terminal focused on category browsing:
+
+```yaml
+article_columns:
+  - title
+  - category
+  - date
+```
+
 ---
 
 ## Key Bindings
@@ -220,7 +171,7 @@ key_mappings:
 | `j` / `k` | Next / previous article |
 | `h` / `l` | Move focus left / right between panes |
 | `a` | Toggle detail view |
-| `?` | Toggle help overlay |
+| `?` | Toggle help overlay (type to filter bindings) |
 | `q` | Quit |
 
 ### Article actions
@@ -247,6 +198,7 @@ Select any number of articles with `Space`. While a selection is active, the art
 | `p` | Open project dialog in bulk-add mode — confirm links all selected to the checked projects |
 | `D` | Delete all selected articles (confirmation required) |
 | `g` | Export selected articles as a Markdown digest + PDF bundle |
+| `G` | Pack the digest output into a `.tar.gz` archive |
 | `o` | Export selected articles to an Obsidian vault |
 
 ### Filtering and search
@@ -377,7 +329,7 @@ The repository enforces quality gates on every push and pull request via GitHub 
 | **Sanitizers** | ASan + UBSan (memory/UB errors) and TSan (data races), run as separate jobs |
 | **Static Analysis** | clang-tidy on project sources only (CPM dependencies are excluded) |
 | **clang-format** | Code style checked against `.clang-format` (clang-format v20) |
-| **REUSE** | Every file carries a valid SPDX `FileCopyrightText` and `License-Identifier` |
+| **REUSE** | Every file carries a valid SPDX `FileCopyrightText` and `License-Identifier` (checked via `pip install reuse && reuse lint`) |
 
 Build artefacts are cached with ccache (per-job namespaces) and CPM dependencies are cached by `Dependencies.txt` hash to keep CI times short.
 
@@ -421,19 +373,9 @@ Hooks: trailing whitespace, LF line endings, valid YAML/TOML, clang-format, REUS
 - **Bulk rating** (v0.9) — `n` with a selection active opens a "Rate Selection" dialog and applies the chosen score to all selected articles in one operation, triggering a single model retrain check
 - **Documentation site** (v0.9.2) — Sphinx docs site published to GitHub Pages; versioned by tag with a root redirect to the latest release
 - **Undo delete** (v0.9.4) — `u` restores the last deleted article or bulk-deleted selection, including its rating, project memberships, notes, and tags; backed by a configurable ring buffer (`undo_buffer_size`, default 10)
-
----
-
-## Roadmap to v1.0
-
-### v1.0 — Polish and completeness
-
-The features that make the tool feel finished rather than just functional.
-
-- **Configurable article list columns** — allow the config to specify which columns appear in the article list (title, authors, date, category, score) and in what order; this makes the layout useful on narrow terminals and for non-physics categories where the arXiv ID is more informative than the date
-- **arXiv category autocomplete** — when adding a topic in the settings dialog, offer autocomplete against the full arXiv category taxonomy (a ~200-entry static list bundled at compile time) to prevent silent typos that produce empty feeds
-- **Help overlay search** — type to filter the help overlay when the binding count makes scrolling tedious; highlights matching rows
-- **Export digest as archive** — wrap the Markdown digest and downloaded PDFs produced by `g` into a `.tar.gz` so the output can be shared as a single file
+- **Help overlay search** (v0.9.6) — type while the `?` overlay is open to filter key bindings in real time (case-insensitive substring match); Backspace trims, first Escape clears the query, second closes
+- **Export digest as archive** (v0.9.6) — `G` packs the selected-digest directory (Markdown + PDFs) into a `.tar.gz` alongside it; `KeyBindings::filter_bindings(query)` drives both the help overlay and is available to any future UI that needs filtered binding lists
+- **Configurable article list columns** (v0.9.7) — `article_columns` config key selects which columns appear in the article list and in what order; available: `title`, `date`, `authors`, `category`, `id`, `score`; default `[title, date]`; a column header row is always shown
 
 ---
 
