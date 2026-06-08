@@ -226,6 +226,7 @@ The filter pane includes an **Unread** entry that shows only articles not yet re
 |-----|--------|
 | `R` | Force full retrain of the ranking model |
 | `S` | Open settings dialog |
+| `K` | Edit interest keywords (cold-start ranking) |
 
 All bindings are remappable in `config.yml` via the `key_mappings` section.
 
@@ -376,6 +377,10 @@ Hooks: trailing whitespace, LF line endings, valid YAML/TOML, clang-format, REUS
 - **Help overlay search** (v0.9.6) — type while the `?` overlay is open to filter key bindings in real time (case-insensitive substring match); Backspace trims, first Escape clears the query, second closes
 - **Export digest as archive** (v0.9.6) — `G` packs the selected-digest directory (Markdown + PDFs) into a `.tar.gz` alongside it; `KeyBindings::filter_bindings(query)` drives both the help overlay and is available to any future UI that needs filtered binding lists
 - **Configurable article list columns** (v0.9.7) — `article_columns` config key selects which columns appear in the article list and in what order; available: `title`, `date`, `authors`, `category`, `id`, `score`; default `[title, date]`; a column header row is always shown
+- **Settings dialog** (v1.0) — `S` opens a five-section in-app settings editor (General, Topics, Ranker, Export, Keys) allowing every config value to be changed without editing YAML; Escape saves and closes
+- **Category filter** (v1.0) — `t` opens a dialog to toggle individual arXiv categories on or off; only articles matching an active category are shown; `a` activates all, `n` deactivates all; articles with no category always pass through
+- **Obsidian vault export** (v1.0) — `o` exports selected articles as Obsidian-formatted Markdown notes (wikilinks, PDF embeds, frontmatter) into the configured `obsidian_vault` directory; vault path is set via the Settings dialog or directly in `config.yml`
+- **Keyword boosts** (v1.0) — `K` opens the interest-keyword editor; keywords are saved to a plain-text file and used by the ranker as a cold-start signal before any star ratings exist; useful for seeding recommendations immediately after install
 
 ---
 

@@ -411,6 +411,12 @@ A brief record of what has been implemented. Consult `README.md` for user-facing
 - **Read-on-scroll** — articles are now marked read whenever the user navigates (`j`/`k`) while the detail pane is open, not only when the pane is first opened (`src/Arxiv/Views/ArticlePane.cc`).
 - **Bulk rating** — pressing `n` with a selection active opens a "Rate Selection" dialog and applies the score to all selected articles in one operation.
 
+### v1.0 — Settings dialog, category filter, Obsidian export, keyword boosts
+- **Settings dialog** — `S` opens a five-section in-app settings editor (General, Topics, Ranker, Export, Keys); all config values editable without touching YAML; Escape saves to `config.yml` and closes. Implemented in `src/Arxiv/Views/SettingsDialog.cc`.
+- **Category filter** — `t` opens a dialog to toggle individual arXiv categories; only articles matching an active category are shown; articles with no category always pass through; `AppCore::ToggleCategory` / `SetActiveCategories` / `IsCategoryActive`. Implemented in `src/Arxiv/Views/CategoryFilterDialog.cc` and `src/Arxiv/AppCore.cc`.
+- **Obsidian vault export** — `o` exports selected articles as Obsidian-formatted Markdown into the configured `obsidian_vault` directory (wikilinks, PDF embeds, YAML frontmatter). Vault path is set via the Settings dialog or `obsidian_vault` in `config.yml`. Implemented in `AppCore::ExportSelectedToObsidian`.
+- **Keyword boosts** — `K` opens the interest-keyword editor; keywords are saved to a plain-text file and used by `Ranker::PredictBlended` as a cold-start signal before any star ratings exist. Implemented in `src/Arxiv/Views/KeywordEditorDialog.cc` and `AppCore::SaveKeywords` / `ReloadKeywords`.
+
 ### v0.9.7 — Configurable article list columns
 - **`article_columns` config key** — YAML list selecting which columns appear in the article list and in what order; available: `title`, `date`, `authors`, `category`, `id`, `score`; default `[title, date]`. A column header row renders above the list. Width is computed as `terminal − 3 (border+scrollbar) − fixed_col_widths − separators`; `title` fills the remainder.
 

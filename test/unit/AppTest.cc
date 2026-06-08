@@ -1255,3 +1255,104 @@ TEST_CASE("AppCore inline accessor coverage", "[app][accessors]") {
 // private components that can't be directly tested in unit tests.
 // The actual functionality should be tested through integration tests
 // that simulate user interactions with the UI.
+
+TEST_CASE("AppCore::ToggleCategory", "[app][category]") {
+    // Use an in-memory config with explicit topics so the test is not
+    // sensitive to which YAML file is on disk.
+    Config config("test/fixtures/test_config.yml");
+    config.set_topics({"hep-ph", "hep-ex", "hep-lat"});
+
+    auto db = std::make_unique<DatabaseManagerMock>();
+    auto fetcher = std::make_unique<FetcherMock>();
+    auto* db_ptr = db.get();
+
+    std::vector<Article> articles = {
+        {"PH Article",
+         "https://arxiv.org/abs/1",
+         "abstract",
+         "Author A",
+         std::chrono::system_clock::now(),
+         "hep-ph",
+         false},
+        {"EX Article",
+         "https://arxiv.org/abs/2",
+         "abstract",
+         "Author B",
+         std::chrono::system_clock::now(),
+         "hep-ex",
+         false},
+        {"LAT Article",
+         "https://arxiv.org/abs/3",
+         "abstract",
+         "Author C",
+         std::chrono::system_clock::now(),
+         "hep-lat",
+         false},
+    };
+    ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(articles);
+    ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{});
+
+    AppCore core(config, std::move(db), std::move(fetcher));
+
+    SECTION("all topics active by default") {
+        REQUIRE(core.IsCategoryActive("hep-ph"));
+        REQUIRE(core.IsCategoryActive("hep-ex"));
+        REQUIRE(core.IsCategoryActive("hep-lat"));
+    }
+
+    SECTION("ToggleCategory deactivates an active topic") {
+        core.ToggleCategory("hep-ph");
+        REQUIRE_FALSE(core.IsCategoryActive("hep-ph"));
+        REQUIRE(core.IsCategoryActive("hep-ex"));
+    }
+
+    SECTION("ToggleCategory reactivates a deactivated topic") {
+        core.ToggleCategory("hep-ph");
+        core.ToggleCategory("hep-ph");
+        REQUIRE(core.IsCategoryActive("hep-ph"));
+    }
+
+    SECTION("ToggleCategory filters GetCurrentArticles") {
+        core.ToggleCategory("hep-ph");
+        auto visible = core.GetCurrentArticles();
+        for (const auto& a : visible) {
+            REQUIRE(a.category != "hep-ph");
+        }
+    }
+
+    SECTION("SetActiveCategories with empty set hides all categorised articles") {
+        core.SetActiveCategories({});
+        // All articles have a non-empty category, so none should be visible.
+        REQUIRE(core.GetCurrentArticles().empty());
+    }
+
+    SECTION("SetActiveCategories with subset shows only matching articles") {
+        core.SetActiveCategories({"hep-ex"});
+        auto visible = core.GetCurrentArticles();
+        REQUIRE(visible.size() == 1);
+        REQUIRE(visible[0].category == "hep-ex");
+    }
+
+    SECTION("articles with empty category always pass through") {
+        Article no_cat{"No-Cat Article",
+                       "https://arxiv.org/abs/4",
+                       "abstract",
+                       "Author D",
+                       std::chrono::system_clock::now(),
+                       "",
+                       false};
+        std::vector<Article> mixed = articles;
+        mixed.push_back(no_cat);
+
+        auto db2 = std::make_unique<DatabaseManagerMock>();
+        auto* db2_ptr = db2.get();
+        ALLOW_CALL(*db2_ptr, GetRecent(ANY(int))).RETURN(mixed);
+        ALLOW_CALL(*db2_ptr, GetProjects()).RETURN(std::vector<std::string>{});
+        AppCore core2(config, std::move(db2), std::make_unique<FetcherMock>());
+
+        core2.SetActiveCategories({});
+        auto visible = core2.GetCurrentArticles();
+        REQUIRE(visible.size() == 1);
+        REQUIRE(visible[0].category.empty());
+    }
+}
