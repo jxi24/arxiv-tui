@@ -1,0 +1,93 @@
+name: Bug Report
+description: File a bug — crashes, incorrect behaviour, or data loss
+labels: ["bug"]
+
+body:
+  - type: input
+    id: version
+    attributes:
+      label: arxiv-tui version
+      description: Run `arxiv-tui --version` or provide the git SHA (`git rev-parse --short HEAD`).
+      placeholder: "v1.0.0 or abc1234"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS and terminal
+      placeholder: "Arch Linux, kitty 0.35 / Ubuntu 24.04, tmux 3.4"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: bug_type
+    attributes:
+      label: Bug type
+      options:
+        - Crash (SIGSEGV / SIGABRT / signal)
+        - Incorrect behaviour
+        - Data loss or corruption
+        - Display / rendering glitch
+        - Build failure
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Exact key sequence or actions that trigger the bug. Be as specific as possible.
+      placeholder: |
+        1. Start arxiv-tui with topic `hep-ph`
+        2. Press `/` to open search, type "lattice", press Enter
+        3. Press `Space` on three articles to select them
+        4. Press `p` to assign to project — app crashes
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      placeholder: "The project assignment dialog should open."
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      placeholder: "App exits silently / shows garbled output / ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: crash_report
+    attributes:
+      label: Crash report (if applicable)
+      description: |
+        Crash reports are written to `$XDG_STATE_HOME/arxiv-tui/` (default: `~/.local/state/arxiv-tui/crash_*.txt`).
+        Paste the full contents here.
+      render: text
+
+  - type: textarea
+    id: log
+    attributes:
+      label: Log output (if applicable)
+      description: |
+        Log is at `$XDG_STATE_HOME/arxiv-tui/arxiv_tui.log`.
+        Paste the relevant portion (last ~50 lines around the failure).
+      render: text
+
+  - type: input
+    id: config
+    attributes:
+      label: Relevant config snippet (optional)
+      description: Paste any non-default settings from `~/.config/arxiv-tui/config.yml` that might be relevant.
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context

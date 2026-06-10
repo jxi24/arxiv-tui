@@ -1,0 +1,56 @@
+name: Feature Request
+description: Propose a new feature or improvement
+labels: ["enhancement"]
+
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What workflow is painful or impossible today?
+      placeholder: "I frequently want to export a filtered set of articles to BibTeX but have to assign them to a project first just to use the project export."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe what you'd like to happen, including any key binding you have in mind.
+      placeholder: "Add a `B` binding that exports all currently-visible (filtered) articles as BibTeX without requiring a project."
+    validations:
+      required: true
+
+  - type: input
+    id: keybinding
+    attributes:
+      label: Suggested key binding (if applicable)
+      placeholder: "e.g. Shift+B"
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you thought of and why you prefer your proposal.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Feature area
+      options:
+        - Article list / navigation
+        - Filtering / search
+        - Export (BibTeX, Markdown, Obsidian, archive)
+        - Projects / organisation
+        - Ranking / recommendations
+        - Configuration / settings
+        - Fetching / network
+        - TUI / display
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
