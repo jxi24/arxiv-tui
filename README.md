@@ -1,5 +1,11 @@
 # arxiv-tui
 
+[![Build & Test](https://github.com/jxi24/arxiv-tui/actions/workflows/ci.yml/badge.svg)](https://github.com/jxi24/arxiv-tui/actions/workflows/ci.yml)
+[![Sanitizers](https://github.com/jxi24/arxiv-tui/actions/workflows/sanitizers.yml/badge.svg)](https://github.com/jxi24/arxiv-tui/actions/workflows/sanitizers.yml)
+[![Static Analysis](https://github.com/jxi24/arxiv-tui/actions/workflows/static-analysis.yml/badge.svg)](https://github.com/jxi24/arxiv-tui/actions/workflows/static-analysis.yml)
+[![Coverage](https://codecov.io/gh/jxi24/arxiv-tui/branch/main/graph/badge.svg)](https://codecov.io/gh/jxi24/arxiv-tui)
+[![REUSE compliant](https://api.reuse.software/badge/github.com/jxi24/arxiv-tui)](https://api.reuse.software/info/github.com/jxi24/arxiv-tui)
+
 A keyboard-driven terminal user interface for browsing, managing, and downloading arXiv research papers — built in C++17 with [FTXUI](https://github.com/ArthurSonzogni/FTXUI).
 
 ---

@@ -1,0 +1,96 @@
+# SPDX-FileCopyrightText: 2024-2026 Josh Isaacson
+#
+# SPDX-License-Identifier: GPL-3.0-only
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build release binary
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y libsqlite3-dev libcurl4-openssl-dev ccache
+
+      - name: Cache CPM packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/CPM
+          key: cpm-${{ hashFiles('Dependencies.txt') }}
+          restore-keys: cpm-
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-release-${{ runner.os }}-${{ github.ref }}
+          restore-keys: |
+            ccache-release-${{ runner.os }}-
+            ccache-build-${{ runner.os }}-
+
+      - name: Configure
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_INSTALL_PREFIX=dist \
+            -DCPM_SOURCE_CACHE=~/.cache/CPM
+        env:
+          CCACHE_MAXSIZE: 500M
+
+      - name: Build
+        run: cmake --build build -j8
+        env:
+          CCACHE_MAXSIZE: 500M
+
+      - name: Install to dist/
+        run: cmake --install build
+
+      - name: Package tarball
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          TARBALL="arxiv-tui-${VERSION}-linux-x86_64.tar.gz"
+          tar -czf "${TARBALL}" -C dist .
+          echo "TARBALL=${TARBALL}" >> "$GITHUB_ENV"
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+
+      - name: Extract changelog entry
+        id: changelog
+        run: |
+          # Pull the section for this tag from CHANGELOG.md if it exists,
+          # otherwise fall back to the git log since the previous tag.
+          if [ -f CHANGELOG.md ] && grep -q "^## \[${VERSION}\]" CHANGELOG.md; then
+            awk "/^## \[${VERSION}\]/{found=1; next} found && /^## \[/{exit} found{print}" \
+              CHANGELOG.md > release_notes.md
+          else
+            PREV_TAG=$(git tag --list 'v*' --sort=version:refname | grep -B1 "${VERSION}" | head -1)
+            if [ -n "${PREV_TAG}" ] && [ "${PREV_TAG}" != "${VERSION}" ]; then
+              git log --pretty=format:"- %s" "${PREV_TAG}..${VERSION}" > release_notes.md
+            else
+              git log --pretty=format:"- %s" -20 > release_notes.md
+            fi
+          fi
+          echo "Release notes written to release_notes.md"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ env.VERSION }}
+          body_path: release_notes.md
+          files: ${{ env.TARBALL }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
