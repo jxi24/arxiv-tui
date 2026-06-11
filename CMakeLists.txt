@@ -10,7 +10,7 @@ if(POLICY CMP0053)
 endif()
 
 # Set the project name and basic settings
-project(ARXIV_TUI LANGUAGES CXX VERSION 1.0.0)
+project(ARXIV_TUI LANGUAGES CXX VERSION 1.1.0)
 include(CMake/StandardProjectSettings.cmake)
 
 # Generate compile_commands.json

@@ -411,6 +411,10 @@ A brief record of what has been implemented. Consult `README.md` for user-facing
 - **Read-on-scroll** — articles are now marked read whenever the user navigates (`j`/`k`) while the detail pane is open, not only when the pane is first opened (`src/Arxiv/Views/ArticlePane.cc`).
 - **Bulk rating** — pressing `n` with a selection active opens a "Rate Selection" dialog and applies the score to all selected articles in one operation.
 
+### v1.1 — Open in browser, separate rate-article / rate-selection bindings
+- **Open in browser** — `O` (`OpenInBrowser` action, default key `O`) opens the focused article in the system default browser via `xdg-open`; with a selection active, all selected articles are opened. `AppCore::GetLinksToOpen()` returns the target URLs (selection if non-empty, else focused article). Implemented in `src/Arxiv/Views/MainRenderer.cc` (`HandleGlobalEvent`).
+- **Separate rate-article / rate-selection** — `n` (`RateArticle`) now always opens the rating dialog in single-article mode regardless of selection state. `W` (`RateSelection`) is the new dedicated bulk-rating key; it shows the "Rate Selection" dialog when a selection is active, or an error if not. `m_bulk_rating` flag in `ArxivApp` drives which mode `SetupRatingDialog` and `HandleRatingEvent` use. Implemented in `src/Arxiv/Views/MainRenderer.cc` and `src/Arxiv/Views/RatingDialog.cc`.
+
 ### v1.0 — Settings dialog, category filter, Obsidian export, keyword boosts
 - **Settings dialog** — `S` opens a five-section in-app settings editor (General, Topics, Ranker, Export, Keys); all config values editable without touching YAML; Escape saves to `config.yml` and closes. Implemented in `src/Arxiv/Views/SettingsDialog.cc`.
 - **Category filter** — `t` opens a dialog to toggle individual arXiv categories; only articles matching an active category are shown; articles with no category always pass through; `AppCore::ToggleCategory` / `SetActiveCategories` / `IsCategoryActive`. Implemented in `src/Arxiv/Views/CategoryFilterDialog.cc` and `src/Arxiv/AppCore.cc`.

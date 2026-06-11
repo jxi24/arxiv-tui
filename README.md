@@ -26,7 +26,8 @@ A keyboard-driven terminal user interface for browsing, managing, and downloadin
 - **Configurable key bindings** — remap every action via a YAML file
 - **Configurable article list columns** — choose which columns appear in the article list (title, authors, date, category, score, id) and in what order via `article_columns` in `config.yml`
 - **Scrolling detail pane** — read full titles and abstracts without leaving the terminal
-- **Personalised ranking** — rate articles 1–5 stars; bulk-rate an entire selection at once; a lightweight neural network learns your preferences and surfaces today's most relevant papers in the Recommended filter
+- **Personalised ranking** — rate articles 1–5 stars with `n`; bulk-rate an entire selection with `W`; a lightweight neural network learns your preferences and surfaces today's most relevant papers in the Recommended filter
+- **Open in browser** — press `O` to open the focused article (or all selected articles) directly in the system default browser via `xdg-open`
 - **BibTeX export** — generate `.bib` files for individual articles, selections, or entire projects, with automatic InspireHEP lookup and metadata fallback
 - **Read/unread tracking** — articles are marked read when the detail pane opens, when you navigate while the detail pane is open, or when a PDF is downloaded; read articles render dimmer so unread papers stand out; an **Unread** filter shows everything not yet read
 - **Auto-refresh** — configurable background feed refresh interval (0 = disabled)
@@ -189,7 +190,8 @@ article_columns:
 | `D` | Delete current article (or all selected), with confirmation |
 | `u` | Undo the last delete (restores article, rating, project memberships, and tags) |
 | `d` | Download article PDF |
-| `n` | Rate article 1–5 stars (rates all selected if a selection is active) |
+| `O` | Open article in the default browser (`xdg-open`) |
+| `n` | Rate focused article 1–5 stars (always rates the single focused article) |
 | `c` | Export article as BibTeX |
 | `N` | Edit per-article note (within a project) |
 
@@ -200,7 +202,8 @@ Select any number of articles with `Space`. While a selection is active, the art
 | Key | Bulk behaviour |
 |-----|---------------|
 | `b` | Bookmark all selected articles |
-| `n` | Rate all selected articles with a single score |
+| `W` | Rate all selected articles with a single score |
+| `O` | Open all selected articles in the default browser |
 | `p` | Open project dialog in bulk-add mode — confirm links all selected to the checked projects |
 | `D` | Delete all selected articles (confirmation required) |
 | `g` | Export selected articles as a Markdown digest + PDF bundle |
@@ -310,7 +313,7 @@ arxiv-tui includes a built-in personalised ranking system that learns from the a
 
 ### How it works
 
-1. **Rate articles** — press `n` on any article to give it a score from 1 to 5 stars. With a selection active, `n` opens a "Rate Selection" dialog that applies the chosen score to all selected articles at once.
+1. **Rate articles** — press `n` on any article to give it a score from 1 to 5 stars. `n` always rates the single focused article regardless of any active selection. To rate an entire selection at once, press `W` instead — this opens a "Rate Selection" dialog and applies the chosen score to all selected articles.
 2. **Automatic learning** — once you have rated at least 3 articles, and every `retrain_interval` new ratings thereafter, the model retrains in the background on a separate thread so the TUI stays responsive. A `[Training…]` badge appears in the article pane header while training is in progress, and a `[N rating(s) pending]` counter shows how many more ratings are needed to trigger the next retrain.
 3. **Recommended filter** — select **Recommended** in the filter pane to see today's articles that score at or above `recommend_threshold`. Articles are sorted by predicted score, and each entry shows a `[X.X★]` badge.
 4. **Force retrain** — press `R` at any time to immediately trigger a full cold-start retrain (rebuilds the vocabulary and resets the network weights). Use this when the corpus has grown significantly or scores feel stale.
@@ -377,7 +380,7 @@ Hooks: trailing whitespace, LF line endings, valid YAML/TOML, clang-format, REUS
 - **FTS5 full-text search** (v0.9) — SQLite FTS5 extension replaces `LIKE '%query%'` with ranked, stemmed full-text search over titles, authors, and abstracts; no new dependency required
 - **Tag system** (v0.9) — user-defined labels outside the project hierarchy; articles can carry multiple tags; tags appear as filters alongside projects and are included in BibTeX exports
 - **Auto-update project `.bib`** (v0.9) — adding an article to a project that has a previously exported `.bib` automatically appends the new entry without a manual re-export
-- **Bulk rating** (v0.9) — `n` with a selection active opens a "Rate Selection" dialog and applies the chosen score to all selected articles in one operation, triggering a single model retrain check
+- **Bulk rating** (v0.9) — with a selection active, a single dialog applies the chosen score to all selected articles in one operation, triggering a single model retrain check (binding changed to `W` in v1.1)
 - **Documentation site** (v0.9.2) — Sphinx docs site published to GitHub Pages; versioned by tag with a root redirect to the latest release
 - **Undo delete** (v0.9.4) — `u` restores the last deleted article or bulk-deleted selection, including its rating, project memberships, notes, and tags; backed by a configurable ring buffer (`undo_buffer_size`, default 10)
 - **Help overlay search** (v0.9.6) — type while the `?` overlay is open to filter key bindings in real time (case-insensitive substring match); Backspace trims, first Escape clears the query, second closes
@@ -387,6 +390,8 @@ Hooks: trailing whitespace, LF line endings, valid YAML/TOML, clang-format, REUS
 - **Category filter** (v1.0) — `t` opens a dialog to toggle individual arXiv categories on or off; only articles matching an active category are shown; `a` activates all, `n` deactivates all; articles with no category always pass through
 - **Obsidian vault export** (v1.0) — `o` exports selected articles as Obsidian-formatted Markdown notes (wikilinks, PDF embeds, frontmatter) into the configured `obsidian_vault` directory; vault path is set via the Settings dialog or directly in `config.yml`
 - **Keyword boosts** (v1.0) — `K` opens the interest-keyword editor; keywords are saved to a plain-text file and used by the ranker as a cold-start signal before any star ratings exist; useful for seeding recommendations immediately after install
+- **Open in browser** (v1.1) — `O` opens the focused article in the system default browser via `xdg-open`; with a selection active, all selected articles are opened; links are drawn from the selection set if non-empty, otherwise the focused article
+- **Separate rate-article and rate-selection bindings** (v1.1) — `n` now always rates the single focused article regardless of any active selection; `W` (configurable) is the dedicated "Rate Selection" binding that opens the bulk-rating dialog; this allows rating individual papers while a multi-article selection is active
 
 ---
 
