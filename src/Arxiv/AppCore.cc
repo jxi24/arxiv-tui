@@ -1287,6 +1287,16 @@ void AppCore::ClearSelections() {
     NotifyArticleUpdate();
 }
 
+std::vector<std::string> AppCore::GetLinksToOpen() const {
+    if (!m_selected_links.empty())
+        return std::vector<std::string>(m_selected_links.begin(), m_selected_links.end());
+    auto articles = GetCurrentArticles();
+    int idx = GetArticleIndex();
+    if (idx >= 0 && idx < static_cast<int>(articles.size()))
+        return {articles[static_cast<size_t>(idx)].link};
+    return {};
+}
+
 void AppCore::DeleteCurrentOrSelected() {
     std::vector<std::string> to_delete;
     if (!m_selected_links.empty()) {

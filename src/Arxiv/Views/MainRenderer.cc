@@ -7,6 +7,7 @@
 #include "Arxiv/Views/Colors.hh"
 
 #include <chrono>
+#include <cstdio>
 #include <ctime>
 
 #include "spdlog/spdlog.h"
@@ -487,14 +488,47 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
         return true;
     }
 
-    // Open rating dialog
+    // Open rating dialog for the focused article (ignores any active selection)
     if (key_bindings.matches(event, KeyBindings::Action::RateArticle)) {
         auto articles = core.GetCurrentArticles();
         if (!articles.empty()) {
-            dialog_depth = Dialog::Rating;
+            m_bulk_rating = false;
             int existing =
                 core.GetArticleRating(articles[static_cast<size_t>(core.GetArticleIndex())].link);
             pending_rating = existing > 0 ? existing : 3;
+            dialog_depth = Dialog::Rating;
+        }
+        return true;
+    }
+
+    // Open rating dialog for the entire selection
+    if (key_bindings.matches(event, KeyBindings::Action::RateSelection)) {
+        if (core.GetSelectionCount() > 0) {
+            m_bulk_rating = true;
+            pending_rating = 3;
+            dialog_depth = Dialog::Rating;
+        } else {
+            err_msg = "No articles selected (Space to select)";
+            dialog_depth = Dialog::Error;
+        }
+        return true;
+    }
+
+    // Open selected (or focused) article(s) in the default browser
+    if (key_bindings.matches(event, KeyBindings::Action::OpenInBrowser)) {
+        auto links = core.GetLinksToOpen();
+        for (const auto& url : links) {
+            std::string cmd = "xdg-open \"" + url + "\" >/dev/null 2>&1 &";
+            FILE* p = ::popen(cmd.c_str(), "r");
+            if (p)
+                ::pclose(p);
+            spdlog::info("open_in_browser url={}", url);
+        }
+        if (!links.empty()) {
+            success_msg = links.size() == 1
+                              ? "Opening in browser: " + links[0]
+                              : "Opening " + std::to_string(links.size()) + " articles in browser";
+            dialog_depth = Dialog::Success;
         }
         return true;
     }

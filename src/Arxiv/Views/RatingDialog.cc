@@ -16,12 +16,12 @@ void ArxivApp::SetupRatingDialog() {
             return emptyElement();
 
         auto articles = core.GetCurrentArticles();
-        std::size_t sel_count = core.GetSelectionCount();
-        bool bulk = sel_count > 0;
+        bool bulk = m_bulk_rating;
 
         std::string subtitle;
         int current_rating = 0;
         if (bulk) {
+            std::size_t sel_count = core.GetSelectionCount();
             subtitle =
                 std::to_string(sel_count) + " article" + (sel_count > 1 ? "s" : "") + " selected";
         } else {
@@ -72,7 +72,7 @@ void ArxivApp::SetupRatingDialog() {
 bool ArxivApp::HandleRatingEvent(ftxui::Event event) {
     if (event == Event::Return) {
         if (pending_rating >= 1 && pending_rating <= 5) {
-            if (core.GetSelectionCount() > 0) {
+            if (m_bulk_rating) {
                 spdlog::info(
                     "rate_selected count={} rating={}", core.GetSelectionCount(), pending_rating);
                 core.RateSelected(pending_rating);
@@ -90,6 +90,7 @@ bool ArxivApp::HandleRatingEvent(ftxui::Event event) {
         }
         dialog_depth = Dialog::None;
         pending_rating = 0;
+        m_bulk_rating = false;
         return true;
     }
     if (key_bindings.matches(event, KeyBindings::Action::Next)) {
@@ -110,6 +111,7 @@ bool ArxivApp::HandleRatingEvent(ftxui::Event event) {
     if (event == Event::Escape) {
         dialog_depth = Dialog::None;
         pending_rating = 0;
+        m_bulk_rating = false;
         return true;
     }
     return true;

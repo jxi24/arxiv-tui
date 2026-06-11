@@ -117,7 +117,8 @@ class ArxivApp {
     Component search_dialog;
 
     // Rating dialog
-    int pending_rating = 0; // 1-5 chosen by user
+    int pending_rating = 0;     // 1-5 chosen by user
+    bool m_bulk_rating = false; // true = rate selection, false = rate focused article
     Component rating_dialog;
 
     // Notes dialog

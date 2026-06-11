@@ -165,6 +165,51 @@ TEST_CASE("ArxivApp: settings dialog Topics section shows configured topics", "[
 // Read marking: navigating while detail panel is open marks articles as read
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Rating dialog: n always rates focused article, W rates the selection
+// ---------------------------------------------------------------------------
+
+TEST_CASE("ArxivApp: n opens Rate Article dialog even when articles are selected",
+          "[tui][rating]") {
+    auto [db_ptr, app] = make_app_with_articles();
+    auto handler = app->GetEventHandler();
+
+    handler->OnEvent(Event::Character("l")); // move to article pane
+    handler->OnEvent(Event::Character(" ")); // select the focused article
+
+    handler->OnEvent(Event::Character("n")); // rate article — must ignore selection
+
+    std::string output = render(*app);
+    REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Rate Article"));
+    REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("Rate Selection"));
+}
+
+TEST_CASE("ArxivApp: W opens Rate Selection dialog when articles are selected", "[tui][rating]") {
+    auto [db_ptr, app] = make_app_with_articles();
+    auto handler = app->GetEventHandler();
+
+    handler->OnEvent(Event::Character("l")); // move to article pane
+    handler->OnEvent(Event::Character(" ")); // select the focused article
+
+    handler->OnEvent(Event::Character("W")); // rate selection
+
+    std::string output = render(*app);
+    REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Rate Selection"));
+}
+
+TEST_CASE("ArxivApp: W shows error when no articles are selected", "[tui][rating]") {
+    auto [db_ptr, app] = make_app_with_articles();
+    auto handler = app->GetEventHandler();
+
+    handler->OnEvent(Event::Character("l")); // move to article pane
+    // No Space pressed — nothing selected
+
+    handler->OnEvent(Event::Character("W")); // rate selection with empty selection
+
+    std::string output = render(*app);
+    REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("No articles selected"));
+}
+
 TEST_CASE("ArxivApp: navigating with detail panel open marks article as read",
           "[tui][read][detail]") {
     auto [db_ptr, app] = make_app_with_articles();

@@ -219,6 +219,10 @@ class AppCore {
     // only — they don't persist across restarts (use bookmarks for that).
     void ToggleSelection(const std::string& link);
     void ClearSelections();
+
+    // Returns the links that should be opened in the browser: the full
+    // selection if any articles are selected, otherwise the focused article.
+    std::vector<std::string> GetLinksToOpen() const;
     bool IsSelected(const std::string& link) const { return m_selected_links.count(link) > 0; }
     std::size_t GetSelectionCount() const { return m_selected_links.size(); }
 

@@ -1356,3 +1356,49 @@ TEST_CASE("AppCore::ToggleCategory", "[app][category]") {
         REQUIRE(visible[0].category.empty());
     }
 }
+
+// ---------------------------------------------------------------------------
+// AppCore::GetLinksToOpen
+// ---------------------------------------------------------------------------
+
+TEST_CASE("AppCore::GetLinksToOpen returns browser targets", "[app][browser]") {
+    Config config("test/fixtures/test_config.yml");
+    auto db = std::make_unique<DatabaseManagerMock>();
+    auto* db_ptr = db.get();
+    ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(sample_articles);
+    ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{});
+    AppCore core(config, std::move(db), std::make_unique<FetcherMock>());
+
+    SECTION("returns focused article link when no selection") {
+        core.SetArticleIndex(0);
+        auto links = core.GetLinksToOpen();
+        REQUIRE(links.size() == 1);
+        REQUIRE(links[0] == sample_articles[0].link);
+    }
+
+    SECTION("returns second article when focused on index 1") {
+        core.SetArticleIndex(1);
+        auto links = core.GetLinksToOpen();
+        REQUIRE(links.size() == 1);
+        REQUIRE(links[0] == sample_articles[1].link);
+    }
+
+    SECTION("returns all selected links when selection is active, ignoring focus") {
+        core.SetArticleIndex(0);
+        core.ToggleSelection(sample_articles[0].link);
+        core.ToggleSelection(sample_articles[1].link);
+        auto links = core.GetLinksToOpen();
+        REQUIRE(links.size() == 2);
+        REQUIRE(std::find(links.begin(), links.end(), sample_articles[0].link) != links.end());
+        REQUIRE(std::find(links.begin(), links.end(), sample_articles[1].link) != links.end());
+    }
+
+    SECTION("returns empty when article list is empty") {
+        auto db2 = std::make_unique<DatabaseManagerMock>();
+        auto* db2_ptr = db2.get();
+        ALLOW_CALL(*db2_ptr, GetRecent(ANY(int))).RETURN(std::vector<Article>{});
+        ALLOW_CALL(*db2_ptr, GetProjects()).RETURN(std::vector<std::string>{});
+        AppCore empty_core(config, std::move(db2), std::make_unique<FetcherMock>());
+        REQUIRE(empty_core.GetLinksToOpen().empty());
+    }
+}

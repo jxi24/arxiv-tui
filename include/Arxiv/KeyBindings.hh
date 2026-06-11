@@ -45,7 +45,9 @@ class KeyBindings {
         GenerateBibtex,
         DeleteArticle,
         UndoDelete,
-        ExportDigestArchive
+        ExportDigestArchive,
+        OpenInBrowser,
+        RateSelection
     };
 
     KeyBindings() = default;
