@@ -72,8 +72,7 @@ class AppCore {
     void MarkArticleRead(const std::string& article_link);
     bool DownloadArticle(const std::string& article_id);
     std::string GetBibtex(const Article& article);
-    std::vector<Article> GetCurrentArticles() const;
-    std::vector<std::string> GetCurrentTitles() const;
+    const std::vector<Article>& GetCurrentArticles() const;
     std::vector<std::string>& GetCurrentTitles();
 
     // Rating and ranking
@@ -147,7 +146,6 @@ class AppCore {
     std::string GetProjectNameForFilter(int index) const;
 
     // Filter management
-    std::vector<std::string> GetFilterOptions() const;
     std::vector<std::string>& GetFilterOptions();
     void SetFilterIndex(int index);
     void SetFilterIndex(FilterView view);

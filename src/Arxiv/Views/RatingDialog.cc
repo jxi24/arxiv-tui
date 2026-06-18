@@ -15,7 +15,7 @@ void ArxivApp::SetupRatingDialog() {
         if (dialog_depth != Dialog::Rating)
             return emptyElement();
 
-        auto articles = core.GetCurrentArticles();
+        const auto& articles = core.GetCurrentArticles();
         bool bulk = m_bulk_rating;
 
         std::string subtitle;
@@ -77,7 +77,7 @@ bool ArxivApp::HandleRatingEvent(ftxui::Event event) {
                     "rate_selected count={} rating={}", core.GetSelectionCount(), pending_rating);
                 core.RateSelected(pending_rating);
             } else {
-                auto articles = core.GetCurrentArticles();
+                const auto& articles = core.GetCurrentArticles();
                 if (!articles.empty()) {
                     const std::string& link =
                         articles[static_cast<size_t>(core.GetArticleIndex())].link;

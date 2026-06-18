@@ -54,8 +54,6 @@ void ArxivApp::UpdateTitleScrollPositions() {
     if (focused_pane != 1 || !show_detail)
         return;
     auto now = std::chrono::steady_clock::now();
-    auto article = core.GetCurrentArticles()[static_cast<size_t>(core.GetArticleIndex())];
-
     auto elapsed = std::chrono::duration<float>(now - last_update).count();
     spdlog::trace("[App]: time elapsed = {}", elapsed);
 
@@ -64,7 +62,7 @@ void ArxivApp::UpdateTitleScrollPositions() {
 }
 
 void ArxivApp::UpdateVisibleRange() {
-    auto articles = core.GetCurrentArticles();
+    const auto& articles = core.GetCurrentArticles();
     if (articles.empty())
         return;
 

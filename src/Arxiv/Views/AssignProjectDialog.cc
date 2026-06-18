@@ -77,9 +77,9 @@ bool ArxivApp::HandleAssignProjectEvent(ftxui::Event event) {
                     core.AddSelectedToProject(project);
             }
         } else {
-            auto articles = core.GetCurrentArticles();
+            const auto& articles = core.GetCurrentArticles();
             if (!articles.empty()) {
-                auto article = articles[static_cast<size_t>(core.GetArticleIndex())];
+                const auto& article = articles[static_cast<size_t>(core.GetArticleIndex())];
                 for (const auto& [project, selected] : checkbox_states) {
                     if (selected) {
                         core.LinkArticleToProject(article.link, project);

@@ -9,6 +9,7 @@
 #include <nlohmann/json.hpp>
 
 #include <fstream>
+#include <iterator>
 #include <sstream>
 #include <string_view>
 #include <utility>
@@ -593,15 +594,14 @@ std::string Fetcher::ReplaceLatexAccents(const std::string& text) const {
 
 std::vector<Article> Fetcher::FetchSince(const std::string& utc_date) {
     // Build date range: from utc_date up to today (inclusive), UTC.
-    // The arXiv <published> field is the date arXiv processed and announced v1
-    // of the paper (the posting date), per the arXiv API user manual:
+    // We query and stamp by the arXiv submission date. Per the arXiv API user
+    // manual the <published> element holds it:
     //   "<published> contains the date in which the first version of this
     //    article was submitted and processed."
     // This is NOT the peer-reviewed journal publication date (that is the
-    // separate <arxiv:journal_ref> element).  Authors submit to arXiv one
-    // business day before <published>; we start the query window at utc_date
-    // itself so that papers whose <published> date equals utc_date are not
-    // silently dropped.  Duplicates already in the DB are handled by
+    // separate <arxiv:journal_ref> element).  We start the query window at
+    // utc_date itself so that papers whose submission date equals utc_date are
+    // not silently dropped.  Duplicates already in the DB are handled by
     // INSERT OR IGNORE in AddArticle.
     // arXiv submittedDate query format: YYYYMMDDHHMI (e.g. 202605020000).
     std::tm from_tm{};
@@ -678,6 +678,17 @@ std::vector<Article> Fetcher::FetchSince(const std::string& utc_date) {
         start += max_results;
     }
 
+    // Fold in today's freshly-announced papers from the RSS feed. The API's
+    // submittedDate window lags the announcement — papers are listed a day or
+    // two after submission — so today's new articles would otherwise not show
+    // up until a later open. Appended last so today's announcement wins on any
+    // overlap when the DB de-dupes by link. This lets a single FetchSince call
+    // cover both backfill and today, so callers need no separate Fetch().
+    auto todays = Fetch();
+    all_articles.insert(all_articles.end(),
+                        std::make_move_iterator(todays.begin()),
+                        std::make_move_iterator(todays.end()));
+
     spdlog::info("[Fetcher]: FetchSince got {} articles since {}", all_articles.size(), utc_date);
     return all_articles;
 }
@@ -720,8 +731,9 @@ std::vector<Article> Fetcher::ParseAtomFeed(const std::string& xml_content) cons
         }
         article.authors = LatexToMarkdown(authors_str);
 
-        // <published> = arXiv processing/announcement date of v1 (the posting date).
-        // Not the peer-reviewed journal date; that is <arxiv:journal_ref>.
+        // <published> = the date v1 was submitted and processed — the same
+        // submission date the FetchSince query filters on. Not the
+        // peer-reviewed journal date; that is <arxiv:journal_ref>.
         article.date = ParseAtomDate(entry.child_value("published"))
                            .value_or(std::chrono::system_clock::now());
 

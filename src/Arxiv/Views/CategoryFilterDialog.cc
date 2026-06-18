@@ -38,7 +38,7 @@ void ArxivApp::SetupCategoryFilterDialog() {
         }
         rows.push_back(separator() | color(TextColors::border()));
         {
-            auto all = core.GetCurrentArticles();
+            const auto& all = core.GetCurrentArticles();
             int uncategorized = 0;
             for (const auto& a : all) {
                 if (a.category.empty())

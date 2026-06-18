@@ -10,7 +10,7 @@ using namespace Arxiv;
 
 void ArxivApp::SetupDetailView() {
     detail_view = Renderer([&] {
-        auto articles = core.GetCurrentArticles();
+        const auto& articles = core.GetCurrentArticles();
         if (articles.empty() || core.GetArticleIndex() >= static_cast<int>(articles.size())) {
             return window(text("Detail View") | color(TextColors::primary()),
                           text("No details available.") | center | color(TextColors::subtext()));
