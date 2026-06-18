@@ -451,6 +451,40 @@ TEST_CASE("AppCore: NewArticles shows anchor-date articles when today's query re
     REQUIRE(articles[0].link == "https://arxiv.org/abs/yesterday");
 }
 
+// ---------------------------------------------------------------------------
+// First-daily-open bug: the day-boundary path fetches today's articles too.
+//
+// On a new-day first open the day's freshly-announced papers must be fetched
+// immediately — otherwise they only appear after a *second* open. FetchSince
+// owns that responsibility: it backfills the missed days AND folds in today's
+// announcement, so AppCore issues a single fetcher call and must NOT make a
+// separate Fetch() on this path.
+// ---------------------------------------------------------------------------
+TEST_CASE("AppCore: first daily open fetches via FetchSince alone", "[newart][appcore]") {
+    auto db_ptr = std::make_unique<DatabaseManagerMock>();
+    auto fet_ptr = std::make_unique<FetcherMock>();
+    auto* db_raw = db_ptr.get();
+    auto* fet_raw = fet_ptr.get();
+
+    // Previous fetch was a strictly-earlier day → day-boundary crossing.
+    ALLOW_CALL(*db_raw, GetMetadata(std::string("last_fetch_date")))
+        .RETURN(std::string("2026-05-01"));
+
+    bool fetch_since_called = false;
+    ALLOW_CALL(*fet_raw, FetchSince(trompeloeil::_))
+        .LR_SIDE_EFFECT(fetch_since_called = true;)
+        .RETURN(std::vector<Arxiv::Article>{});
+    // No separate RSS fetch: FetchSince includes today's articles itself.
+    FORBID_CALL(*fet_raw, Fetch());
+
+    Arxiv::Config cfg;
+    cfg.set_topics({"cs.AI"});
+    cfg.set_download_dir("/tmp");
+    auto core = std::make_unique<Arxiv::AppCore>(cfg, std::move(db_ptr), std::move(fet_ptr));
+
+    REQUIRE(fetch_since_called);
+}
+
 TEST_CASE("AppCore: day-boundary crossing advances the New Articles anchor", "[newart][appcore]") {
     // Scenario: last_fetch_date is some date strictly before today, and no
     // anchor is persisted yet. We must set the anchor to that previous date.

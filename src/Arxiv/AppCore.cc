@@ -119,6 +119,9 @@ AppCore::AppCore(const Config& config,
                 "mode=" + std::string(fetch_mode == FetchMode::Async ? "async" : "sync"));
         std::vector<Article> articles;
         if (!prev_fetch.empty() && prev_fetch < today) {
+            // Day-boundary crossing: backfill the days we were away. FetchSince
+            // also folds in today's announcement, so this single call covers
+            // backfill + today — no separate Fetch() needed.
             articles = m_fetcher->FetchSince(prev_fetch);
         } else {
             articles = m_fetcher->Fetch();
@@ -446,9 +449,7 @@ std::string AppCore::ConstructBibtexFromArticle(const Article& article) const {
                        month);
 }
 
-std::vector<Article> AppCore::GetCurrentArticles() const { return m_current_articles; }
-
-std::vector<std::string> AppCore::GetCurrentTitles() const { return m_current_titles; }
+const std::vector<Article>& AppCore::GetCurrentArticles() const { return m_current_articles; }
 
 std::vector<std::string>& AppCore::GetCurrentTitles() { return m_current_titles; }
 
@@ -565,8 +566,6 @@ std::string AppCore::GetTagNameForFilter(int index) const {
 std::vector<Article> AppCore::GetArticlesForProject(const std::string& project_name) const {
     return m_db->GetArticlesForProject(project_name);
 }
-
-std::vector<std::string> AppCore::GetFilterOptions() const { return m_filter_options; }
 
 std::vector<std::string>& AppCore::GetFilterOptions() { return m_filter_options; }
 
@@ -1290,7 +1289,7 @@ void AppCore::ClearSelections() {
 std::vector<std::string> AppCore::GetLinksToOpen() const {
     if (!m_selected_links.empty())
         return std::vector<std::string>(m_selected_links.begin(), m_selected_links.end());
-    auto articles = GetCurrentArticles();
+    const auto& articles = GetCurrentArticles();
     int idx = GetArticleIndex();
     if (idx >= 0 && idx < static_cast<int>(articles.size()))
         return {articles[static_cast<size_t>(idx)].link};

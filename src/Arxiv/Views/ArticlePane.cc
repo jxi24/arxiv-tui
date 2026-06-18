@@ -28,7 +28,7 @@ void ArxivApp::SetupArticlePane() {
                     m_recorder->RecordSetArticleIndex(idx);
                 title_start_position = 0;
                 if (show_detail) {
-                    auto articles = core.GetCurrentArticles();
+                    const auto& articles = core.GetCurrentArticles();
                     if (!articles.empty())
                         core.MarkArticleRead(articles[static_cast<size_t>(idx)].link);
                 }
@@ -41,14 +41,14 @@ void ArxivApp::SetupArticlePane() {
                     m_recorder->RecordSetArticleIndex(idx);
                 title_start_position = 0;
                 if (show_detail) {
-                    auto articles = core.GetCurrentArticles();
+                    const auto& articles = core.GetCurrentArticles();
                     if (!articles.empty())
                         core.MarkArticleRead(articles[static_cast<size_t>(idx)].link);
                 }
                 return true;
             }
             if (key_bindings.matches(event, KeyBindings::Action::Bookmark)) {
-                auto articles = core.GetCurrentArticles();
+                const auto& articles = core.GetCurrentArticles();
                 if (!articles.empty()) {
                     if (core.GetSelectionCount() > 0) {
                         // Bulk bookmark: set all selected to bookmarked.
@@ -66,7 +66,7 @@ void ArxivApp::SetupArticlePane() {
             if (key_bindings.matches(event, KeyBindings::Action::CreateProject)) {
                 dialog_depth = Dialog::AssignProject;
                 auto projects = core.GetProjects();
-                auto articles = core.GetCurrentArticles();
+                const auto& articles = core.GetCurrentArticles();
 
                 selected_projects.clear();
                 checkbox_states.clear();
@@ -119,7 +119,7 @@ void ArxivApp::SetupArticlePane() {
         });
 
     article_pane = Renderer(article_list, [&] {
-        auto articles = core.GetCurrentArticles();
+        const auto& articles = core.GetCurrentArticles();
         if (articles.empty()) {
             auto header = focused_pane == 1
                               ? text(" Articles ") | bold | color(TextColors::base()) |

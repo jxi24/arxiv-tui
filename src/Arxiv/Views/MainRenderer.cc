@@ -97,7 +97,7 @@ void ArxivApp::SetupMainRenderer() {
         }
 
         // Article position
-        auto articles = core.GetCurrentArticles();
+        const auto& articles = core.GetCurrentArticles();
         int total = static_cast<int>(articles.size());
         int current = total > 0 ? core.GetArticleIndex() + 1 : 0;
         std::string position = std::to_string(current) + " / " + std::to_string(total);
@@ -304,7 +304,7 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
     // Open notes editor (only when viewing a project with an article selected)
     if (key_bindings.matches(event, KeyBindings::Action::EditNote)) {
         if (core.GetFilterView() == AppCore::FilterView::Project) {
-            auto articles = core.GetCurrentArticles();
+            const auto& articles = core.GetCurrentArticles();
             if (!articles.empty()) {
                 note_project_name = core.GetProjectNameForFilter(core.GetFilterIndex());
                 note_article_link = articles[static_cast<size_t>(core.GetArticleIndex())].link;
@@ -317,7 +317,7 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
 
     // BibTeX for current article: copy to clipboard, fall back to file
     if (key_bindings.matches(event, KeyBindings::Action::ExportBibTeX)) {
-        auto articles = core.GetCurrentArticles();
+        const auto& articles = core.GetCurrentArticles();
         if (!articles.empty()) {
             const auto& art = articles[static_cast<size_t>(core.GetArticleIndex())];
             std::string bibtex = core.GetBibtex(art);
@@ -372,7 +372,7 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
 
     // Toggle selection of focused article (for Export Selected Digest)
     if (key_bindings.matches(event, KeyBindings::Action::ToggleSelection)) {
-        auto articles = core.GetCurrentArticles();
+        const auto& articles = core.GetCurrentArticles();
         if (!articles.empty()) {
             int idx = core.GetArticleIndex();
             if (idx >= 0 && idx < static_cast<int>(articles.size())) {
@@ -490,7 +490,7 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
 
     // Open rating dialog for the focused article (ignores any active selection)
     if (key_bindings.matches(event, KeyBindings::Action::RateArticle)) {
-        auto articles = core.GetCurrentArticles();
+        const auto& articles = core.GetCurrentArticles();
         if (!articles.empty()) {
             m_bulk_rating = false;
             int existing =
@@ -548,7 +548,7 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
     if (key_bindings.matches(event, KeyBindings::Action::ShowDetail)) {
         show_detail = !show_detail;
         if (show_detail) {
-            auto articles = core.GetCurrentArticles();
+            const auto& articles = core.GetCurrentArticles();
             if (!articles.empty()) {
                 const auto& link = articles[static_cast<size_t>(core.GetArticleIndex())].link;
                 core.MarkArticleRead(link);
