@@ -51,6 +51,20 @@ class Fetcher {
     std::string LatexToMarkdown(const std::string& text) const;
     std::string ConstructPaperUrl(const std::string& paper_id, const std::string& format) const;
 
+    /// arXiv announces papers one or more days after their submission date, so
+    /// the submittedDate the API filters on lags the date a paper "comes out".
+    /// FetchSince therefore starts its submittedDate window this many days
+    /// *before* the requested date, so papers submitted shortly before the last
+    /// fetch but announced after it are not silently dropped. Duplicates already
+    /// in the DB are ignored on insert, so the overlap is harmless.
+    static constexpr int announce_lag_days = 5;
+
+    /// Compute the submittedDate query-window start for FetchSince: utc_date
+    /// ("YYYY-MM-DD") shifted back by announce_lag_days, returned as
+    /// "YYYY-MM-DD". Exposed for testing. Returns utc_date unchanged if it
+    /// cannot be parsed.
+    std::string FetchSinceWindowStart(const std::string& utc_date) const;
+
   private:
     static constexpr bool testing = false;
     std::vector<std::string> m_topics;

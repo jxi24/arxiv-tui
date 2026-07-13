@@ -8,8 +8,13 @@
 
 #include <nlohmann/json.hpp>
 
+#include <cctype>
+#include <chrono>
+#include <ctime>
 #include <fstream>
+#include <iomanip>
 #include <iterator>
+#include <locale>
 #include <sstream>
 #include <string_view>
 #include <utility>
@@ -289,17 +294,53 @@ std::vector<Article> Fetcher::ParseFeed(const std::string& xml_content) const {
 }
 
 std::optional<Arxiv::time_point> Fetcher::ParseDate(const std::string& date) const {
-    std::istringstream ss(date);
-    std::tm tm = {};
-    ss >> std::get_time(&tm, "%Y-%m-%dT%H:%M:%S");
-
-    if (ss.fail()) {
+    if (date.empty())
         return std::nullopt;
+
+    // The live arXiv RSS feed emits RFC 822 dates, e.g.
+    //   "Mon, 22 Jun 2026 00:00:00 -0400"
+    // while the test fixtures (and some mirrors) use ISO 8601, e.g.
+    //   "2024-03-25T12:00:00Z".
+    // Detect the format by its first character: RFC 822 begins with the
+    // weekday name (a letter), ISO 8601 begins with the 4-digit year.
+    if (std::isalpha(static_cast<unsigned char>(date.front()))) {
+        // RFC 822: "Day, DD Mon YYYY HH:MM:SS ±HHMM" (or a named zone).
+        std::istringstream ss(date);
+        ss.imbue(std::locale::classic());
+        std::tm tm = {};
+        ss >> std::get_time(&tm, "%a, %d %b %Y %H:%M:%S");
+        if (ss.fail())
+            return std::nullopt;
+
+        // The fields in tm are wall-clock time at the trailing zone offset.
+        // timegm interprets them as UTC; we then subtract the offset to get
+        // true UTC. Parse a trailing "±HHMM" offset if present (named zones
+        // such as "GMT"/"UT" are treated as zero offset).
+        std::time_t utc = timegm(&tm);
+        std::string zone;
+        ss >> zone;
+        if (!zone.empty() && (zone.front() == '+' || zone.front() == '-') && zone.size() >= 5) {
+            int sign = (zone.front() == '-') ? -1 : 1;
+            try {
+                int hh = std::stoi(zone.substr(1, 2));
+                int mm = std::stoi(zone.substr(3, 2));
+                utc -= sign * (hh * 3600 + mm * 60);
+            } catch (...) {
+                // Malformed offset — fall back to the zone-less interpretation.
+            }
+        }
+        return std::chrono::system_clock::from_time_t(utc);
     }
 
-    // Convert to time_point
-    std::time_t time = std::mktime(&tm);
-    return std::chrono::system_clock::from_time_t(time);
+    // ISO 8601: "YYYY-MM-DDTHH:MM:SS" (optionally suffixed with 'Z').
+    std::istringstream ss(date);
+    ss.imbue(std::locale::classic());
+    std::tm tm = {};
+    ss >> std::get_time(&tm, "%Y-%m-%dT%H:%M:%S");
+    if (ss.fail())
+        return std::nullopt;
+    // The ISO feed is UTC ('Z'); interpret the fields as UTC, not local time.
+    return std::chrono::system_clock::from_time_t(timegm(&tm));
 }
 
 // Return the position of the closing brace that matches the '{' at open_pos,
@@ -592,6 +633,17 @@ std::string Fetcher::ReplaceLatexAccents(const std::string& text) const {
     return result;
 }
 
+std::string Fetcher::FetchSinceWindowStart(const std::string& utc_date) const {
+    std::tm tm{};
+    if (!parse_ymd_prefix(utc_date, tm))
+        return utc_date;
+    tm.tm_mday -= announce_lag_days;
+    timegm(&tm); // normalise the day rollover
+    char buf[11];
+    std::strftime(buf, sizeof(buf), "%Y-%m-%d", &tm);
+    return buf;
+}
+
 std::vector<Article> Fetcher::FetchSince(const std::string& utc_date) {
     // Build date range: from utc_date up to today (inclusive), UTC.
     // We query and stamp by the arXiv submission date. Per the arXiv API user
@@ -604,8 +656,13 @@ std::vector<Article> Fetcher::FetchSince(const std::string& utc_date) {
     // not silently dropped.  Duplicates already in the DB are handled by
     // INSERT OR IGNORE in AddArticle.
     // arXiv submittedDate query format: YYYYMMDDHHMI (e.g. 202605020000).
+    // Start the window announce_lag_days before utc_date: papers are announced
+    // (and thus first visible) a day or more after their submission date, so a
+    // window anchored exactly at the last fetch would miss papers submitted just
+    // before it but announced after. AddArticle de-dupes the overlap.
+    const std::string window_start = FetchSinceWindowStart(utc_date);
     std::tm from_tm{};
-    parse_ymd_prefix(utc_date, from_tm);
+    parse_ymd_prefix(window_start, from_tm);
     timegm(&from_tm); // normalise
     char from_buf[16];
 #pragma GCC diagnostic push

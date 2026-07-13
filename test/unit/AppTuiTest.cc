@@ -210,6 +210,101 @@ TEST_CASE("ArxivApp: W shows error when no articles are selected", "[tui][rating
     REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("No articles selected"));
 }
 
+// ---------------------------------------------------------------------------
+// Search dialog: two-mode interaction (text entry / search-area selection)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("ArxivApp: search dialog starts in text entry and typing builds the query",
+          "[tui][search]") {
+    auto [db_ptr, app] = make_app_with_articles();
+    auto handler = app->GetEventHandler();
+
+    handler->OnEvent(Event::Character("/")); // open search
+    handler->OnEvent(Event::Character("a"));
+    handler->OnEvent(Event::Character("b"));
+
+    std::string output = render(*app);
+    // Query line is the focused line in text-entry mode (marked with ">").
+    REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("> Query: ab"));
+}
+
+TEST_CASE("ArxivApp: in text-entry mode j and k are typed into the query, not navigation",
+          "[tui][search]") {
+    auto [db_ptr, app] = make_app_with_articles();
+    auto handler = app->GetEventHandler();
+
+    handler->OnEvent(Event::Character("/")); // open search
+    handler->OnEvent(Event::Character("j"));
+    handler->OnEvent(Event::Character("k"));
+
+    std::string output = render(*app);
+    REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("Query: jk"));
+}
+
+TEST_CASE("ArxivApp: Tab switches search dialog into area selection and highlights active area",
+          "[tui][search]") {
+    auto [db_ptr, app] = make_app_with_articles();
+    auto handler = app->GetEventHandler();
+
+    handler->OnEvent(Event::Character("/")); // open search (defaults to Title field)
+    handler->OnEvent(Event::Tab);            // switch to area selection
+
+    std::string output = render(*app);
+    // The cursor (">") lands on the active area, which is Title by default.
+    REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("> [X] Title"));
+}
+
+TEST_CASE("ArxivApp: in area selection j moves cursor and Space toggles the active field",
+          "[tui][search]") {
+    auto [db_ptr, app] = make_app_with_articles();
+    auto handler = app->GetEventHandler();
+
+    handler->OnEvent(Event::Character("/")); // open search
+    handler->OnEvent(Event::Tab);            // area selection, cursor on Title
+    handler->OnEvent(Event::Character("j")); // move cursor to Authors
+    handler->OnEvent(Event::Character(" ")); // toggle Authors as the active field
+
+    std::string output = render(*app);
+    REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("> [X] Authors"));
+    REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("[ ] Title"));
+}
+
+TEST_CASE("ArxivApp: in area selection k moves the cursor up", "[tui][search]") {
+    auto [db_ptr, app] = make_app_with_articles();
+    auto handler = app->GetEventHandler();
+
+    handler->OnEvent(Event::Character("/")); // open search
+    handler->OnEvent(Event::Tab);            // area selection, cursor on Title
+    handler->OnEvent(Event::Character("k")); // wrap up to Abstract
+
+    std::string output = render(*app);
+    REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("> [ ] Abstract"));
+}
+
+TEST_CASE("ArxivApp: Tab from area selection returns to text entry", "[tui][search]") {
+    auto [db_ptr, app] = make_app_with_articles();
+    auto handler = app->GetEventHandler();
+
+    handler->OnEvent(Event::Character("/")); // open search
+    handler->OnEvent(Event::Tab);            // to area selection
+    handler->OnEvent(Event::Tab);            // back to text entry
+    handler->OnEvent(Event::Character("z")); // should type into the query
+
+    std::string output = render(*app);
+    REQUIRE_THAT(output, Catch::Matchers::ContainsSubstring("> Query: z"));
+}
+
+TEST_CASE("ArxivApp: Esc closes the search dialog", "[tui][search]") {
+    auto [db_ptr, app] = make_app_with_articles();
+    auto handler = app->GetEventHandler();
+
+    handler->OnEvent(Event::Character("/")); // open search
+    handler->OnEvent(Event::Escape);         // close
+
+    std::string output = render(*app);
+    REQUIRE_THAT(output, !Catch::Matchers::ContainsSubstring("Search Articles"));
+}
+
 TEST_CASE("ArxivApp: navigating with detail panel open marks article as read",
           "[tui][read][detail]") {
     auto [db_ptr, app] = make_app_with_articles();

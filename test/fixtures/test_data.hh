@@ -40,7 +40,7 @@ const std::string sample_rss_response = R"(<?xml version="1.0" encoding="UTF-8"?
             <title>Sample Article Title</title>
             <link>https://arxiv.org/abs/2403.12345</link>
             <description>This is a sample abstract for testing purposes.</description>
-            <pubDate>2024-03-25T12:00:00Z</pubDate>
+            <pubDate>Mon, 25 Mar 2024 12:00:00 -0400</pubDate>
             <dc:creator>John Doe, Jane Smith</dc:creator>
             <category>cs.AI</category>
         </item>

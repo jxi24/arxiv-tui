@@ -5,6 +5,8 @@
 #include <Arxiv/Fetcher.hh>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
+#include <chrono>
+#include <ctime>
 #include <filesystem>
 #include <fixtures/test_data.hh>
 #include <fstream>
@@ -166,12 +168,67 @@ TEST_CASE("Fetcher::ParseDate", "[fetcher][real]") {
         REQUIRE(tp.has_value());
     }
 
+    SECTION("Parses real arXiv RSS RFC 822 pubDate") {
+        // The live arXiv RSS feed emits RFC 822 dates, e.g.
+        //   <pubDate>Mon, 22 Jun 2026 00:00:00 -0400</pubDate>
+        auto tp = fetcher.ParseDate("Mon, 22 Jun 2026 00:00:00 -0400");
+        REQUIRE(tp.has_value());
+
+        // 2026-06-22 00:00:00 -0400 == 2026-06-22 04:00:00 UTC.
+        std::time_t t = std::chrono::system_clock::to_time_t(tp.value());
+        std::tm tm{};
+        gmtime_r(&t, &tm);
+        REQUIRE(tm.tm_year + 1900 == 2026);
+        REQUIRE(tm.tm_mon + 1 == 6);
+        REQUIRE(tm.tm_mday == 22);
+        REQUIRE(tm.tm_hour == 4);
+    }
+
+    SECTION("Parses RFC 822 pubDate with GMT zone") {
+        auto tp = fetcher.ParseDate("Fri, 19 Jun 2026 13:30:00 GMT");
+        REQUIRE(tp.has_value());
+        std::time_t t = std::chrono::system_clock::to_time_t(tp.value());
+        std::tm tm{};
+        gmtime_r(&t, &tm);
+        REQUIRE(tm.tm_mday == 19);
+        REQUIRE(tm.tm_hour == 13);
+    }
+
     SECTION("Returns nullopt for empty string") {
         REQUIRE_FALSE(fetcher.ParseDate("").has_value());
     }
 
     SECTION("Returns nullopt for obviously invalid input") {
         REQUIRE_FALSE(fetcher.ParseDate("not-a-date").has_value());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FetchSinceWindowStart — announcement-lag look-back
+//
+// arXiv stamps and filters by submittedDate, but papers are *announced* (become
+// visible) one or more days later. A paper submitted just before the last fetch
+// but announced after it must still be picked up, so the submittedDate window
+// must start before the requested date.
+// ---------------------------------------------------------------------------
+TEST_CASE("Fetcher::FetchSinceWindowStart backs off by the announcement lag", "[fetcher][real]") {
+    Fetcher fetcher({"hep-ph"});
+
+    SECTION("Shifts the window start several days earlier than the requested date") {
+        // Regression for the missed Friday paper: submitted 2026-06-17,
+        // announced 2026-06-19, last fetch 2026-06-18. A window starting at
+        // 2026-06-18 drops it; the window must start on or before 2026-06-17.
+        std::string start = fetcher.FetchSinceWindowStart("2026-06-18");
+        REQUIRE(start <= "2026-06-17");
+        REQUIRE(start == "2026-06-13"); // 2026-06-18 minus 5 days
+    }
+
+    SECTION("Handles month boundaries") {
+        REQUIRE(fetcher.FetchSinceWindowStart("2026-06-03") == "2026-05-29");
+    }
+
+    SECTION("Returns the input unchanged when it cannot be parsed") {
+        REQUIRE(fetcher.FetchSinceWindowStart("bad") == "bad");
     }
 }
 

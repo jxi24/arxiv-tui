@@ -113,7 +113,8 @@ class ArxivApp {
     // Search dialog
     std::string search_query;
     AppCore::SearchMode search_field = AppCore::SearchMode::title; // Default to searching in title
-    int selected_search_option = 0; // 0: query, 1: title, 2: authors, 3: abstract
+    bool search_area_selection = false; // false: text entry, true: search-area selection
+    int search_area_index = 0;          // cursor in area mode: 0 title, 1 authors, 2 abstract
     Component search_dialog;
 
     // Rating dialog

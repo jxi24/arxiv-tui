@@ -256,7 +256,8 @@ void ArxivApp::SetupEventHandler() {
         if (key_bindings.matches(event, KeyBindings::Action::Search)) {
             dialog_depth = Dialog::Search;
             search_query.clear();
-            selected_search_option = 0;
+            search_area_selection = false;
+            search_area_index = static_cast<int>(search_field);
             return true;
         }
 
