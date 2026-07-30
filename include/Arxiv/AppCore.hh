@@ -14,6 +14,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -393,7 +394,15 @@ class AppCore {
 
     // New-articles tracking: UTC date ("YYYY-MM-DD") that seeds the NewArticles view.
     // Set from the previous session's last_fetch_date on construction.
+    // Only a fallback now — see m_new_articles_anchor_ts.
     std::string m_new_articles_since_date;
+
+    // New-articles window: articles stored at or after this Unix timestamp are
+    // new to the user. It is the instant the previous session finished
+    // fetching, so it covers every day missed since then plus the current one.
+    // 0 means "no anchor recorded yet" (fresh database or first run after the
+    // upgrade), in which case the date window above is used instead.
+    std::int64_t m_new_articles_anchor_ts{0};
 
     void RefreshTitles();
     void RefreshFilterOptions();

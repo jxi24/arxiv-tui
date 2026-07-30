@@ -327,9 +327,10 @@ TEST_CASE("AppCore: FetchSince is called with the previous fetch date (posted-da
 // ---------------------------------------------------------------------------
 TEST_CASE("AppCore: same-day restart preserves the New Articles anchor", "[newart][appcore]") {
     // Scenario: yesterday the user fetched (last_fetch_date=yesterday).
-    // Today's first run sets new_articles_anchor=yesterday and last_fetch_date=today.
-    // Today's SECOND run (same-day restart) must NOT overwrite the anchor —
-    // otherwise NewArticles asks GetArticlesSince(today+1) which is empty.
+    // Today's first run advanced new_articles_anchor_ts to the end of
+    // yesterday's fetch. Today's SECOND run (same-day restart) must reuse that
+    // anchor untouched — advancing it again would drop everything today's first
+    // run stored and leave the view empty.
     auto db_ptr = std::make_unique<DatabaseManagerMock>();
     auto fet_ptr = std::make_unique<FetcherMock>();
     auto* db_raw = db_ptr.get();
@@ -337,29 +338,29 @@ TEST_CASE("AppCore: same-day restart preserves the New Articles anchor", "[newar
     const std::string today_str = today_utc();
     const std::string yesterday = "2026-05-01"; // any date < today
 
-    // Simulate: this is the same-day SECOND run. last_fetch_date already == today,
-    // and new_articles_anchor was previously set to "yesterday".
+    // Simulate: this is the same-day SECOND run. last_fetch_date already == today.
     // Note: trompeloeil matches expectations in REVERSE registration order, so
     // the wildcard fallback must be registered first and the specific keys last.
     ALLOW_CALL(*db_raw, GetMetadata(trompeloeil::_)).RETURN(std::string{});
     ALLOW_CALL(*db_raw, GetMetadata(std::string("last_fetch_date"))).RETURN(today_str);
     ALLOW_CALL(*db_raw, GetMetadata(std::string("new_articles_anchor"))).RETURN(yesterday);
+    ALLOW_CALL(*db_raw, GetMetadata(std::string("new_articles_anchor_ts")))
+        .RETURN(std::string("1000"));
+    ALLOW_CALL(*db_raw, GetMetadata(std::string("last_fetch_end_ts"))).RETURN(std::string("5000"));
 
-    // The anchor must NOT be reset to today on this same-day restart.
+    // Neither the date anchor nor the timestamp anchor may move on a same-day restart.
     FORBID_CALL(*db_raw,
                 SetMetadata(std::string("new_articles_anchor"), trompeloeil::eq(today_str)));
+    FORBID_CALL(*db_raw, SetMetadata(std::string("new_articles_anchor_ts"), trompeloeil::_));
 
-    // GetArticlesSince should be called with the day AFTER the anchor (= "2026-05-02"),
-    // not with the day after today. On a same-day restart articles from the first
-    // run ARE in the DB, so return a non-empty result so the fallback doesn't fire.
     Arxiv::Article existing;
     existing.link = "https://arxiv.org/abs/existing";
     existing.title = "Existing Paper";
     existing.date = std::chrono::system_clock::now();
 
-    std::string first_articles_since_arg;
-    ALLOW_CALL(*db_raw, GetArticlesSince(trompeloeil::_))
-        .LR_SIDE_EFFECT(if (first_articles_since_arg.empty()) first_articles_since_arg = _1;)
+    std::int64_t added_since_arg = -1;
+    ALLOW_CALL(*db_raw, GetArticlesAddedSince(trompeloeil::_))
+        .LR_SIDE_EFFECT(if (added_since_arg < 0) added_since_arg = _1;)
         .RETURN(std::vector<Arxiv::Article>{existing});
 
     Arxiv::Config cfg;
@@ -368,7 +369,105 @@ TEST_CASE("AppCore: same-day restart preserves the New Articles anchor", "[newar
     auto core = std::make_unique<Arxiv::AppCore>(cfg, std::move(db_ptr), std::move(fet_ptr));
 
     core->SetFilterIndex(Arxiv::AppCore::FilterView::NewArticles);
-    REQUIRE(first_articles_since_arg == "2026-05-02");
+    REQUIRE(added_since_arg == 1000);
+}
+
+// ---------------------------------------------------------------------------
+// Missed days: everything stored since the previous session must show up in
+// New Articles, not just the current day.
+//
+// The backfill query stamps each paper with its v1 submission date, which for
+// papers announced during the gap routinely predates the last session. A
+// submission-date window therefore silently drops them and leaves only the
+// current day's RSS-stamped papers. New Articles anchors on *insertion* time
+// instead, so a paper is new exactly when we had not stored it before.
+// ---------------------------------------------------------------------------
+TEST_CASE("AppCore: NewArticles anchors on the previous session's fetch time",
+          "[newart][appcore]") {
+    auto db_ptr = std::make_unique<DatabaseManagerMock>();
+    auto fet_ptr = std::make_unique<FetcherMock>();
+    auto* db_raw = db_ptr.get();
+
+    const std::string prev_fetch = "2026-05-01"; // days ago → day-boundary crossing
+
+    ALLOW_CALL(*db_raw, GetMetadata(trompeloeil::_)).RETURN(std::string{});
+    ALLOW_CALL(*db_raw, GetMetadata(std::string("last_fetch_date"))).RETURN(prev_fetch);
+    ALLOW_CALL(*db_raw, GetMetadata(std::string("new_articles_anchor"))).RETURN(prev_fetch);
+    // The previous session finished fetching at this instant.
+    ALLOW_CALL(*db_raw, GetMetadata(std::string("last_fetch_end_ts")))
+        .RETURN(std::string("1746000000"));
+
+    std::string anchor_ts_written;
+    ALLOW_CALL(*db_raw, SetMetadata(std::string("new_articles_anchor_ts"), trompeloeil::_))
+        .LR_SIDE_EFFECT(anchor_ts_written = _2;);
+
+    // Backfilled paper: announced while we were away, but submitted well before
+    // the anchor date, so a submission-date window would have dropped it.
+    Arxiv::Article backfilled;
+    backfilled.link = "https://arxiv.org/abs/backfilled";
+    backfilled.title = "Announced While Away";
+    backfilled.date = std::chrono::system_clock::from_time_t(utc_midnight("2026-04-20"));
+
+    std::int64_t added_since_arg = -1;
+    ALLOW_CALL(*db_raw, GetArticlesAddedSince(trompeloeil::_))
+        .LR_SIDE_EFFECT(if (added_since_arg < 0) added_since_arg = _1;)
+        .RETURN(std::vector<Arxiv::Article>{backfilled});
+    // Nothing may come from the submission-date window on this path.
+    FORBID_CALL(*db_raw, GetArticlesSince(trompeloeil::_));
+
+    Arxiv::Config cfg;
+    cfg.set_topics({"cs.AI"});
+    cfg.set_download_dir("/tmp");
+    auto core = std::make_unique<Arxiv::AppCore>(cfg, std::move(db_ptr), std::move(fet_ptr));
+
+    core->SetFilterIndex(Arxiv::AppCore::FilterView::NewArticles);
+
+    SECTION("the view window starts at the previous session's fetch") {
+        REQUIRE(added_since_arg == 1746000000);
+    }
+
+    SECTION("papers announced on missed days are shown despite older submission dates") {
+        auto articles = core->GetCurrentArticles();
+        REQUIRE(articles.size() == 1);
+        REQUIRE(articles[0].link == "https://arxiv.org/abs/backfilled");
+    }
+
+    SECTION("the day-boundary crossing persists the new anchor") {
+        REQUIRE(anchor_ts_written == "1746000000");
+    }
+}
+
+TEST_CASE("AppCore: a completed fetch records when it finished", "[newart][appcore]") {
+    // The next session anchors its New Articles window on this timestamp, so it
+    // must be stamped *after* the fetch has stored the day's papers — otherwise
+    // they would be replayed as new tomorrow.
+    auto db_ptr = std::make_unique<DatabaseManagerMock>();
+    auto fet_ptr = std::make_unique<FetcherMock>();
+    auto* db_raw = db_ptr.get();
+
+    ALLOW_CALL(*db_raw, GetMetadata(trompeloeil::_)).RETURN(std::string{});
+    ALLOW_CALL(*db_raw, GetMetadata(std::string("last_fetch_date")))
+        .RETURN(std::string("2026-05-01"));
+
+    bool articles_stored = false;
+    ALLOW_CALL(*db_raw, AddArticles(trompeloeil::_)).LR_SIDE_EFFECT(articles_stored = true;);
+
+    std::string end_ts;
+    bool stored_before_stamp = false;
+    ALLOW_CALL(*db_raw, SetMetadata(std::string("last_fetch_end_ts"), trompeloeil::_))
+        .LR_SIDE_EFFECT({
+            end_ts = _2;
+            stored_before_stamp = articles_stored;
+        });
+
+    Arxiv::Config cfg;
+    cfg.set_topics({"cs.AI"});
+    cfg.set_download_dir("/tmp");
+    auto core = std::make_unique<Arxiv::AppCore>(cfg, std::move(db_ptr), std::move(fet_ptr));
+
+    REQUIRE_FALSE(end_ts.empty());
+    REQUIRE(std::stoll(end_ts) > 0);
+    REQUIRE(stored_before_stamp);
 }
 
 TEST_CASE("AppCore: NewArticles excludes replacements (updated papers)", "[newart][appcore]") {

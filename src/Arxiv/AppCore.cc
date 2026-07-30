@@ -23,6 +23,21 @@
 
 namespace Arxiv {
 
+// Parse a Unix timestamp held in the metadata table. Absent or malformed
+// values yield 0, the "no anchor recorded" sentinel.
+static std::int64_t parse_ts(const std::string& value) {
+    if (value.empty())
+        return 0;
+    try {
+        return std::stoll(value);
+    } catch (const std::exception&) {
+        spdlog::warn("[AppCore]: Ignoring malformed timestamp '{}'", value);
+        return 0;
+    }
+}
+
+static std::int64_t now_ts() { return std::time(nullptr); }
+
 static std::string today_utc_string() {
     auto now = std::chrono::system_clock::now();
     std::time_t t = std::chrono::system_clock::to_time_t(now);
@@ -61,14 +76,24 @@ AppCore::AppCore(const Config& config,
     const std::string today = today_utc_string();
     const std::string prev_fetch = m_db->GetMetadata("last_fetch_date");
     std::string anchor = m_db->GetMetadata("new_articles_anchor");
+    const bool crossed_day_boundary = (!prev_fetch.empty() && prev_fetch < today);
 
     // The "New Articles" anchor only advances on a real day-boundary
     // crossing. A same-day restart must NOT collapse the anchor to today —
-    // doing so would push GetArticlesSince() past every existing article and
-    // make the New Articles view appear empty.
-    if (!prev_fetch.empty() && prev_fetch < today) {
+    // doing so would push the window past every existing article and make the
+    // New Articles view appear empty.
+    //
+    // The window is anchored on the instant the *previous* session finished
+    // fetching, so it spans every day missed since then plus the current one.
+    // Articles stored in between by a headless `--fetch` are covered too.
+    // Advancing it to the end of this session's fetch instead would be a day
+    // late; advancing it to "now" would replay articles the user already saw.
+    m_new_articles_anchor_ts = parse_ts(m_db->GetMetadata("new_articles_anchor_ts"));
+    if (crossed_day_boundary) {
         anchor = prev_fetch;
         m_db->SetMetadata("new_articles_anchor", anchor);
+        m_new_articles_anchor_ts = parse_ts(m_db->GetMetadata("last_fetch_end_ts"));
+        m_db->SetMetadata("new_articles_anchor_ts", std::to_string(m_new_articles_anchor_ts));
     }
     m_new_articles_since_date = anchor;
     m_db->SetMetadata("last_fetch_date", today);
@@ -138,6 +163,11 @@ AppCore::AppCore(const Config& config,
         m_db->AddArticles(articles);
         if (m_recorder)
             m_recorder->RecordEvent("appcore/bg_db_insert_end");
+
+        // Stamped after the insert so the next session's New Articles window
+        // starts past everything this fetch stored — otherwise today's papers
+        // would be replayed as new tomorrow.
+        m_db->SetMetadata("last_fetch_end_ts", std::to_string(now_ts()));
 
         if (fetch_mode == FetchMode::Sync) {
             // Sync callers expect m_current_articles to reflect the fetch
@@ -256,34 +286,24 @@ void AppCore::FetchArticles() {
         m_current_articles = GetArticlesForFollowedAuthors();
         break;
     case FilterView::NewArticles: {
-        if (m_new_articles_since_date.empty()) {
-            // No anchor: first-ever open. Show all articles in the DB.
-            m_current_articles = m_db->GetRecent(-1);
-        } else if (m_fetching.load()) {
-            // Async network fetch still in progress. Today's articles aren't
-            // in the DB yet, so the advanced-date query would return empty.
-            // Fall back to showing the anchor-date articles so the view is
-            // not blank while the user waits for the fetch to complete.
-            m_current_articles = m_db->GetArticlesSince(m_new_articles_since_date);
-        } else {
-            // Fetch complete (or Sync mode). Show articles strictly after the
-            // previous session's date by advancing the anchor by one day.
-            std::tm tm{};
-            tm.tm_year = std::stoi(m_new_articles_since_date.substr(0, 4)) - 1900;
-            tm.tm_mon = std::stoi(m_new_articles_since_date.substr(5, 2)) - 1;
-            tm.tm_mday = std::stoi(m_new_articles_since_date.substr(8, 2)) + 1;
-            timegm(&tm); // normalise
-            char buf[11];
-            std::strftime(buf, sizeof(buf), "%Y-%m-%d", &tm);
-            auto advanced_articles = m_db->GetArticlesSince(buf);
-            if (!advanced_articles.empty()) {
-                m_current_articles = std::move(advanced_articles);
-            } else {
-                // Today's articles haven't arrived yet even though the fetch
-                // finished (e.g. arXiv not yet published, or same-day restart
-                // before new content). Show anchor-date articles as fallback.
+        // "New" is an insertion-time question, not a submission-date one. The
+        // backfill query stamps each paper with its v1 submission date, which
+        // for a paper announced during a missed day routinely predates the last
+        // session — a submission-date window drops exactly the articles this
+        // view exists to surface, leaving only the current day.
+        if (m_new_articles_anchor_ts > 0)
+            m_current_articles = m_db->GetArticlesAddedSince(m_new_articles_anchor_ts);
+
+        if (m_current_articles.empty()) {
+            // Either no insertion-time anchor is on record yet (fresh database,
+            // or first run after the upgrade), or nothing has been stored since
+            // the last session: the fetch may still be running, or arXiv may not
+            // have announced yet. Fall back to the submission-date window so the
+            // view is never blank.
+            if (m_new_articles_since_date.empty())
+                m_current_articles = m_db->GetRecent(-1);
+            else
                 m_current_articles = m_db->GetArticlesSince(m_new_articles_since_date);
-            }
         }
         // Drop replacements (later versions of older submissions) — the
         // New Articles view is meant for truly fresh papers only.

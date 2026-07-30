@@ -147,12 +147,19 @@ Plain data struct: `link`, `title`, `authors`, `abstract`, `date` (Unix timestam
 
 ```sql
 CREATE TABLE articles (
-    link       TEXT PRIMARY KEY,
-    title      TEXT,
-    authors    TEXT,
-    abstract   TEXT,
-    date       INTEGER,   -- Unix timestamp
-    bookmarked INTEGER DEFAULT 0
+    link            TEXT PRIMARY KEY,
+    title           TEXT,
+    authors         TEXT,
+    abstract        TEXT,
+    date            INTEGER,   -- Unix timestamp of the FIRST release; never
+                               -- rewritten when arXiv re-announces a new version
+    bookmarked      INTEGER DEFAULT 0,
+    relevance_score REAL DEFAULT 0.0,
+    category        TEXT DEFAULT '',
+    is_replacement  INTEGER DEFAULT 0,
+    read_at         INTEGER DEFAULT NULL,
+    added_at        INTEGER DEFAULT NULL  -- when we first stored the row;
+                                          -- drives the New Articles window
 );
 
 CREATE TABLE projects (
@@ -414,6 +421,30 @@ A brief record of what has been implemented. Consult `README.md` for user-facing
 ### v1.1 — Open in browser, separate rate-article / rate-selection bindings
 - **Open in browser** — `O` (`OpenInBrowser` action, default key `O`) opens the focused article in the system default browser via `xdg-open`; with a selection active, all selected articles are opened. `AppCore::GetLinksToOpen()` returns the target URLs (selection if non-empty, else focused article). Implemented in `src/Arxiv/Views/MainRenderer.cc` (`HandleGlobalEvent`).
 - **Separate rate-article / rate-selection** — `n` (`RateArticle`) now always opens the rating dialog in single-article mode regardless of selection state. `W` (`RateSelection`) is the new dedicated bulk-rating key; it shows the "Rate Selection" dialog when a selection is active, or an error if not. `m_bulk_rating` flag in `ArxivApp` drives which mode `SetupRatingDialog` and `HandleRatingEvent` use. Implemented in `src/Arxiv/Views/MainRenderer.cc` and `src/Arxiv/Views/RatingDialog.cc`.
+
+### Post-v1.1 fixes — stable article dates, missed-day New Articles window
+- **Dates are frozen at first release** — `DatabaseManager::AddArticle` now upserts
+  (`ON CONFLICT(link) DO UPDATE`) instead of `INSERT OR REPLACE`. arXiv re-lists a paper
+  every time a new version is posted and the feed then carries that version's
+  announcement date; only the feed-owned columns (title, authors, abstract, category,
+  is_replacement) are refreshed. `date`, `bookmarked`, `read_at`, `relevance_score` and
+  `added_at` survive untouched, so a v2 no longer resurfaces a months-old paper at the
+  top of the list — or silently drops a bookmark.
+- **New Articles spans every missed day** — the view now anchors on *insertion* time
+  (`added_at`) rather than submission date. `FetchSince` stamps each paper with its v1
+  submission date, which for a paper announced during a missed day routinely predates
+  the last session, so the old submission-date window dropped exactly those papers and
+  showed only the current day. `AppCore` reads `new_articles_anchor_ts` (the instant the
+  *previous* session finished fetching, persisted as `last_fetch_end_ts` right after the
+  bulk insert) and calls `DatabaseManager::GetArticlesAddedSince`. Articles stored in
+  between by a headless `--fetch` are covered too. The old date window remains as a
+  fallback so the view is never blank (fresh DB, first run after the upgrade, or fetch
+  still in flight). `MigrateAddAddedAt` backfills pre-existing rows from `date`.
+- **The anchor is exclusive** — `GetArticlesAddedSince` compares `added_at > since_ts`,
+  not `>=`. `added_at` and `last_fetch_end_ts` are both whole seconds and the end stamp
+  is written immediately after the bulk insert, so the tail of every fetch shares the
+  anchor's second; with `>=` those papers (dozens to hundreds per day) were replayed as
+  new the following day.
 
 ### v1.0 — Settings dialog, category filter, Obsidian export, keyword boosts
 - **Settings dialog** — `S` opens a five-section in-app settings editor (General, Topics, Ranker, Export, Keys); all config values editable without touching YAML; Escape saves to `config.yml` and closes. Implemented in `src/Arxiv/Views/SettingsDialog.cc`.

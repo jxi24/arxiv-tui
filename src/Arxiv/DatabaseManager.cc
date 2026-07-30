@@ -192,6 +192,7 @@ DatabaseManager::DatabaseManager(const std::string& path) {
 
     MigrateNormalizeLinks();
     MigrateAddReadAt();
+    MigrateAddAddedAt();
     MigrateAddProjectBibPath();
     CreateTagTables();
     MigrateAddFTS5();
@@ -376,10 +377,23 @@ void DatabaseManager::AddArticle(const Article& article) {
     auto timestamp =
         std::chrono::duration_cast<std::chrono::seconds>(article.date.time_since_epoch()).count();
 
+    // Upsert rather than INSERT OR REPLACE. arXiv re-lists a paper every time a
+    // new version is posted, and the feed then carries the *announcement* date
+    // of that version. Only the feed-owned metadata may be refreshed: `date`
+    // stays at the first release so a v2 never resurfaces a months-old paper at
+    // the top of the list, and the user-owned columns (bookmarked, read_at,
+    // relevance_score) plus the insertion time survive untouched.
     Stmt stmt(db,
-              "INSERT OR REPLACE INTO articles "
-              "(link, title, authors, abstract, date, bookmarked, category, is_replacement) "
-              "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+              "INSERT INTO articles "
+              "(link, title, authors, abstract, date, bookmarked, category, is_replacement, "
+              " added_at) "
+              "VALUES (?, ?, ?, ?, ?, ?, ?, ?, strftime('%s', 'now')) "
+              "ON CONFLICT(link) DO UPDATE SET "
+              "  title = excluded.title, "
+              "  authors = excluded.authors, "
+              "  abstract = excluded.abstract, "
+              "  category = excluded.category, "
+              "  is_replacement = excluded.is_replacement",
               "AddArticle");
     stmt.bind(1, article.link)
         .bind(2, article.title)
@@ -443,6 +457,18 @@ void DatabaseManager::MigrateAddReadAt() {
     } catch (const std::exception&) {
         // Column already exists — ignore
     }
+}
+
+void DatabaseManager::MigrateAddAddedAt() {
+    try {
+        ExecuteSQL("ALTER TABLE articles ADD COLUMN added_at INTEGER DEFAULT NULL");
+    } catch (const std::exception&) {
+        // Column already exists — ignore
+    }
+    // Rows that predate the column have no insertion time on record; their
+    // submission date is the best available stand-in. Idempotent: every row
+    // written since the migration carries a non-NULL timestamp.
+    ExecuteSQL("UPDATE articles SET added_at = date WHERE added_at IS NULL");
 }
 
 void DatabaseManager::CreateTagTables() {
@@ -994,6 +1020,22 @@ std::vector<Arxiv::Article> DatabaseManager::GetArticlesSince(const std::string&
     std::string sql = std::string("SELECT ") + ARTICLE_COLUMNS +
                       " FROM articles WHERE date >= ? ORDER BY date DESC";
     Stmt stmt(db, sql.c_str(), "GetArticlesSince");
+    stmt.bind(1, static_cast<sqlite3_int64>(since_ts));
+    stmt.for_each([&](sqlite3_stmt* s) { articles.push_back(RowToArticle(s)); });
+    return articles;
+}
+
+std::vector<Arxiv::Article> DatabaseManager::GetArticlesAddedSince(std::int64_t since_ts) {
+    std::vector<Arxiv::Article> articles;
+    // Strictly greater: since_ts is the instant the previous fetch finished, so
+    // rows carrying exactly that timestamp were stored *by* that fetch and the
+    // user has already seen them. Both stamps have second granularity and the
+    // end-of-fetch marker is written straight after the bulk insert, so the tail
+    // of every fetch shares the anchor's second — with >= those papers were
+    // replayed as new on the following day.
+    std::string sql = std::string("SELECT ") + ARTICLE_COLUMNS +
+                      " FROM articles WHERE added_at > ? ORDER BY date DESC";
+    Stmt stmt(db, sql.c_str(), "GetArticlesAddedSince");
     stmt.bind(1, static_cast<sqlite3_int64>(since_ts));
     stmt.for_each([&](sqlite3_stmt* s) { articles.push_back(RowToArticle(s)); });
     return articles;

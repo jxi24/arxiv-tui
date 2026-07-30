@@ -72,6 +72,8 @@ class DatabaseManagerMock : public Arxiv::DatabaseManager {
             NAMED_ALLOW_CALL(*this, GetMetadata(ANY(std::string))).RETURN(std::string{}));
         m_expectations.push_back(NAMED_ALLOW_CALL(*this, GetArticlesSince(ANY(std::string)))
                                      .RETURN(std::vector<Arxiv::Article>{}));
+        m_expectations.push_back(NAMED_ALLOW_CALL(*this, GetArticlesAddedSince(ANY(std::int64_t)))
+                                     .RETURN(std::vector<Arxiv::Article>{}));
         // Tag defaults
         m_expectations.push_back(
             NAMED_ALLOW_CALL(*this, GetTags()).RETURN(std::vector<std::string>{}));
@@ -151,6 +153,7 @@ class DatabaseManagerMock : public Arxiv::DatabaseManager {
     MAKE_MOCK2(SetMetadata, void(const std::string&, const std::string&), override);
     MAKE_MOCK1(GetMetadata, std::string(const std::string&), override);
     MAKE_MOCK1(GetArticlesSince, std::vector<Arxiv::Article>(const std::string&), override);
+    MAKE_MOCK1(GetArticlesAddedSince, std::vector<Arxiv::Article>(std::int64_t), override);
 
     // Helper methods to set up mock responses
     void setArticles(const std::vector<Arxiv::Article>& articles) {
