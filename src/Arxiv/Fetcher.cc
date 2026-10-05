@@ -403,7 +403,7 @@ std::string Fetcher::LatexToMarkdown(const std::string& text) const {
             {"\\textdown", {"", ""}},
             {"\\underline", {"", ""}},
             {"\\overline", {"", ""}},
-        };
+    };
 
     // Repeat until no further substitutions are made (handles nesting).
     std::string prev;
