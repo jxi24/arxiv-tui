@@ -183,6 +183,57 @@ TEST_CASE("AppCore::ExportDailyDigestYAML escapes quotes in article fields", "[d
     fs::remove(tmp);
 }
 
+TEST_CASE("AppCore::ExportDailyDigestYAML includes arXiv id, category and score", "[digest]") {
+    DatabaseManagerMock* db_ptr = nullptr;
+    FetcherMock* fetcher_ptr = nullptr;
+    auto core = make_core(db_ptr, fetcher_ptr);
+
+    fs::path tmp = fs::temp_directory_path() / "digest_fields_test.yaml";
+    fs::remove(tmp);
+    ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(arxiv_tui::test::fixtures::sample_articles);
+
+    REQUIRE(core->ExportDailyDigestYAML(tmp.string()));
+    std::string content = read_file(tmp);
+    REQUIRE_THAT(content, ContainsSubstring("id: \"2403.12345\""));
+    REQUIRE_THAT(content, ContainsSubstring("category: \"cs.AI\""));
+    REQUIRE_THAT(content, ContainsSubstring("score: "));
+
+    fs::remove(tmp);
+}
+
+TEST_CASE("AppCore::ExportDailyDigestYAML lists articles by predicted score, highest first",
+          "[digest]") {
+    fs::path keywords = fs::temp_directory_path() / "digest_keywords.txt";
+    {
+        std::ofstream kf(keywords);
+        kf << "another\n";
+    }
+    auto db = std::make_unique<DatabaseManagerMock>();
+    auto fetcher = std::make_unique<FetcherMock>();
+    auto* db_ptr = db.get();
+    Arxiv::Config cfg;
+    cfg.set_topics({"cs.AI"});
+    cfg.set_download_dir("/tmp");
+    cfg.set_keywords_file(keywords.string());
+    ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(arxiv_tui::test::fixtures::sample_articles);
+    auto core = std::make_unique<Arxiv::AppCore>(cfg, std::move(db), std::move(fetcher));
+    core->ReloadKeywords();
+
+    fs::path tmp = fs::temp_directory_path() / "digest_ranked_test.yaml";
+    fs::remove(tmp);
+    REQUIRE(core->ExportDailyDigestYAML(tmp.string()));
+    std::string content = read_file(tmp);
+    // "Another Test Article" matches the keyword, so it comes first despite the DB order
+    auto matched = content.find("Another Test Article");
+    auto other = content.find("Sample Article Title");
+    REQUIRE(matched != std::string::npos);
+    REQUIRE(other != std::string::npos);
+    REQUIRE(matched < other);
+
+    fs::remove(tmp);
+    fs::remove(keywords);
+}
+
 // ---------------------------------------------------------------------------
 // ExportSelectedDigestArchive
 // ---------------------------------------------------------------------------

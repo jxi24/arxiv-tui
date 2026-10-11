@@ -102,6 +102,7 @@ int main(int argc, char* argv[]) {
             config,
             std::make_unique<Arxiv::DatabaseManager>(config.get_db_file()),
             std::make_unique<Arxiv::Fetcher>(config.get_topics(), config.get_download_dir()));
+        core->ReloadKeywords(); // interest keywords feed the YAML digest's ranking
 
         if (!export_today_path.empty()) {
             bool ok = core->ExportDailyDigest(export_today_path);

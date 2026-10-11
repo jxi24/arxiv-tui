@@ -1241,7 +1241,23 @@ bool AppCore::ExportDailyDigest(const std::string& output_path) const {
 }
 
 bool AppCore::ExportDailyDigestYAML(const std::string& output_path) const {
-    auto articles = m_db->GetRecent(1);
+    // Highest predicted score first (trained model and/or interest keywords), so
+    // consumers such as a pre-commute drive digest can take the top N as-is.
+    std::vector<std::pair<float, Article>> scored;
+    {
+        auto recent = m_db->GetRecent(1);
+        std::lock_guard<std::mutex> lock(m_ranker_mutex);
+        scored.reserve(recent.size());
+        for (auto& a : recent)
+            scored.emplace_back(m_ranker.PredictBlended(a), std::move(a));
+    }
+    std::stable_sort(scored.begin(), scored.end(), [](const auto& lhs, const auto& rhs) {
+        return lhs.first > rhs.first;
+    });
+    std::vector<Article> articles;
+    articles.reserve(scored.size());
+    for (auto& entry : scored)
+        articles.push_back(std::move(entry.second));
     return write_export(output_path,
                         "daily digest YAML (" + std::to_string(articles.size()) + " articles)",
                         [&](std::ofstream& f) {
@@ -1257,10 +1273,15 @@ bool AppCore::ExportDailyDigestYAML(const std::string& output_path) const {
                                 return out;
                             };
                             f << "date: \"" << today_string() << "\"\narticles:\n";
-                            for (const auto& a : articles) {
-                                f << "  - title: \"" << escape_yaml(a.title) << "\"\n";
+                            for (std::size_t i = 0; i < articles.size(); ++i) {
+                                const auto& a = articles[i];
+                                f << "  - id: \"" << escape_yaml(a.id()) << "\"\n";
+                                f << "    title: \"" << escape_yaml(a.title) << "\"\n";
                                 f << "    authors: \"" << escape_yaml(a.authors) << "\"\n";
                                 f << "    link: \"" << escape_yaml(a.link) << "\"\n";
+                                f << "    category: \"" << escape_yaml(a.category) << "\"\n";
+                                f << "    score: " << fmt::format("{:.3f}", scored[i].first)
+                                  << "\n";
                                 if (!a.abstract.empty())
                                     f << "    abstract: \"" << escape_yaml(a.abstract) << "\"\n";
                             }

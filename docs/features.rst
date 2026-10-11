@@ -21,6 +21,17 @@ a cron job:
    # or schedule with cron
    0 7 * * 1-5  arxiv-tui --fetch
 
+Today's articles can also be exported without the TUI. ``--export-yaml``
+writes them ranked by predicted score (the trained model blended with the
+interest keywords), highest first, with ``id``, ``title``, ``authors``,
+``link``, ``category``, ``score`` and ``abstract`` per article, so another
+tool can take the top few as-is (``--export-today`` writes the Markdown
+digest):
+
+.. code-block:: bash
+
+   arxiv-tui --fetch && arxiv-tui --export-yaml ~/notes/arxiv-today.yml
+
 Set ``auto_refresh_minutes`` in the config to have the background thread
 re-fetch feeds automatically while the TUI is open.
 
