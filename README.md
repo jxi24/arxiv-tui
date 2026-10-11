@@ -147,6 +147,10 @@ key_mappings:
 
 **`max_article_age_days`** is the maximum age (in days) of articles kept in the database. Articles older than this threshold are deleted on startup unless they are bookmarked, rated, or assigned to a project. Set to `0` to disable pruning entirely. Default: `0`.
 
+**`obsidian_vault`** is the Obsidian vault that `o` exports selected articles into (notes go to `<vault>/arxiv-tui/<date>/`). Empty or absent disables the export.
+
+**`obsidian_download_pdfs`** controls what each exported note points to. `false` (the default) adds a `[PDF on arXiv](https://arxiv.org/pdf/<id>)` link and downloads nothing, which keeps git-synced vaults small. `true` downloads the PDF next to the note and embeds it (`![[<id>.pdf]]`). It's also toggled in the Settings dialog (`S` → Export → Download PDFs). Default: `false`.
+
 **`article_columns`** controls which columns are shown in the article list and in what order. Available values:
 
 | Column | Description | Width |
@@ -388,7 +392,7 @@ Hooks: trailing whitespace, LF line endings, valid YAML/TOML, clang-format, REUS
 - **Configurable article list columns** (v0.9.7) — `article_columns` config key selects which columns appear in the article list and in what order; available: `title`, `date`, `authors`, `category`, `id`, `score`; default `[title, date]`; a column header row is always shown
 - **Settings dialog** (v1.0) — `S` opens a five-section in-app settings editor (General, Topics, Ranker, Export, Keys) allowing every config value to be changed without editing YAML; Escape saves and closes
 - **Category filter** (v1.0) — `t` opens a dialog to toggle individual arXiv categories on or off; only articles matching an active category are shown; `a` activates all, `n` deactivates all; articles with no category always pass through
-- **Obsidian vault export** (v1.0) — `o` exports selected articles as Obsidian-formatted Markdown notes (wikilinks, PDF embeds, frontmatter) into the configured `obsidian_vault` directory; vault path is set via the Settings dialog or directly in `config.yml`
+- **Obsidian vault export** (v1.0) — `o` exports selected articles as Obsidian-formatted Markdown notes (wikilinks, a link to the PDF on arXiv, frontmatter) into the configured `obsidian_vault` directory; vault path is set via the Settings dialog or directly in `config.yml`. Set `obsidian_download_pdfs: true` to download and embed the PDFs instead (unreleased; previously always on)
 - **Keyword boosts** (v1.0) — `K` opens the interest-keyword editor; keywords are saved to a plain-text file and used by the ranker as a cold-start signal before any star ratings exist; useful for seeding recommendations immediately after install
 - **Open in browser** (v1.1) — `O` opens the focused article in the system default browser via `xdg-open`; with a selection active, all selected articles are opened; links are drawn from the selection set if non-empty, otherwise the focused article
 - **Separate rate-article and rate-selection bindings** (v1.1) — `n` now always rates the single focused article regardless of any active selection; `W` (configurable) is the dedicated "Rate Selection" binding that opens the bulk-rating dialog; this allows rating individual papers while a multi-article selection is active

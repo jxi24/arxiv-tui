@@ -92,6 +92,19 @@ Reference
     rated, or assigned to a project. Set to ``0`` to disable pruning.
     Default: ``0``.
 
+``obsidian_vault``
+    Obsidian vault that ``o`` exports selected articles into; notes are
+    written to ``<vault>/arxiv-tui/<date>/``. Empty or absent disables the
+    export. Also editable in the Settings dialog (``S`` → Export).
+
+``obsidian_download_pdfs``
+    What each exported note points to. ``false`` (the default) adds a
+    ``[PDF on arXiv](https://arxiv.org/pdf/<id>)`` link and downloads
+    nothing, which keeps git-synced vaults small. ``true`` downloads the
+    PDF next to the note and embeds it with ``![[<id>.pdf]]``. Toggle it
+    in the Settings dialog (``S`` → Export → Download PDFs). Default:
+    ``false``.
+
 ``key_mappings``
     List of ``{action, key}`` pairs that remap the default key bindings.
     See :doc:`keybindings` for the full list of action names.

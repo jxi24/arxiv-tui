@@ -12,6 +12,7 @@
 #include <fstream>
 #include <mocks/DatabaseManagerMock.hh>
 #include <mocks/FetcherMock.hh>
+#include <sstream>
 #include <unistd.h>
 
 using namespace Arxiv;
@@ -994,6 +995,71 @@ TEST_CASE("AppCore::ExportSelectedToObsidian", "[app][export]") {
 
         REQUIRE_FALSE(path.empty());
         REQUIRE(std::filesystem::exists(path));
+
+        std::filesystem::remove_all(vault);
+    }
+
+    SECTION("Links to the PDF on arXiv and downloads nothing by default") {
+        auto vault = std::filesystem::temp_directory_path() / "arxiv_obsidian_link_only";
+        std::filesystem::remove_all(vault);
+
+        Config config("test/fixtures/test_config.yml");
+        config.set_obsidian_vault(vault.string());
+        REQUIRE_FALSE(config.get_obsidian_download_pdfs());
+
+        auto db = std::make_unique<DatabaseManagerMock>();
+        auto fetcher = std::make_unique<FetcherMock>();
+        auto* db_ptr = db.get();
+
+        ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(sample_articles);
+        ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{});
+        FORBID_CALL(*fetcher.get(), DownloadPaper(ANY(std::string), ANY(std::string)));
+
+        AppCore core(config, std::move(db), std::move(fetcher));
+        core.ToggleSelection(sample_articles[0].link);
+        auto path = core.ExportSelectedToObsidian();
+        REQUIRE_FALSE(path.empty());
+
+        const std::string id = sample_articles[0].id();
+        std::ifstream note(std::filesystem::path(path).parent_path() / (id + ".md"));
+        std::stringstream content;
+        content << note.rdbuf();
+        REQUIRE_THAT(content.str(),
+                     ContainsSubstring("[PDF on arXiv](https://arxiv.org/pdf/" + id + ")"));
+        REQUIRE_THAT(content.str(), !ContainsSubstring("![[" + id + ".pdf]]"));
+        REQUIRE_FALSE(
+            std::filesystem::exists(std::filesystem::path(path).parent_path() / (id + ".pdf")));
+
+        std::filesystem::remove_all(vault);
+    }
+
+    SECTION("Embeds and downloads the PDF when obsidian_download_pdfs is on") {
+        auto vault = std::filesystem::temp_directory_path() / "arxiv_obsidian_download";
+        std::filesystem::remove_all(vault);
+
+        Config config("test/fixtures/test_config.yml");
+        config.set_obsidian_vault(vault.string());
+        config.set_obsidian_download_pdfs(true);
+
+        auto db = std::make_unique<DatabaseManagerMock>();
+        auto fetcher = std::make_unique<FetcherMock>();
+        auto* db_ptr = db.get();
+
+        ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(sample_articles);
+        ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{});
+        REQUIRE_CALL(*fetcher.get(), DownloadPaper(ANY(std::string), ANY(std::string)))
+            .RETURN(true);
+
+        AppCore core(config, std::move(db), std::move(fetcher));
+        core.ToggleSelection(sample_articles[0].link);
+        auto path = core.ExportSelectedToObsidian();
+        REQUIRE_FALSE(path.empty());
+
+        const std::string id = sample_articles[0].id();
+        std::ifstream note(std::filesystem::path(path).parent_path() / (id + ".md"));
+        std::stringstream content;
+        content << note.rdbuf();
+        REQUIRE_THAT(content.str(), ContainsSubstring("![[" + id + ".pdf]]"));
 
         std::filesystem::remove_all(vault);
     }
