@@ -220,7 +220,7 @@ bool ArxivApp::HandleSettingsEvent(ftxui::Event event) {
         } else {
             if (!m_config_path.empty())
                 m_config.save_to_file(m_config_path);
-            core.SetRecommendThreshold(m_config.get_recommend_threshold());
+            core.ApplyConfig(m_config);
             dialog_depth = Dialog::None;
         }
         return true;
