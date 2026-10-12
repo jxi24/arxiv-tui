@@ -1064,6 +1064,34 @@ TEST_CASE("AppCore::ExportSelectedToObsidian", "[app][export]") {
         std::filesystem::remove_all(vault);
     }
 
+    SECTION("Still writes the note when the PDF download fails") {
+        auto vault = std::filesystem::temp_directory_path() / "arxiv_obsidian_download_fail";
+        std::filesystem::remove_all(vault);
+
+        Config config("test/fixtures/test_config.yml");
+        config.set_obsidian_vault(vault.string());
+        config.set_obsidian_download_pdfs(true);
+
+        auto db = std::make_unique<DatabaseManagerMock>();
+        auto fetcher = std::make_unique<FetcherMock>();
+        auto* db_ptr = db.get();
+
+        ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(sample_articles);
+        ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{});
+        REQUIRE_CALL(*fetcher.get(), DownloadPaper(ANY(std::string), ANY(std::string)))
+            .RETURN(false);
+
+        AppCore core(config, std::move(db), std::move(fetcher));
+        core.ToggleSelection(sample_articles[0].link);
+        auto path = core.ExportSelectedToObsidian();
+        REQUIRE_FALSE(path.empty());
+
+        const std::string id = sample_articles[0].id();
+        REQUIRE(std::filesystem::exists(std::filesystem::path(path).parent_path() / (id + ".md")));
+
+        std::filesystem::remove_all(vault);
+    }
+
     SECTION("Returns empty string when no selections") {
         Config config("test/fixtures/test_config.yml");
         config.set_obsidian_vault("/tmp/some_vault");

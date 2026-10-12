@@ -150,6 +150,21 @@ TEST_CASE("Config: obsidian_download_pdfs round-trips through save/load", "[conf
     REQUIRE(loaded.get_obsidian_download_pdfs());
 }
 
+TEST_CASE("Config: config file without obsidian_download_pdfs loads as false", "[config]") {
+    TempConfig tmp;
+    {
+        std::ofstream f(tmp.path);
+        f << "article_settings:\n"
+             "  download_dir: /tmp\n"
+             "  topics:\n"
+             "    - hep-ph\n"
+             "obsidian_vault: /tmp/vault\n";
+    }
+
+    Config loaded(tmp.path);
+    REQUIRE_FALSE(loaded.get_obsidian_download_pdfs());
+}
+
 // ---------------------------------------------------------------------------
 // Config round-trip: topics and download_dir
 // ---------------------------------------------------------------------------
