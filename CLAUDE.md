@@ -420,6 +420,7 @@ A brief record of what has been implemented. Consult `README.md` for user-facing
 
 ### Unreleased — Obsidian export without PDFs
 - **`obsidian_download_pdfs`** (default `false`) — Obsidian export writes `[PDF on arXiv](https://arxiv.org/pdf/<id>)` into each note and never calls `Fetcher::DownloadPaper`; `true` restores downloading the PDF next to the note with a `![[<id>.pdf]]` embed. Toggled in the Settings dialog (Export section, second field; Enter flips it). Tests: `AppTest.cc` (`ExportSelectedToObsidian` link-only / download sections), `ConfigTest.cc` (default and round-trip).
+- **Download-failure fallback** — with `obsidian_download_pdfs: true`, the PDF is downloaded before the note is written; the `![[<id>.pdf]]` embed is used only if `DownloadPaper` succeeded, otherwise the note gets the arXiv link (built with `Fetcher::ConstructPaperUrl`). Test: `AppTest.cc` (`Falls back to the arXiv link when the PDF download fails`).
 
 ### v1.1 — Open in browser, separate rate-article / rate-selection bindings
 - **Open in browser** — `O` (`OpenInBrowser` action, default key `O`) opens the focused article in the system default browser via `xdg-open`; with a selection active, all selected articles are opened. `AppCore::GetLinksToOpen()` returns the target URLs (selection if non-empty, else focused article). Implemented in `src/Arxiv/Views/MainRenderer.cc` (`HandleGlobalEvent`).
