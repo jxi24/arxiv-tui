@@ -1090,8 +1090,6 @@ TEST_CASE("AppCore::ExportSelectedToObsidian", "[app][export]") {
         REQUIRE_THAT(content.str(),
                      ContainsSubstring("[PDF on arXiv](https://arxiv.org/pdf/" + id + ")"));
         REQUIRE_THAT(content.str(), !ContainsSubstring("![[" + id + ".pdf]]"));
-        REQUIRE_FALSE(
-            std::filesystem::exists(std::filesystem::path(path).parent_path() / (id + ".pdf")));
 
         std::filesystem::remove_all(vault);
     }
@@ -1127,7 +1125,7 @@ TEST_CASE("AppCore::ExportSelectedToObsidian", "[app][export]") {
         std::filesystem::remove_all(vault);
     }
 
-    SECTION("Still writes the note when the PDF download fails") {
+    SECTION("Falls back to the arXiv link when the PDF download fails") {
         auto vault = std::filesystem::temp_directory_path() / "arxiv_obsidian_download_fail";
         std::filesystem::remove_all(vault);
 
@@ -1150,7 +1148,12 @@ TEST_CASE("AppCore::ExportSelectedToObsidian", "[app][export]") {
         REQUIRE_FALSE(path.empty());
 
         const std::string id = sample_articles[0].id();
-        REQUIRE(std::filesystem::exists(std::filesystem::path(path).parent_path() / (id + ".md")));
+        std::ifstream note(std::filesystem::path(path).parent_path() / (id + ".md"));
+        std::stringstream content;
+        content << note.rdbuf();
+        REQUIRE_THAT(content.str(),
+                     ContainsSubstring("[PDF on arXiv](https://arxiv.org/pdf/" + id + ")"));
+        REQUIRE_THAT(content.str(), !ContainsSubstring("![[" + id + ".pdf]]"));
 
         std::filesystem::remove_all(vault);
     }

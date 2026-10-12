@@ -1637,6 +1637,18 @@ std::string AppCore::ExportSelectedToObsidian() {
         const std::string aid = a.id();
         fs::path note_path = note_dir / (aid + ".md");
 
+        // Download the PDF next to the note. Fetcher writes relative to
+        // its own base_path (the configured download_dir), which is *not*
+        // the vault. Use an absolute path via the std::filesystem API
+        // instead so the file lands in the vault directory.
+        bool have_pdf = false;
+        if (download_pdfs) {
+            fs::path pdf_path = note_dir / (aid + ".pdf");
+            have_pdf = m_fetcher->DownloadPaper(aid, pdf_path.string());
+            if (have_pdf)
+                ++pdf_ok;
+        }
+
         std::ofstream nf(note_path);
         if (!nf.is_open()) {
             spdlog::error("[AppCore]: Cannot write note {}", note_path.string());
@@ -1657,11 +1669,12 @@ std::string AppCore::ExportSelectedToObsidian() {
         nf << "# " << a.title << "\n\n";
         nf << "**Authors:** " << a.authors << "\n\n";
         nf << "**Link:** [" << a.link << "](" << a.link << ")\n\n";
-        if (download_pdfs) {
+        if (have_pdf) {
             // Obsidian PDF embed: ![[file.pdf]] renders inline when colocated.
             nf << "![[" << aid << ".pdf]]\n\n";
         } else {
-            nf << "[PDF on arXiv](https://arxiv.org/pdf/" << aid << ")\n\n";
+            // Link-only mode, or the download failed: never embed a missing file.
+            nf << "[PDF on arXiv](" << m_fetcher->ConstructPaperUrl(aid, "pdf") << ")\n\n";
         }
         if (!a.abstract.empty()) {
             nf << "## Abstract\n\n" << a.abstract << "\n";
@@ -1670,16 +1683,6 @@ std::string AppCore::ExportSelectedToObsidian() {
            << "**Relevance:**\n\n"
            << "**Key ideas:**\n\n"
            << "**Open questions:**\n";
-
-        // Download the PDF next to the note. Fetcher writes relative to
-        // its own base_path (the configured download_dir), which is *not*
-        // the vault. Use an absolute path via the std::filesystem API
-        // instead so the file lands in the vault directory.
-        if (download_pdfs) {
-            fs::path pdf_path = note_dir / (aid + ".pdf");
-            if (m_fetcher->DownloadPaper(aid, pdf_path.string()))
-                ++pdf_ok;
-        }
     }
 
     // Index note that links to every paper imported today.
