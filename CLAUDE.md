@@ -414,6 +414,9 @@ A brief record of what has been implemented. Consult `README.md` for user-facing
 ### Unreleased — Ranked headless YAML digest
 - **`--export-yaml` ranked** — `AppCore::ExportDailyDigestYAML` sorts today's articles by `Ranker::PredictBlended` (highest first) and writes `id`, `category` and `score` alongside title/authors/link/abstract; `main.cc` calls `ReloadKeywords()` before headless exports so keyword boosts apply. Tests: `DigestTest.cc` (`[digest]`).
 
+### Unreleased — Obsidian export without PDFs
+- **`obsidian_download_pdfs`** (default `false`) — Obsidian export writes `[PDF on arXiv](https://arxiv.org/pdf/<id>)` into each note and never calls `Fetcher::DownloadPaper`; `true` restores downloading the PDF next to the note with a `![[<id>.pdf]]` embed. Toggled in the Settings dialog (Export section, second field; Enter flips it). Tests: `AppTest.cc` (`ExportSelectedToObsidian` link-only / download sections), `ConfigTest.cc` (default and round-trip).
+
 ### v1.1 — Open in browser, separate rate-article / rate-selection bindings
 - **Open in browser** — `O` (`OpenInBrowser` action, default key `O`) opens the focused article in the system default browser via `xdg-open`; with a selection active, all selected articles are opened. `AppCore::GetLinksToOpen()` returns the target URLs (selection if non-empty, else focused article). Implemented in `src/Arxiv/Views/MainRenderer.cc` (`HandleGlobalEvent`).
 - **Separate rate-article / rate-selection** — `n` (`RateArticle`) now always opens the rating dialog in single-article mode regardless of selection state. `W` (`RateSelection`) is the new dedicated bulk-rating key; it shows the "Rate Selection" dialog when a selection is active, or an error if not. `m_bulk_rating` flag in `ArxivApp` drives which mode `SetupRatingDialog` and `HandleRatingEvent` use. Implemented in `src/Arxiv/Views/MainRenderer.cc` and `src/Arxiv/Views/RatingDialog.cc`.
@@ -421,7 +424,7 @@ A brief record of what has been implemented. Consult `README.md` for user-facing
 ### v1.0 — Settings dialog, category filter, Obsidian export, keyword boosts
 - **Settings dialog** — `S` opens a five-section in-app settings editor (General, Topics, Ranker, Export, Keys); all config values editable without touching YAML; Escape saves to `config.yml` and closes. Implemented in `src/Arxiv/Views/SettingsDialog.cc`.
 - **Category filter** — `t` opens a dialog to toggle individual arXiv categories; only articles matching an active category are shown; articles with no category always pass through; `AppCore::ToggleCategory` / `SetActiveCategories` / `IsCategoryActive`. Implemented in `src/Arxiv/Views/CategoryFilterDialog.cc` and `src/Arxiv/AppCore.cc`.
-- **Obsidian vault export** — `o` exports selected articles as Obsidian-formatted Markdown into the configured `obsidian_vault` directory (wikilinks, PDF embeds, YAML frontmatter). Vault path is set via the Settings dialog or `obsidian_vault` in `config.yml`. Implemented in `AppCore::ExportSelectedToObsidian`.
+- **Obsidian vault export** — `o` exports selected articles as Obsidian-formatted Markdown into the configured `obsidian_vault` directory (wikilinks, PDF link or embed, YAML frontmatter). Vault path is set via the Settings dialog or `obsidian_vault` in `config.yml`. Implemented in `AppCore::ExportSelectedToObsidian`.
 - **Keyword boosts** — `K` opens the interest-keyword editor; keywords are saved to a plain-text file and used by `Ranker::PredictBlended` as a cold-start signal before any star ratings exist. Implemented in `src/Arxiv/Views/KeywordEditorDialog.cc` and `AppCore::SaveKeywords` / `ReloadKeywords`.
 
 ### v0.9.7 — Configurable article list columns

@@ -98,6 +98,11 @@ void ArxivApp::SetupSettingsDialog() {
                                      m_config.get_obsidian_vault().empty()
                                          ? "(not set)"
                                          : m_config.get_obsidian_vault()));
+            rows.push_back(field_row(1,
+                                     "Download PDFs ",
+                                     m_config.get_obsidian_download_pdfs()
+                                         ? "yes (saved into the vault)"
+                                         : "no (link to arXiv)"));
 
         } else if (settings_section == 4) {
             auto bindings = key_bindings.get_all_bindings();
@@ -149,7 +154,7 @@ bool ArxivApp::HandleSettingsEvent(ftxui::Event event) {
         if (settings_section == 2)
             return 2;
         if (settings_section == 3)
-            return 1;
+            return 2;
         if (settings_section == 4)
             return static_cast<int>(key_bindings.get_all_bindings().size());
         return 0;
@@ -269,6 +274,9 @@ bool ArxivApp::HandleSettingsEvent(ftxui::Event event) {
         } else if (settings_section == 1) {
             settings_edit_buffer.clear();
             settings_editing = true;
+        } else if (settings_section == 3 && settings_field_index == 1 && !settings_editing) {
+            // yes/no field: Enter toggles it directly
+            m_config.set_obsidian_download_pdfs(!m_config.get_obsidian_download_pdfs());
         } else if (settings_editing) {
             commit_field();
             settings_editing = false;

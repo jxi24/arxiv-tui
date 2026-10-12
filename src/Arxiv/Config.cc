@@ -64,6 +64,11 @@ void Config::load_from_file(const std::string& config_file) {
         obsidian_vault_ = config["obsidian_vault"].as<std::string>();
     }
 
+    // Download PDFs into the vault on Obsidian export (optional; default off)
+    if (config["obsidian_download_pdfs"]) {
+        obsidian_download_pdfs_ = config["obsidian_download_pdfs"].as<bool>();
+    }
+
     if (config["scroll_margin"]) {
         scroll_margin_ = config["scroll_margin"].as<int>();
     }
@@ -132,6 +137,7 @@ void Config::save_to_file(const std::string& config_file) const {
     if (!obsidian_vault_.empty()) {
         config["obsidian_vault"] = obsidian_vault_;
     }
+    config["obsidian_download_pdfs"] = obsidian_download_pdfs_;
 
     std::ofstream fout(config_file);
     fout << config;

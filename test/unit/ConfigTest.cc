@@ -129,6 +129,43 @@ TEST_CASE("Config: empty obsidian_vault is not written and loads as empty", "[co
 }
 
 // ---------------------------------------------------------------------------
+// Config: obsidian_download_pdfs (off by default; PDFs stay on arXiv)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Config: obsidian_download_pdfs defaults to false", "[config]") {
+    Config cfg;
+    REQUIRE_FALSE(cfg.get_obsidian_download_pdfs());
+}
+
+TEST_CASE("Config: obsidian_download_pdfs round-trips through save/load", "[config]") {
+    TempConfig tmp;
+
+    Config cfg;
+    cfg.set_topics({"hep-ph"});
+    cfg.set_download_dir("/tmp");
+    cfg.set_obsidian_download_pdfs(true);
+    cfg.save_to_file(tmp.path);
+
+    Config loaded(tmp.path);
+    REQUIRE(loaded.get_obsidian_download_pdfs());
+}
+
+TEST_CASE("Config: config file without obsidian_download_pdfs loads as false", "[config]") {
+    TempConfig tmp;
+    {
+        std::ofstream f(tmp.path);
+        f << "article_settings:\n"
+             "  download_dir: /tmp\n"
+             "  topics:\n"
+             "    - hep-ph\n"
+             "obsidian_vault: /tmp/vault\n";
+    }
+
+    Config loaded(tmp.path);
+    REQUIRE_FALSE(loaded.get_obsidian_download_pdfs());
+}
+
+// ---------------------------------------------------------------------------
 // Config round-trip: topics and download_dir
 // ---------------------------------------------------------------------------
 

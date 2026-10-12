@@ -4,6 +4,16 @@
 Changelog
 =========
 
+Unreleased
+----------
+
+- **Obsidian export without PDFs** — ``o`` no longer downloads each PDF into
+  the vault. Notes link to the PDF on arXiv instead
+  (``[PDF on arXiv](https://arxiv.org/pdf/<id>)``), keeping git-synced vaults
+  small. Set ``obsidian_download_pdfs: true`` (or toggle *Download PDFs* in
+  the Settings dialog's Export section) to restore the old behaviour of
+  downloading and embedding them.
+
 v0.9.4
 ------
 
