@@ -97,6 +97,9 @@ class AppCore {
     // of the pending-ratings counter.
     void ForceRetrain();
     void SetRecommendThreshold(float threshold);
+    // Replace the config snapshot taken at construction, e.g. after the
+    // Settings dialog closes.
+    void ApplyConfig(const Config& config);
     float GetRecommendThreshold() const { return m_recommend_threshold; }
 
     // Project management

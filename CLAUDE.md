@@ -419,6 +419,7 @@ A brief record of what has been implemented. Consult `README.md` for user-facing
 - **Bulk rating** — pressing `n` with a selection active opens a "Rate Selection" dialog and applies the score to all selected articles in one operation.
 
 ### Unreleased — Obsidian export without PDFs
+- **Settings reach `AppCore`** — `AppCore` keeps its own `Config` copy; closing the Settings dialog now calls `AppCore::ApplyConfig(m_config)`, which replaces that copy and the cached retrain interval / recommend threshold. Topics, auto-refresh and the `Fetcher` download dir (used by `d`) are still read only at startup. Tests: `AppTest.cc` (`AppCore::ApplyConfig`).
 - **`obsidian_download_pdfs`** (default `false`) — Obsidian export writes `[PDF on arXiv](https://arxiv.org/pdf/<id>)` into each note and never calls `Fetcher::DownloadPaper`; `true` restores downloading the PDF next to the note with a `![[<id>.pdf]]` embed. Toggled in the Settings dialog (Export section, second field; Enter flips it). Tests: `AppTest.cc` (`ExportSelectedToObsidian` link-only / download sections), `ConfigTest.cc` (default and round-trip).
 
 ### v1.1 — Open in browser, separate rate-article / rate-selection bindings
