@@ -11,3 +11,7 @@ crash_*.txt
 *.db-shm
 *.db-wal
 docs/_build/
+
+# Local AI tool state
+.antigravitycli/
+.claude/
