@@ -10,9 +10,11 @@
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <chrono>
 #include <cstdio>
+#include <ctime>
 #include <filesystem>
 #include <fixtures/test_data.hh>
 #include <sqlite3.h>
+#include <unistd.h>
 
 // Tests against the *real* DatabaseManager implementation (in-memory SQLite).
 // No mocking — these verify actual SQL behaviour.
@@ -75,6 +77,87 @@ TEST_CASE("Real DB: article storage", "[database][real]") {
         auto today = db.GetRecent(1);
         REQUIRE(today.size() == 1);
         REQUIRE(today[0].link == recent.link);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Re-announcement: arXiv re-lists a paper whenever a new version is posted.
+// The stored record must keep the *first-release* date and every piece of
+// user-owned state; only the feed-owned metadata may change.
+// ---------------------------------------------------------------------------
+TEST_CASE("Real DB: re-adding an article preserves its first-release date", "[database][real]") {
+    DatabaseManager db(":memory:");
+
+    Article original = sample_articles[0];
+    original.date = std::chrono::system_clock::from_time_t(1700000000); // 2023-11-14
+    db.AddArticle(original);
+
+    // Same paper, re-announced today as a v2 replacement.
+    Article replaced = original;
+    replaced.date = std::chrono::system_clock::from_time_t(1800000000); // 2027-01-15
+    replaced.is_replacement = true;
+    replaced.title = "Sample Article Title (v2)";
+    replaced.abstract = "Revised abstract.";
+
+    SECTION("the original date survives the re-announcement") {
+        db.AddArticle(replaced);
+        auto articles = db.GetRecent(-1);
+        REQUIRE(articles.size() == 1);
+        REQUIRE(articles[0].date == original.date);
+    }
+
+    SECTION("feed-owned metadata is still refreshed") {
+        db.AddArticle(replaced);
+        auto articles = db.GetRecent(-1);
+        REQUIRE(articles.size() == 1);
+        REQUIRE(articles[0].title == "Sample Article Title (v2)");
+        REQUIRE(articles[0].abstract == "Revised abstract.");
+        REQUIRE(articles[0].is_replacement == true);
+    }
+
+    SECTION("a bookmark survives the re-announcement") {
+        db.ToggleBookmark(original.link, true);
+        db.AddArticle(replaced); // the feed never carries a bookmark flag
+        auto articles = db.GetRecent(-1);
+        REQUIRE(articles.size() == 1);
+        REQUIRE(articles[0].bookmarked == true);
+    }
+
+    SECTION("read state survives the re-announcement") {
+        db.MarkArticleRead(original.link);
+        db.AddArticle(replaced);
+        REQUIRE(db.GetUnreadArticles().empty());
+    }
+
+    SECTION("a rating survives the re-announcement") {
+        db.SetRating(original.link, 4);
+        db.AddArticle(replaced);
+        REQUIRE(db.GetRating(original.link) == 4);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Insertion-time tracking — powers the New Articles view. "New to this user"
+// is a question about when we first stored the paper, not about when it was
+// submitted: the backfill query stamps each paper with its v1 submission date,
+// which can predate the last session by days.
+// ---------------------------------------------------------------------------
+TEST_CASE("Real DB: GetArticlesAddedSince filters on insertion time", "[database][real]") {
+    DatabaseManager db(":memory:");
+
+    // A paper submitted a month ago that we are only now learning about.
+    Article backfilled = sample_articles[0];
+    backfilled.date = std::chrono::system_clock::now() - std::chrono::hours(24 * 30);
+    db.AddArticle(backfilled);
+
+    SECTION("returns rows stored after the cutoff whatever their submission date") {
+        auto rows = db.GetArticlesAddedSince(std::time(nullptr) - 60);
+        REQUIRE(rows.size() == 1);
+        REQUIRE(rows[0].link == backfilled.link);
+    }
+
+    SECTION("excludes rows stored before the cutoff") {
+        REQUIRE(db.GetArticlesAddedSince(std::time(nullptr) + 60).empty());
     }
 }
 
@@ -515,8 +598,13 @@ struct TempDb {
     sqlite3* handle = nullptr;
 
     TempDb() {
+        // ctest runs each TEST_CASE in its own process, so the name must be
+        // unique across processes as well as within one: std::rand() alone
+        // hands every process the same sequence and the DBs collide.
+        static int counter = 0;
         path = std::filesystem::temp_directory_path() /
-               ("arxiv_migrate_test_" + std::to_string(std::rand()) + ".db");
+               ("arxiv_migrate_test_" + std::to_string(::getpid()) + "_" +
+                std::to_string(counter++) + ".db");
         sqlite3_open(path.c_str(), &handle);
     }
     ~TempDb() {
@@ -627,4 +715,173 @@ TEST_CASE("DB migration: normalize article links", "[database][migration]") {
         REQUIRE(articles.size() == 1);
         REQUIRE(articles[0].link == "https://arxiv.org/abs/2605.28788");
     }
+}
+
+// ---------------------------------------------------------------------------
+// Insertion time is stamped once, on first storage, and never refreshed.
+// Uses a file-based DB so the timestamp can be backdated with raw SQL, keeping
+// the assertions independent of wall-clock timing.
+// ---------------------------------------------------------------------------
+TEST_CASE("Real DB: re-announcing an article does not refresh its insertion time",
+          "[database][real]") {
+    TempDb tmp;
+    sqlite3_close(tmp.handle);
+    tmp.handle = nullptr;
+
+    DatabaseManager db(tmp.path.string());
+    db.AddArticle(sample_articles[0]);
+
+    sqlite3_open(tmp.path.c_str(), &tmp.handle);
+    tmp.exec("UPDATE articles SET added_at = 1000");
+    sqlite3_close(tmp.handle);
+    tmp.handle = nullptr;
+
+    REQUIRE(db.GetArticlesAddedSince(500).size() == 1);
+    REQUIRE(db.GetArticlesAddedSince(2000).empty());
+
+    // arXiv re-announces the paper as a v2 replacement — it is not new to us.
+    Article replaced = sample_articles[0];
+    replaced.is_replacement = true;
+    replaced.title = "Updated Title";
+    db.AddArticle(replaced);
+
+    REQUIRE(db.GetArticlesAddedSince(2000).empty());
+}
+
+// ---------------------------------------------------------------------------
+// The anchor is the instant the *previous* fetch finished, so anything stored
+// at that instant belongs to that fetch and has already been seen. The tie is
+// not hypothetical: added_at and the end-of-fetch stamp are both whole seconds,
+// and the stamp is written immediately after the bulk insert, so the last rows
+// of every fetch land in the same second as the anchor.
+// ---------------------------------------------------------------------------
+TEST_CASE("Real DB: GetArticlesAddedSince excludes rows stored at the anchor instant",
+          "[database][real]") {
+    TempDb tmp;
+    sqlite3_close(tmp.handle);
+    tmp.handle = nullptr;
+
+    DatabaseManager db(tmp.path.string());
+    db.AddArticle(sample_articles[0]);
+
+    sqlite3_open(tmp.path.c_str(), &tmp.handle);
+    tmp.exec("UPDATE articles SET added_at = 1000");
+    sqlite3_close(tmp.handle);
+    tmp.handle = nullptr;
+
+    SECTION("a row stored in the anchor second is not new") {
+        REQUIRE(db.GetArticlesAddedSince(1000).empty());
+    }
+
+    SECTION("a row stored after the anchor is still new") {
+        REQUIRE(db.GetArticlesAddedSince(999).size() == 1);
+    }
+}
+
+TEST_CASE("DB migration: added_at backfills from the article date", "[database][migration]") {
+    TempDb tmp;
+
+    // Pre-migration layout: no added_at column at all.
+    tmp.exec(R"(CREATE TABLE articles (
+        link TEXT PRIMARY KEY, title TEXT, authors TEXT, abstract TEXT,
+        date INTEGER, bookmarked INTEGER DEFAULT 0,
+        relevance_score REAL DEFAULT 0.0, category TEXT DEFAULT '',
+        is_replacement INTEGER DEFAULT 0))");
+    tmp.exec("CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL DEFAULT '')");
+    tmp.exec("INSERT INTO articles (link, title, date) VALUES "
+             "('https://arxiv.org/abs/2605.28788', 'Old Paper', 1700000000)");
+    sqlite3_close(tmp.handle);
+    tmp.handle = nullptr;
+
+    DatabaseManager db(tmp.path.string());
+
+    REQUIRE(db.GetArticlesAddedSince(1699999999).size() == 1);
+    REQUIRE(db.GetArticlesAddedSince(1700000001).empty());
+}
+
+// ---------------------------------------------------------------------------
+// updated_at — "the feed re-announced this paper as a replacement"
+//
+// added_at cannot answer this: the upsert deliberately leaves it alone so a v2
+// never resurfaces as new. A separate stamp is needed, and it must be driven by
+// is_replacement rather than by "a conflicting row existed" — FetchSince's
+// backfill window re-fetches several days of unchanged papers on every run, so
+// the mere fact of an upsert conflict says nothing about an update.
+// ---------------------------------------------------------------------------
+TEST_CASE("Real DB: updated_at tracks replacement announcements", "[database][real]") {
+    SECTION("a plain first insert leaves the article out of the updated set") {
+        DatabaseManager db(":memory:");
+        db.AddArticle(sample_articles[0]);
+        REQUIRE(db.GetArticlesUpdatedSince(0).empty());
+    }
+
+    SECTION("re-announcing a stored article as a replacement marks it updated") {
+        DatabaseManager db(":memory:");
+        db.AddArticle(sample_articles[0]);
+        REQUIRE(db.GetArticlesUpdatedSince(0).empty());
+
+        Article replaced = sample_articles[0];
+        replaced.is_replacement = true;
+        replaced.title = "Updated Title";
+        db.AddArticle(replaced);
+
+        auto updated = db.GetArticlesUpdatedSince(0);
+        REQUIRE(updated.size() == 1);
+        REQUIRE(updated[0].title == "Updated Title");
+    }
+
+    SECTION("an article first seen as a replacement is in the updated set") {
+        DatabaseManager db(":memory:");
+        Article replaced = sample_articles[0];
+        replaced.is_replacement = true;
+        db.AddArticle(replaced);
+        REQUIRE(db.GetArticlesUpdatedSince(0).size() == 1);
+    }
+
+    SECTION("re-fetching an unchanged article does not mark it updated") {
+        DatabaseManager db(":memory:");
+        Article replaced = sample_articles[0];
+        replaced.is_replacement = true;
+        db.AddArticle(replaced);
+        REQUIRE(db.GetArticlesUpdatedSince(0).size() == 1);
+
+        // The backfill window re-fetches the same paper, this time with the
+        // replacement flag clear. The earlier update stamp must survive and no
+        // new one may be written.
+        db.AddArticle(sample_articles[0]);
+        REQUIRE(db.GetArticlesUpdatedSince(0).size() == 1);
+    }
+
+    SECTION("the anchor is exclusive, matching GetArticlesAddedSince") {
+        DatabaseManager db(":memory:");
+        Article replaced = sample_articles[0];
+        replaced.is_replacement = true;
+        db.AddArticle(replaced);
+
+        const std::int64_t now = std::time(nullptr);
+        REQUIRE(db.GetArticlesUpdatedSince(now + 60).empty());
+        REQUIRE(db.GetArticlesUpdatedSince(now - 60).size() == 1);
+    }
+}
+
+TEST_CASE("DB migration: updated_at column is added to a pre-existing database",
+          "[database][migration]") {
+    TempDb tmp;
+
+    // Pre-migration layout: added_at exists, updated_at does not.
+    tmp.exec(R"(CREATE TABLE articles (
+        link TEXT PRIMARY KEY, title TEXT, authors TEXT, abstract TEXT,
+        date INTEGER, bookmarked INTEGER DEFAULT 0,
+        relevance_score REAL DEFAULT 0.0, category TEXT DEFAULT '',
+        is_replacement INTEGER DEFAULT 0, added_at INTEGER DEFAULT NULL))");
+    tmp.exec("CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL DEFAULT '')");
+    tmp.exec("INSERT INTO articles (link, title, date, added_at) VALUES "
+             "('https://arxiv.org/abs/2605.28788', 'Old Paper', 1700000000, 1700000000)");
+    sqlite3_close(tmp.handle);
+    tmp.handle = nullptr;
+
+    DatabaseManager db(tmp.path.string());
+
+    // Existing rows carry no update stamp — they were never seen as updates.
+    REQUIRE(db.GetArticlesUpdatedSince(0).empty());
 }

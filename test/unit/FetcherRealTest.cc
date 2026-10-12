@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 #include <Arxiv/Fetcher.hh>
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <chrono>
@@ -424,5 +425,54 @@ TEST_CASE("Fetcher::ConstructPaperUrl", "[fetcher][real]") {
     SECTION("Constructs pdf URL") {
         REQUIRE(fetcher.ConstructPaperUrl("2403.12345", "pdf") ==
                 "https://arxiv.org/pdf/2403.12345");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// MergeAnnouncementFirst — announcement wins the date on a duplicate link
+//
+// FetchSince returns two batches: the API backfill (dates = v1 *submission*
+// date) and today's RSS announcement (dates = *announcement* date). A paper
+// submitted two days ago but announced today appears in both. AddArticle
+// upserts and deliberately never rewrites `date`, so the batch that reaches
+// the DB *first* fixes the date forever. The announcement must therefore come
+// first, otherwise today's papers are stored with a two-day-old date and drop
+// out of every "today" view.
+// ---------------------------------------------------------------------------
+TEST_CASE("Fetcher::MergeAnnouncementFirst puts the announcement ahead of the backfill",
+          "[fetcher][real]") {
+    Article announced;
+    announced.link = "https://arxiv.org/abs/2608.00001";
+    announced.title = "Announced today";
+    announced.date = std::chrono::system_clock::from_time_t(1785888000); // 2026-08-05
+
+    Article backfilled;
+    backfilled.link = "https://arxiv.org/abs/2608.00001";
+    backfilled.title = "Same paper, submission date";
+    backfilled.date = std::chrono::system_clock::from_time_t(1785715200); // 2026-08-03
+
+    Article older;
+    older.link = "https://arxiv.org/abs/2608.00002";
+    older.title = "Backfill only";
+    older.date = std::chrono::system_clock::from_time_t(1785715200);
+
+    SECTION("The duplicate link is emitted from the announcement batch first") {
+        auto merged = Fetcher::MergeAnnouncementFirst({announced}, {backfilled, older});
+        REQUIRE(merged.size() == 3);
+        REQUIRE(merged[0].link == announced.link);
+        REQUIRE(merged[0].title == "Announced today");
+    }
+
+    SECTION("Backfill-only articles are preserved") {
+        auto merged = Fetcher::MergeAnnouncementFirst({announced}, {backfilled, older});
+        auto it = std::find_if(
+            merged.begin(), merged.end(), [&](const Article& a) { return a.link == older.link; });
+        REQUIRE(it != merged.end());
+    }
+
+    SECTION("An empty announcement leaves the backfill untouched") {
+        auto merged = Fetcher::MergeAnnouncementFirst({}, {backfilled, older});
+        REQUIRE(merged.size() == 2);
+        REQUIRE(merged[0].link == backfilled.link);
     }
 }

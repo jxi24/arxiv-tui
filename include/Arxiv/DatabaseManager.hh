@@ -5,6 +5,7 @@
 #ifndef ARXIV_DATABASE_MANAGER
 #define ARXIV_DATABASE_MANAGER
 
+#include <cstdint>
 #include <sqlite3.h>
 #include <string>
 #include <vector>
@@ -91,6 +92,20 @@ class DatabaseManager {
     // Articles submitted on or after the given UTC date ("YYYY-MM-DD")
     virtual std::vector<Article> GetArticlesSince(const std::string& utc_date);
 
+    // Articles first stored locally at or after the given Unix timestamp.
+    // Keyed on insertion time rather than submission date: a paper announced
+    // while the user was away can carry a submission date from well before the
+    // last session, so only "when did we first see it" answers "is it new?".
+    virtual std::vector<Article> GetArticlesAddedSince(std::int64_t since_ts);
+
+    // Articles the feed re-announced as a replacement after the given Unix
+    // timestamp — the mirror image of GetArticlesAddedSince. Keyed on
+    // `updated_at`, which is stamped only when an article arrives carrying the
+    // replacement flag: the backfill window re-fetches several days of
+    // unchanged papers on every run, so "an upsert conflicted" is not evidence
+    // that anything changed.
+    virtual std::vector<Article> GetArticlesUpdatedSince(std::int64_t since_ts);
+
     // Bulk insert wrapped in a single SQLite transaction. Hundreds of inserts
     // commit in milliseconds instead of seconds, which keeps the UI thread
     // from being blocked on DB reads while the background fetch is writing.
@@ -106,6 +121,8 @@ class DatabaseManager {
     const char* ExtractColumn(sqlite3_stmt* stmt, int index);
     void MigrateNormalizeLinks();
     void MigrateAddReadAt();
+    void MigrateAddAddedAt();
+    void MigrateAddUpdatedAt();
     void MigrateAddFTS5();
     void MigrateAddProjectBibPath();
     void CreateTagTables();
