@@ -903,6 +903,12 @@ void AppCore::SetRecommendThreshold(float threshold) {
     }
 }
 
+void AppCore::ApplyConfig(const Config& config) {
+    m_config = config;
+    m_retrain_interval = config.get_retrain_interval();
+    SetRecommendThreshold(config.get_recommend_threshold());
+}
+
 void AppCore::NotifyArticleUpdate() {
     if (m_article_update_callback) {
         m_article_update_callback();

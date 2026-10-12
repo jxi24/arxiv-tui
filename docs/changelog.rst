@@ -7,6 +7,12 @@ Changelog
 Unreleased
 ----------
 
+- **Settings take effect immediately** — the Obsidian vault, *Download
+  PDFs*, recommend threshold and retrain interval changed in the Settings
+  dialog now apply as soon as the dialog closes instead of after a restart.
+  Topics, the auto-refresh interval and the directory ``d`` downloads into
+  still need a restart.
+
 - **Obsidian export without PDFs** — ``o`` no longer downloads each PDF into
   the vault. Notes link to the PDF on arXiv instead
   (``[PDF on arXiv](https://arxiv.org/pdf/<id>)``), keeping git-synced vaults
