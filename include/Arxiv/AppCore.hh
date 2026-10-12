@@ -97,6 +97,16 @@ class AppCore {
     // of the pending-ratings counter.
     void ForceRetrain();
     void SetRecommendThreshold(float threshold);
+
+    // Implicit rating given to an article the user engaged with (opened in the
+    // browser or exported to Obsidian) but never rated explicitly.
+    static constexpr int IMPLICIT_ENGAGEMENT_RATING = 4;
+    // Record that the user engaged with these articles. Each article counts
+    // at most once, no matter how many times or in how many ways it is engaged.
+    void RecordEngagement(const std::vector<std::string>& article_links);
+    // Ranker training data: explicit ratings plus engaged-but-unrated articles
+    // at IMPLICIT_ENGAGEMENT_RATING. Explicit ratings take precedence.
+    DatabaseManager::RatedArticleList GetTrainingSet() const;
     float GetRecommendThreshold() const { return m_recommend_threshold; }
 
     // Project management
@@ -276,10 +286,15 @@ class AppCore {
     std::vector<std::string> GetKeywords() const;
 
   private:
+    // Count `count` new training signals (ratings or engagements) toward the
+    // retrain interval; spawns a warm-start retrain once it is reached.
+    void AddPendingTrainingSignals(int count);
+
     // Full state captured for a single deleted article, sufficient to restore it.
     struct DeletedArticleSnapshot {
         Article article;
         int rating{0};
+        bool engaged{false};
         // Each project the article belonged to, paired with its note in that project.
         std::vector<std::pair<std::string, std::string>> project_notes;
         std::vector<std::string> tags;

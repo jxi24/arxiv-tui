@@ -338,3 +338,24 @@ TEST_CASE("AppCore::UndoLastDelete: restores tags", "[undo][appcore]") {
     REQUIRE(std::find(relinked_tags.begin(), relinked_tags.end(), "interesting") !=
             relinked_tags.end());
 }
+
+// ---------------------------------------------------------------------------
+// Snapshot captures engagement
+// ---------------------------------------------------------------------------
+
+TEST_CASE("AppCore::UndoLastDelete: restores engagement", "[undo][appcore][engagement]") {
+    DatabaseManagerMock* db = nullptr;
+    auto core = make_undo_core(db);
+
+    ALLOW_CALL(*db, GetRecent(trompeloeil::_)).RETURN(sample_articles);
+    ALLOW_CALL(*db, IsArticleEngaged(sample_articles[0].link)).RETURN(true);
+    ALLOW_CALL(*db, DeleteArticle(trompeloeil::_));
+    ALLOW_CALL(*db, AddArticle(trompeloeil::_));
+
+    core->FetchArticles();
+    core->SetArticleIndex(0);
+    core->DeleteCurrentOrSelected();
+
+    REQUIRE_CALL(*db, MarkArticleEngaged(sample_articles[0].link)).RETURN(true);
+    core->UndoLastDelete();
+}

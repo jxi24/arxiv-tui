@@ -33,6 +33,13 @@ class DatabaseManagerMock : public Arxiv::DatabaseManager {
         m_expectations.push_back(NAMED_ALLOW_CALL(*this, GetRatedArticles())
                                      .RETURN(Arxiv::DatabaseManager::RatedArticleList{}));
         m_expectations.push_back(NAMED_ALLOW_CALL(*this, GetRating(ANY(std::string))).RETURN(0));
+        // Default: nothing has been engaged with (opened / exported)
+        m_expectations.push_back(
+            NAMED_ALLOW_CALL(*this, MarkArticleEngaged(ANY(std::string))).RETURN(false));
+        m_expectations.push_back(
+            NAMED_ALLOW_CALL(*this, IsArticleEngaged(ANY(std::string))).RETURN(false));
+        m_expectations.push_back(
+            NAMED_ALLOW_CALL(*this, GetEngagedArticles()).RETURN(std::vector<Arxiv::Article>{}));
         // Default: all projects are top-level (no parent)
         m_expectations.push_back(
             NAMED_ALLOW_CALL(*this, GetProjectParent(ANY(std::string))).RETURN(std::string{}));
@@ -140,6 +147,11 @@ class DatabaseManagerMock : public Arxiv::DatabaseManager {
     MAKE_MOCK2(SetRating, void(const std::string&, int), override);
     MAKE_MOCK1(GetRating, int(const std::string&), override);
     MAKE_MOCK0(GetRatedArticles, Arxiv::DatabaseManager::RatedArticleList(), override);
+
+    // Engagement mocks
+    MAKE_MOCK1(MarkArticleEngaged, bool(const std::string&), override);
+    MAKE_MOCK1(IsArticleEngaged, bool(const std::string&), override);
+    MAKE_MOCK0(GetEngagedArticles, std::vector<Arxiv::Article>(), override);
 
     // Relevance score mocks
     MAKE_MOCK2(SetRelevanceScore, void(const std::string&, float), override);

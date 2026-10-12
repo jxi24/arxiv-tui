@@ -198,6 +198,13 @@ DatabaseManager::DatabaseManager(const std::string& path) {
     CreateTagTables();
     MigrateAddFTS5();
 
+    // Articles the user opened in the browser or exported to Obsidian; used
+    // as an implicit positive ranking signal (one row per article).
+    ExecuteSQL(R"(CREATE TABLE IF NOT EXISTS article_engagement (
+               article_link TEXT PRIMARY KEY,
+               engaged_at INTEGER,
+               FOREIGN KEY(article_link) REFERENCES articles(link)))");
+
     spdlog::info("[Database]: Initialized");
 }
 
@@ -459,6 +466,9 @@ void DatabaseManager::DeleteArticle(const std::string& link) {
     pa.bind(1, link).step_done();
     Stmt ar(db, "DELETE FROM article_ratings WHERE article_link = ?", "DeleteArticle/ratings");
     ar.bind(1, link).step_done();
+    Stmt ae(
+        db, "DELETE FROM article_engagement WHERE article_link = ?", "DeleteArticle/engagement");
+    ae.bind(1, link).step_done();
     Stmt a(db, "DELETE FROM articles WHERE link = ?", "DeleteArticle");
     a.bind(1, link).step_done();
 }
@@ -671,6 +681,7 @@ void DatabaseManager::PruneArticles(int max_age_days) {
               "WHERE date < strftime('%s', 'now') - ? * 86400 "
               "AND bookmarked = 0 "
               "AND link NOT IN (SELECT article_link FROM article_ratings) "
+              "AND link NOT IN (SELECT article_link FROM article_engagement) "
               "AND link NOT IN (SELECT article_link FROM project_articles)",
               "PruneArticles");
     stmt.bind(1, max_age_days).step_done();
@@ -863,6 +874,31 @@ DatabaseManager::RatedArticleList DatabaseManager::GetRatedArticles() {
     });
     spdlog::debug("[Database]: Found {} rated articles", result.size());
     return result;
+}
+
+bool DatabaseManager::MarkArticleEngaged(const std::string& link) {
+    spdlog::debug("[Database]: Marking article engaged {}", link);
+    Stmt stmt(db,
+              "INSERT OR IGNORE INTO article_engagement (article_link, engaged_at) "
+              "VALUES (?, strftime('%s', 'now'))",
+              "MarkArticleEngaged");
+    stmt.bind(1, link).step_done();
+    return sqlite3_changes(db) > 0;
+}
+
+bool DatabaseManager::IsArticleEngaged(const std::string& link) {
+    Stmt stmt(db, "SELECT 1 FROM article_engagement WHERE article_link = ?", "IsArticleEngaged");
+    stmt.bind(1, link);
+    return stmt.step() == SQLITE_ROW;
+}
+
+std::vector<Arxiv::Article> DatabaseManager::GetEngagedArticles() {
+    std::vector<Article> articles;
+    std::string sql = std::string("SELECT ") + ARTICLE_COLUMNS_A +
+                      " FROM articles a JOIN article_engagement e ON a.link = e.article_link";
+    Stmt stmt(db, sql.c_str(), "GetEngagedArticles");
+    stmt.for_each([&](sqlite3_stmt* s) { articles.push_back(RowToArticle(s)); });
+    return articles;
 }
 
 std::string DatabaseManager::GetProjectParent(const std::string& project_name) {

@@ -116,7 +116,7 @@ AppCore::AppCore(const Config& config,
     // Try to restore a previously saved model; fall back to training if absent.
     if (!m_ranker.Load(m_ranker_path)) {
         auto all_articles = m_db->GetRecent(-1);
-        auto rated = m_db->GetRatedArticles();
+        auto rated = GetTrainingSet();
         if (!rated.empty()) {
             m_ranker.FitVocabulary(all_articles);
             m_ranker.Train(rated);
@@ -769,20 +769,7 @@ void AppCore::RateArticle(const std::string& article_link, int rating) {
         return;
     m_db->SetRating(article_link, rating);
     spdlog::info("[AppCore]: Rated article {} with {}", article_link, rating);
-
-    ++m_ratings_since_train;
-    spdlog::debug("[AppCore]: {} new rating(s) pending (threshold: {})",
-                  m_ratings_since_train,
-                  m_retrain_interval);
-
-    if (m_ratings_since_train >= m_retrain_interval) {
-        m_ratings_since_train = 0;
-        SpawnTrainingThread(/*warm_start=*/true);
-    } else {
-        // Not at threshold yet — just refresh the UI so the rating display
-        // updates without triggering training.
-        NotifyArticleUpdate();
-    }
+    AddPendingTrainingSignals(1);
 }
 
 void AppCore::RateSelected(int rating) {
@@ -799,10 +786,13 @@ void AppCore::RateSelected(int rating) {
     for (const auto& link : targets) {
         m_db->SetRating(link, rating);
         spdlog::info("[AppCore]: Rated article {} with {}", link, rating);
-        ++m_ratings_since_train;
     }
+    AddPendingTrainingSignals(static_cast<int>(targets.size()));
+}
 
-    spdlog::debug("[AppCore]: {} new rating(s) pending (threshold: {})",
+void AppCore::AddPendingTrainingSignals(int count) {
+    m_ratings_since_train += count;
+    spdlog::debug("[AppCore]: {} new training signal(s) pending (threshold: {})",
                   m_ratings_since_train,
                   m_retrain_interval);
 
@@ -810,8 +800,38 @@ void AppCore::RateSelected(int rating) {
         m_ratings_since_train = 0;
         SpawnTrainingThread(/*warm_start=*/true);
     } else {
+        // Not at threshold yet — just refresh the UI so the rating display
+        // updates without triggering training.
         NotifyArticleUpdate();
     }
+}
+
+void AppCore::RecordEngagement(const std::vector<std::string>& article_links) {
+    // MarkArticleEngaged is idempotent, so an article opened in the browser
+    // and also exported to Obsidian (or opened twice) is counted only once.
+    // An explicit rating already outranks the implicit one, so engaging with
+    // a rated article adds no new training signal.
+    int new_signals = 0;
+    for (const auto& link : article_links) {
+        if (m_db->MarkArticleEngaged(link) && m_db->GetRating(link) == 0) {
+            spdlog::info("[AppCore]: Engaged with article {}", link);
+            ++new_signals;
+        }
+    }
+    if (new_signals > 0)
+        AddPendingTrainingSignals(new_signals);
+}
+
+DatabaseManager::RatedArticleList AppCore::GetTrainingSet() const {
+    auto training = m_db->GetRatedArticles();
+    std::set<std::string> rated_links;
+    for (const auto& [article, rating] : training)
+        rated_links.insert(article.link);
+    for (auto& article : m_db->GetEngagedArticles()) {
+        if (!rated_links.count(article.link))
+            training.emplace_back(std::move(article), IMPLICIT_ENGAGEMENT_RATING);
+    }
+    return training;
 }
 
 void AppCore::ForceRetrain() {
@@ -828,7 +848,7 @@ void AppCore::SpawnTrainingThread(bool warm_start) {
 
     // Snapshot training data on the main thread.
     auto all_articles = m_db->GetRecent(-1);
-    auto rated = m_db->GetRatedArticles();
+    auto rated = GetTrainingSet();
 
     // For warm-start, copy the current ranker (vocab + weights) to the thread.
     // For cold-start, a default-constructed Ranker will be used.
@@ -1362,6 +1382,7 @@ void AppCore::DeleteCurrentOrSelected() {
             DeletedArticleSnapshot snap;
             snap.article = *it;
             snap.rating = m_db->GetRating(link);
+            snap.engaged = m_db->IsArticleEngaged(link);
 
             for (const auto& proj : m_db->GetProjectsForArticle(link)) {
                 snap.project_notes.emplace_back(proj, m_db->GetProjectNote(proj, link));
@@ -1678,6 +1699,14 @@ std::string AppCore::ExportSelectedToObsidian() {
         spdlog::info("[AppCore]: Obsidian digest written to {} ({} notes, PDFs linked on arXiv)",
                      index_path.string(),
                      picked.size());
+
+    // Exporting to the vault is a strong interest signal for the ranker.
+    std::vector<std::string> exported_links;
+    exported_links.reserve(picked.size());
+    for (const auto& a : picked)
+        exported_links.push_back(a.link);
+    RecordEngagement(exported_links);
+
     return index_path.string();
 }
 
@@ -1808,6 +1837,8 @@ void AppCore::UndoLastDelete() {
         m_db->AddArticle(snap.article);
         if (snap.rating != 0)
             m_db->SetRating(snap.article.link, snap.rating);
+        if (snap.engaged)
+            m_db->MarkArticleEngaged(snap.article.link);
         for (const auto& [proj, note] : snap.project_notes) {
             m_db->LinkArticleToProject(snap.article.link, proj);
             if (!note.empty())

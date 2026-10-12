@@ -1496,3 +1496,130 @@ TEST_CASE("AppCore::GetLinksToOpen returns browser targets", "[app][browser]") {
         REQUIRE(empty_core.GetLinksToOpen().empty());
     }
 }
+
+// ---------------------------------------------------------------------------
+// Engagement ranking signal: opening in the browser or exporting to Obsidian
+// counts as an implicit positive rating, at most once per article.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("AppCore::RecordEngagement", "[app][ranking][engagement]") {
+    Config config("test/fixtures/test_config.yml");
+    auto db = std::make_unique<DatabaseManagerMock>();
+    auto fetcher = std::make_unique<FetcherMock>();
+    auto* db_ptr = db.get();
+
+    ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(sample_articles);
+    ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{});
+
+    AppCore core(config, std::move(db), std::move(fetcher));
+    const std::string link = sample_articles[0].link;
+
+    SECTION("Marks each link as engaged in the database") {
+        REQUIRE_CALL(*db_ptr, MarkArticleEngaged(link)).RETURN(true);
+        core.RecordEngagement({link});
+    }
+
+    SECTION("A newly engaged unrated article counts as one pending training signal") {
+        ALLOW_CALL(*db_ptr, MarkArticleEngaged(link)).RETURN(true);
+        core.RecordEngagement({link});
+        REQUIRE(core.PendingRatings() == 1);
+    }
+
+    SECTION("An already-engaged article adds no further training signal") {
+        ALLOW_CALL(*db_ptr, MarkArticleEngaged(link)).RETURN(false);
+        core.RecordEngagement({link});
+        REQUIRE(core.PendingRatings() == 0);
+    }
+
+    SECTION("Engaging an explicitly rated article adds no training signal") {
+        ALLOW_CALL(*db_ptr, MarkArticleEngaged(link)).RETURN(true);
+        ALLOW_CALL(*db_ptr, GetRating(link)).RETURN(2);
+        core.RecordEngagement({link});
+        REQUIRE(core.PendingRatings() == 0);
+    }
+}
+
+TEST_CASE("AppCore::GetTrainingSet", "[app][ranking][engagement]") {
+    Config config("test/fixtures/test_config.yml");
+    auto db = std::make_unique<DatabaseManagerMock>();
+    auto fetcher = std::make_unique<FetcherMock>();
+    auto* db_ptr = db.get();
+
+    ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(sample_articles);
+    ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{});
+
+    AppCore core(config, std::move(db), std::move(fetcher));
+
+    SECTION("Engaged unrated article gets the implicit engagement rating") {
+        ALLOW_CALL(*db_ptr, GetEngagedArticles()).RETURN(std::vector<Article>{sample_articles[0]});
+        auto set = core.GetTrainingSet();
+        REQUIRE(set.size() == 1);
+        REQUIRE(set[0].second == AppCore::IMPLICIT_ENGAGEMENT_RATING);
+    }
+
+    SECTION("Explicit rating takes precedence over engagement") {
+        ALLOW_CALL(*db_ptr, GetRatedArticles())
+            .RETURN(DatabaseManager::RatedArticleList{{sample_articles[0], 2}});
+        ALLOW_CALL(*db_ptr, GetEngagedArticles()).RETURN(std::vector<Article>{sample_articles[0]});
+        auto set = core.GetTrainingSet();
+        REQUIRE(set.size() == 1);
+        REQUIRE(set[0].second == 2);
+    }
+
+    SECTION("Rated and engaged articles are combined") {
+        ALLOW_CALL(*db_ptr, GetRatedArticles())
+            .RETURN(DatabaseManager::RatedArticleList{{sample_articles[0], 5}});
+        ALLOW_CALL(*db_ptr, GetEngagedArticles()).RETURN(std::vector<Article>{sample_articles[1]});
+        REQUIRE(core.GetTrainingSet().size() == 2);
+    }
+}
+
+TEST_CASE("AppCore::ExportSelectedToObsidian records engagement", "[app][ranking][engagement]") {
+    auto vault = std::filesystem::temp_directory_path() / "arxiv_obsidian_engagement";
+    std::filesystem::remove_all(vault);
+
+    Config config("test/fixtures/test_config.yml");
+    config.set_obsidian_vault(vault.string());
+    auto db = std::make_unique<DatabaseManagerMock>();
+    auto fetcher = std::make_unique<FetcherMock>();
+    auto* db_ptr = db.get();
+
+    ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(sample_articles);
+    ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{});
+    REQUIRE_CALL(*db_ptr, MarkArticleEngaged(sample_articles[0].link)).RETURN(true);
+
+    AppCore core(config, std::move(db), std::move(fetcher));
+    core.ToggleSelection(sample_articles[0].link);
+    REQUIRE_FALSE(core.ExportSelectedToObsidian().empty());
+
+    std::filesystem::remove_all(vault);
+}
+
+TEST_CASE("Engagement via browser and Obsidian does not double count",
+          "[app][ranking][engagement][real]") {
+    auto vault = std::filesystem::temp_directory_path() / "arxiv_obsidian_no_double";
+    std::filesystem::remove_all(vault);
+
+    Config config("test/fixtures/test_config.yml");
+    config.set_obsidian_vault(vault.string());
+    auto db = std::make_unique<DatabaseManager>(":memory:");
+    db->AddArticle(sample_articles[0]);
+    auto fetcher = std::make_unique<FetcherMock>();
+
+    AppCore core(config, std::move(db), std::move(fetcher));
+    const std::string link = sample_articles[0].link;
+
+    core.RecordEngagement({link}); // opened in browser
+    core.ToggleSelection(link);
+    REQUIRE_FALSE(core.ExportSelectedToObsidian().empty()); // exported to Obsidian
+
+    SECTION("Only one pending training signal is counted") { REQUIRE(core.PendingRatings() == 1); }
+
+    SECTION("The article appears once in the training set") {
+        auto set = core.GetTrainingSet();
+        REQUIRE(set.size() == 1);
+        REQUIRE(set[0].second == AppCore::IMPLICIT_ENGAGEMENT_RATING);
+    }
+
+    std::filesystem::remove_all(vault);
+}

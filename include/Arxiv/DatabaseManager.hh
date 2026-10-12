@@ -45,6 +45,12 @@ class DatabaseManager {
     virtual int GetRating(const std::string& link);
     virtual RatedArticleList GetRatedArticles();
 
+    // Engagement (article opened in the browser or exported to Obsidian).
+    // Idempotent: returns true only if the article was not already engaged.
+    virtual bool MarkArticleEngaged(const std::string& link);
+    virtual bool IsArticleEngaged(const std::string& link);
+    virtual std::vector<Article> GetEngagedArticles();
+
     // Relevance score cache (keyword / ML blend)
     virtual void SetRelevanceScore(const std::string& link, float score);
     virtual float GetRelevanceScore(const std::string& link);

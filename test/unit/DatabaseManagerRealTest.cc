@@ -885,3 +885,55 @@ TEST_CASE("DB migration: updated_at column is added to a pre-existing database",
     // Existing rows carry no update stamp — they were never seen as updates.
     REQUIRE(db.GetArticlesUpdatedSince(0).empty());
 }
+
+// ---------------------------------------------------------------------------
+// Engagement (opened in browser / exported to Obsidian)
+// ---------------------------------------------------------------------------
+TEST_CASE("Real DB: engagement", "[database][real][engagement]") {
+    DatabaseManager db(":memory:");
+    db.AddArticle(sample_articles[0]);
+    db.AddArticle(sample_articles[1]);
+
+    SECTION("Unengaged article reports not engaged") {
+        REQUIRE_FALSE(db.IsArticleEngaged(sample_articles[0].link));
+    }
+
+    SECTION("MarkArticleEngaged returns true the first time") {
+        REQUIRE(db.MarkArticleEngaged(sample_articles[0].link));
+    }
+
+    SECTION("MarkArticleEngaged returns false when already engaged") {
+        db.MarkArticleEngaged(sample_articles[0].link);
+        REQUIRE_FALSE(db.MarkArticleEngaged(sample_articles[0].link));
+    }
+
+    SECTION("IsArticleEngaged reflects MarkArticleEngaged") {
+        db.MarkArticleEngaged(sample_articles[0].link);
+        REQUIRE(db.IsArticleEngaged(sample_articles[0].link));
+    }
+
+    SECTION("GetEngagedArticles lists each engaged article once") {
+        db.MarkArticleEngaged(sample_articles[0].link);
+        db.MarkArticleEngaged(sample_articles[0].link);
+        auto engaged = db.GetEngagedArticles();
+        REQUIRE(engaged.size() == 1);
+        REQUIRE(engaged[0].link == sample_articles[0].link);
+    }
+
+    SECTION("DeleteArticle removes engagement") {
+        db.MarkArticleEngaged(sample_articles[0].link);
+        db.DeleteArticle(sample_articles[0].link);
+        db.AddArticle(sample_articles[0]);
+        REQUIRE_FALSE(db.IsArticleEngaged(sample_articles[0].link));
+    }
+
+    SECTION("PruneArticles preserves an old engaged article") {
+        Article old = sample_articles[0];
+        old.link = "https://arxiv.org/abs/old.0002";
+        old.date = std::chrono::system_clock::now() - std::chrono::hours(24 * 100);
+        db.AddArticle(old);
+        db.MarkArticleEngaged(old.link);
+        db.PruneArticles(30);
+        REQUIRE(db.IsArticleEngaged(old.link));
+    }
+}

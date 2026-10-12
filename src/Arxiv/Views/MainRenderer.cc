@@ -529,6 +529,7 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
             spdlog::info("open_in_browser url={}", url);
         }
         if (!links.empty()) {
+            core.RecordEngagement(links);
             success_msg = links.size() == 1
                               ? "Opening in browser: " + links[0]
                               : "Opening " + std::to_string(links.size()) + " articles in browser";
