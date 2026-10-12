@@ -338,7 +338,7 @@ behaviour.</p>
 <span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">show_detail</span>
 <span class="w">    </span><span class="nt">key</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">a</span>
 <span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">toggle_selection</span>
-<span class="w">    </span><span class="nt">key</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;</span><span class="nv"> </span><span class="s">&quot;</span>
+<span class="w">    </span><span class="nt">key</span><span class="p">:</span><span class="w"> </span><span class="s">"</span><span class="nv"> </span><span class="s">"</span>
 </pre></div>
 </div>
 </section>
@@ -382,6 +382,17 @@ Set to <code class="docutils literal notranslate"><span class="pre">0</span></co
 than this threshold are deleted on startup unless they are bookmarked,
 rated, or assigned to a project. Set to <code class="docutils literal notranslate"><span class="pre">0</span></code> to disable pruning.
 Default: <code class="docutils literal notranslate"><span class="pre">0</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">obsidian_vault</span></code></dt><dd><p>Obsidian vault that <code class="docutils literal notranslate"><span class="pre">o</span></code> exports selected articles into; notes are
+written to <code class="docutils literal notranslate"><span class="pre">&lt;vault&gt;/arxiv-tui/&lt;date&gt;/</span></code>. Empty or absent disables the
+export. Also editable in the Settings dialog (<code class="docutils literal notranslate"><span class="pre">S</span></code> → Export).</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">obsidian_download_pdfs</span></code></dt><dd><p>What each exported note points to. <code class="docutils literal notranslate"><span class="pre">false</span></code> (the default) adds a
+<code class="docutils literal notranslate"><span class="pre">[PDF</span> <span class="pre">on</span> <span class="pre">arXiv](https://arxiv.org/pdf/&lt;id&gt;)</span></code> link and downloads
+nothing, which keeps git-synced vaults small. <code class="docutils literal notranslate"><span class="pre">true</span></code> downloads the
+PDF next to the note and embeds it with <code class="docutils literal notranslate"><span class="pre">![[&lt;id&gt;.pdf]]</span></code>. Toggle it
+in the Settings dialog (<code class="docutils literal notranslate"><span class="pre">S</span></code> → Export → Download PDFs). Default:
+<code class="docutils literal notranslate"><span class="pre">false</span></code>.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">key_mappings</span></code></dt><dd><p>List of <code class="docutils literal notranslate"><span class="pre">{action,</span> <span class="pre">key}</span></code> pairs that remap the default key bindings.
 See <a class="reference internal" href="keybindings.html"><span class="doc">Key Bindings</span></a> for the full list of action names.</p>
