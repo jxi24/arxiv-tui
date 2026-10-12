@@ -264,6 +264,16 @@ void AppCore::FetchArticles() {
         break;
     case FilterView::Recommended: {
         auto today_articles = m_db->GetRecent(1);
+        // Drop replacements, exactly as New Articles does. A paper whose new
+        // version is announced today and which was not already stored is
+        // inserted straight from the RSS feed with today's announcement date,
+        // so years-old papers land in GetRecent(1). Recommending a v3 of a 2022
+        // paper as today's reading is never what the user asked for, and it
+        // made the two views disagree about what counts as today's output.
+        today_articles.erase(std::remove_if(today_articles.begin(),
+                                            today_articles.end(),
+                                            [](const Article& a) { return a.is_replacement; }),
+                             today_articles.end());
         if (m_ranker.IsTrained()) {
             std::vector<std::pair<float, Article>> scored;
             scored.reserve(today_articles.size());
@@ -334,6 +344,15 @@ void AppCore::FetchArticles() {
         }
         break;
     }
+    case FilterView::Updated:
+        // The other half of the last fetch: papers whose new version the feed
+        // announced since the previous session. Same anchor as New Articles, so
+        // nothing the fetch carried falls between the two views. No fallback to
+        // a date window — an empty Updated view is a true statement (nothing was
+        // re-announced), unlike an empty New Articles view on a fresh database.
+        if (m_new_articles_anchor_ts > 0)
+            m_current_articles = m_db->GetArticlesUpdatedSince(m_new_articles_anchor_ts);
+        break;
     case FilterView::Unread:
         m_current_articles = m_db->GetUnreadArticles();
         break;
@@ -675,11 +694,12 @@ void AppCore::RefreshFilterOptions() {
                         "Recommended",
                         "Followed Authors",
                         "New Articles",
+                        "Updated",
                         "Unread"};
     m_filter_tag_names.clear();
     m_filter_project_names.clear();
 
-    // Add tags (indices 9, 10, ...)
+    // Add tags (indices FilterView::TagBase, +1, ...)
     for (const auto& tag : m_db->GetTags()) {
         m_filter_options.push_back("#" + tag);
         m_filter_tag_names.push_back(tag);

@@ -613,3 +613,104 @@ TEST_CASE("AppCore: day-boundary crossing advances the New Articles anchor", "[n
     REQUIRE(anchor_set);
     REQUIRE(anchor_value == yesterday);
 }
+
+// ---------------------------------------------------------------------------
+// Recommended must not surface replacements
+//
+// A paper whose v2 is announced today and which was not already stored is
+// inserted straight from the RSS feed with today's announcement date, so a
+// years-old paper lands in GetRecent(1). New Articles drops replacements; if
+// Recommended does not, the two views disagree and Recommended fills up with
+// re-announcements of papers from previous years.
+// ---------------------------------------------------------------------------
+TEST_CASE("AppCore: Recommended excludes replacements", "[newart][appcore]") {
+    auto db_ptr = std::make_unique<DatabaseManagerMock>();
+    auto fet_ptr = std::make_unique<FetcherMock>();
+    auto* db_raw = db_ptr.get();
+
+    Arxiv::Article fresh;
+    fresh.link = "https://arxiv.org/abs/2608.00001";
+    fresh.title = "Announced today";
+    fresh.is_replacement = false;
+
+    Arxiv::Article replacement;
+    replacement.link = "https://arxiv.org/abs/2207.12877";
+    replacement.title = "v3 of a 2022 paper";
+    replacement.is_replacement = true;
+
+    ALLOW_CALL(*db_raw, GetRecent(trompeloeil::_))
+        .RETURN(std::vector<Arxiv::Article>{fresh, replacement});
+
+    Arxiv::Config cfg;
+    cfg.set_topics({"cs.AI"});
+    cfg.set_download_dir("/tmp");
+    // Keep the untrained path: with no model there is no relevance threshold,
+    // so the only thing that can remove an article is the replacement filter
+    // under test. (A stray ranker.bin in the working directory would otherwise
+    // be picked up and score both articles below the default threshold.)
+    cfg.set_ranker_file("/nonexistent/ranker.bin");
+    auto core = std::make_unique<Arxiv::AppCore>(cfg, std::move(db_ptr), std::move(fet_ptr));
+
+    core->SetFilterIndex(Arxiv::AppCore::FilterView::Recommended);
+    auto shown = core->GetCurrentArticles();
+
+    REQUIRE(shown.size() == 1);
+    REQUIRE(shown[0].link == fresh.link);
+}
+
+// ---------------------------------------------------------------------------
+// The Updated view — replacements announced since the last fetch
+//
+// The mirror image of New Articles: same anchor, opposite side of the
+// is_replacement split, so every paper the feed carried since the previous
+// session is reachable from exactly one of the two views.
+// ---------------------------------------------------------------------------
+TEST_CASE("AppCore: Updated is offered as a filter option", "[newart][appcore]") {
+    auto db_ptr = std::make_unique<DatabaseManagerMock>();
+    auto fet_ptr = std::make_unique<FetcherMock>();
+
+    Arxiv::Config cfg;
+    cfg.set_topics({"cs.AI"});
+    cfg.set_download_dir("/tmp");
+    auto core = std::make_unique<Arxiv::AppCore>(cfg, std::move(db_ptr), std::move(fet_ptr));
+
+    auto options = core->GetFilterOptions();
+    auto it = std::find(options.begin(), options.end(), "Updated");
+    REQUIRE(it != options.end());
+    REQUIRE(std::distance(options.begin(), it) ==
+            static_cast<int>(Arxiv::AppCore::FilterView::Updated));
+}
+
+TEST_CASE("AppCore: Updated queries the DB from the last-fetch anchor", "[newart][appcore]") {
+    auto db_ptr = std::make_unique<DatabaseManagerMock>();
+    auto fet_ptr = std::make_unique<FetcherMock>();
+    auto* db_raw = db_ptr.get();
+
+    // Same anchor as New Articles: the instant the previous session's fetch
+    // finished. No day boundary is crossed here, so it is used as stored.
+    ALLOW_CALL(*db_raw, GetMetadata(trompeloeil::_)).RETURN(std::string{});
+    ALLOW_CALL(*db_raw, GetMetadata(std::string("new_articles_anchor_ts")))
+        .RETURN(std::string("4242"));
+    ALLOW_CALL(*db_raw, GetMetadata(std::string("last_fetch_date"))).RETURN(today_utc());
+
+    Arxiv::Article replacement;
+    replacement.link = "https://arxiv.org/abs/2207.12877";
+    replacement.title = "v3 of a 2022 paper";
+    replacement.is_replacement = true;
+
+    std::int64_t seen_anchor = -1;
+    ALLOW_CALL(*db_raw, GetArticlesUpdatedSince(trompeloeil::_))
+        .LR_SIDE_EFFECT(seen_anchor = _1)
+        .RETURN(std::vector<Arxiv::Article>{replacement});
+
+    Arxiv::Config cfg;
+    cfg.set_topics({"cs.AI"});
+    cfg.set_download_dir("/tmp");
+    auto core = std::make_unique<Arxiv::AppCore>(cfg, std::move(db_ptr), std::move(fet_ptr));
+
+    core->SetFilterIndex(Arxiv::AppCore::FilterView::Updated);
+
+    REQUIRE(seen_anchor == 4242);
+    REQUIRE(core->GetCurrentArticles().size() == 1);
+    REQUIRE(core->GetCurrentArticles()[0].link == replacement.link);
+}

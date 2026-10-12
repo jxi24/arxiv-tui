@@ -644,6 +644,15 @@ std::string Fetcher::FetchSinceWindowStart(const std::string& utc_date) const {
     return buf;
 }
 
+std::vector<Article> Fetcher::MergeAnnouncementFirst(std::vector<Article> announcement,
+                                                     std::vector<Article> backfill) {
+    announcement.reserve(announcement.size() + backfill.size());
+    announcement.insert(announcement.end(),
+                        std::make_move_iterator(backfill.begin()),
+                        std::make_move_iterator(backfill.end()));
+    return announcement;
+}
+
 std::vector<Article> Fetcher::FetchSince(const std::string& utc_date) {
     // Build date range: from utc_date up to today (inclusive), UTC.
     // We query and stamp by the arXiv submission date. Per the arXiv API user
@@ -738,16 +747,16 @@ std::vector<Article> Fetcher::FetchSince(const std::string& utc_date) {
     // Fold in today's freshly-announced papers from the RSS feed. The API's
     // submittedDate window lags the announcement — papers are listed a day or
     // two after submission — so today's new articles would otherwise not show
-    // up until a later open. Appended last so today's announcement wins on any
-    // overlap when the DB de-dupes by link. This lets a single FetchSince call
-    // cover both backfill and today, so callers need no separate Fetch().
-    auto todays = Fetch();
-    all_articles.insert(all_articles.end(),
-                        std::make_move_iterator(todays.begin()),
-                        std::make_move_iterator(todays.end()));
+    // up until a later open. This lets a single FetchSince call cover both
+    // backfill and today, so callers need no separate Fetch().
+    //
+    // Announcement first: AddArticle keeps the date of whichever batch it sees
+    // first, and today's papers must be dated today. See
+    // MergeAnnouncementFirst.
+    auto merged = MergeAnnouncementFirst(Fetch(), std::move(all_articles));
 
-    spdlog::info("[Fetcher]: FetchSince got {} articles since {}", all_articles.size(), utc_date);
-    return all_articles;
+    spdlog::info("[Fetcher]: FetchSince got {} articles since {}", merged.size(), utc_date);
+    return merged;
 }
 
 std::vector<Article> Fetcher::ParseAtomFeed(const std::string& xml_content) const {

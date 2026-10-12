@@ -798,3 +798,90 @@ TEST_CASE("DB migration: added_at backfills from the article date", "[database][
     REQUIRE(db.GetArticlesAddedSince(1699999999).size() == 1);
     REQUIRE(db.GetArticlesAddedSince(1700000001).empty());
 }
+
+// ---------------------------------------------------------------------------
+// updated_at — "the feed re-announced this paper as a replacement"
+//
+// added_at cannot answer this: the upsert deliberately leaves it alone so a v2
+// never resurfaces as new. A separate stamp is needed, and it must be driven by
+// is_replacement rather than by "a conflicting row existed" — FetchSince's
+// backfill window re-fetches several days of unchanged papers on every run, so
+// the mere fact of an upsert conflict says nothing about an update.
+// ---------------------------------------------------------------------------
+TEST_CASE("Real DB: updated_at tracks replacement announcements", "[database][real]") {
+    SECTION("a plain first insert leaves the article out of the updated set") {
+        DatabaseManager db(":memory:");
+        db.AddArticle(sample_articles[0]);
+        REQUIRE(db.GetArticlesUpdatedSince(0).empty());
+    }
+
+    SECTION("re-announcing a stored article as a replacement marks it updated") {
+        DatabaseManager db(":memory:");
+        db.AddArticle(sample_articles[0]);
+        REQUIRE(db.GetArticlesUpdatedSince(0).empty());
+
+        Article replaced = sample_articles[0];
+        replaced.is_replacement = true;
+        replaced.title = "Updated Title";
+        db.AddArticle(replaced);
+
+        auto updated = db.GetArticlesUpdatedSince(0);
+        REQUIRE(updated.size() == 1);
+        REQUIRE(updated[0].title == "Updated Title");
+    }
+
+    SECTION("an article first seen as a replacement is in the updated set") {
+        DatabaseManager db(":memory:");
+        Article replaced = sample_articles[0];
+        replaced.is_replacement = true;
+        db.AddArticle(replaced);
+        REQUIRE(db.GetArticlesUpdatedSince(0).size() == 1);
+    }
+
+    SECTION("re-fetching an unchanged article does not mark it updated") {
+        DatabaseManager db(":memory:");
+        Article replaced = sample_articles[0];
+        replaced.is_replacement = true;
+        db.AddArticle(replaced);
+        REQUIRE(db.GetArticlesUpdatedSince(0).size() == 1);
+
+        // The backfill window re-fetches the same paper, this time with the
+        // replacement flag clear. The earlier update stamp must survive and no
+        // new one may be written.
+        db.AddArticle(sample_articles[0]);
+        REQUIRE(db.GetArticlesUpdatedSince(0).size() == 1);
+    }
+
+    SECTION("the anchor is exclusive, matching GetArticlesAddedSince") {
+        DatabaseManager db(":memory:");
+        Article replaced = sample_articles[0];
+        replaced.is_replacement = true;
+        db.AddArticle(replaced);
+
+        const std::int64_t now = std::time(nullptr);
+        REQUIRE(db.GetArticlesUpdatedSince(now + 60).empty());
+        REQUIRE(db.GetArticlesUpdatedSince(now - 60).size() == 1);
+    }
+}
+
+TEST_CASE("DB migration: updated_at column is added to a pre-existing database",
+          "[database][migration]") {
+    TempDb tmp;
+
+    // Pre-migration layout: added_at exists, updated_at does not.
+    tmp.exec(R"(CREATE TABLE articles (
+        link TEXT PRIMARY KEY, title TEXT, authors TEXT, abstract TEXT,
+        date INTEGER, bookmarked INTEGER DEFAULT 0,
+        relevance_score REAL DEFAULT 0.0, category TEXT DEFAULT '',
+        is_replacement INTEGER DEFAULT 0, added_at INTEGER DEFAULT NULL))");
+    tmp.exec("CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL DEFAULT '')");
+    tmp.exec("INSERT INTO articles (link, title, date, added_at) VALUES "
+             "('https://arxiv.org/abs/2605.28788', 'Old Paper', 1700000000, 1700000000)");
+    sqlite3_close(tmp.handle);
+    tmp.handle = nullptr;
+
+    DatabaseManager db(tmp.path.string());
+
+    // Existing rows carry no update stamp — they were never seen as updates.
+    REQUIRE(db.GetArticlesUpdatedSince(0).empty());
+}

@@ -193,6 +193,7 @@ DatabaseManager::DatabaseManager(const std::string& path) {
     MigrateNormalizeLinks();
     MigrateAddReadAt();
     MigrateAddAddedAt();
+    MigrateAddUpdatedAt();
     MigrateAddProjectBibPath();
     CreateTagTables();
     MigrateAddFTS5();
@@ -383,17 +384,27 @@ void DatabaseManager::AddArticle(const Article& article) {
     // stays at the first release so a v2 never resurfaces a months-old paper at
     // the top of the list, and the user-owned columns (bookmarked, read_at,
     // relevance_score) plus the insertion time survive untouched.
+    // `updated_at` records the last time the feed carried this paper as a
+    // replacement — the signal behind the Updated view. It is driven by the
+    // replacement flag, not by the presence of a conflict: FetchSince's
+    // backfill window re-fetches several days of unchanged papers on every run,
+    // so a conflicting row proves nothing about a new version. A paper first
+    // seen as a replacement is stamped on insert; one already stored is stamped
+    // on update; a plain re-fetch keeps whatever stamp was there.
     Stmt stmt(db,
               "INSERT INTO articles "
               "(link, title, authors, abstract, date, bookmarked, category, is_replacement, "
-              " added_at) "
-              "VALUES (?, ?, ?, ?, ?, ?, ?, ?, strftime('%s', 'now')) "
+              " added_at, updated_at) "
+              "VALUES (?, ?, ?, ?, ?, ?, ?, ?, strftime('%s', 'now'), "
+              "        CASE WHEN ? THEN strftime('%s', 'now') ELSE NULL END) "
               "ON CONFLICT(link) DO UPDATE SET "
               "  title = excluded.title, "
               "  authors = excluded.authors, "
               "  abstract = excluded.abstract, "
               "  category = excluded.category, "
-              "  is_replacement = excluded.is_replacement",
+              "  is_replacement = excluded.is_replacement, "
+              "  updated_at = CASE WHEN excluded.is_replacement THEN strftime('%s', 'now') "
+              "                    ELSE articles.updated_at END",
               "AddArticle");
     stmt.bind(1, article.link)
         .bind(2, article.title)
@@ -402,7 +413,8 @@ void DatabaseManager::AddArticle(const Article& article) {
         .bind(5, static_cast<sqlite3_int64>(timestamp))
         .bind(6, article.bookmarked ? 1 : 0)
         .bind(7, article.category)
-        .bind(8, article.is_replacement ? 1 : 0);
+        .bind(8, article.is_replacement ? 1 : 0)
+        .bind(9, article.is_replacement ? 1 : 0);
     stmt.step_done();
 }
 
@@ -469,6 +481,18 @@ void DatabaseManager::MigrateAddAddedAt() {
     // submission date is the best available stand-in. Idempotent: every row
     // written since the migration carries a non-NULL timestamp.
     ExecuteSQL("UPDATE articles SET added_at = date WHERE added_at IS NULL");
+}
+
+void DatabaseManager::MigrateAddUpdatedAt() {
+    try {
+        ExecuteSQL("ALTER TABLE articles ADD COLUMN updated_at INTEGER DEFAULT NULL");
+    } catch (const std::exception&) {
+        // Column already exists — ignore
+    }
+    // No backfill: NULL is the correct value for every pre-existing row. The
+    // column records when we saw a replacement announcement, and nothing on
+    // record was ever observed as one, so guessing a timestamp here would put
+    // the whole archive into the Updated view on the first run after upgrade.
 }
 
 void DatabaseManager::CreateTagTables() {
@@ -1036,6 +1060,20 @@ std::vector<Arxiv::Article> DatabaseManager::GetArticlesAddedSince(std::int64_t 
     std::string sql = std::string("SELECT ") + ARTICLE_COLUMNS +
                       " FROM articles WHERE added_at > ? ORDER BY date DESC";
     Stmt stmt(db, sql.c_str(), "GetArticlesAddedSince");
+    stmt.bind(1, static_cast<sqlite3_int64>(since_ts));
+    stmt.for_each([&](sqlite3_stmt* s) { articles.push_back(RowToArticle(s)); });
+    return articles;
+}
+
+std::vector<Arxiv::Article> DatabaseManager::GetArticlesUpdatedSince(std::int64_t since_ts) {
+    std::vector<Arxiv::Article> articles;
+    // Strictly greater, and ordered by the update itself rather than by `date`:
+    // these are re-announcements of papers whose submission dates are spread
+    // across years, so the only ordering the user cares about is most recently
+    // updated first. See GetArticlesAddedSince for why the anchor is exclusive.
+    std::string sql = std::string("SELECT ") + ARTICLE_COLUMNS +
+                      " FROM articles WHERE updated_at > ? ORDER BY updated_at DESC, date DESC";
+    Stmt stmt(db, sql.c_str(), "GetArticlesUpdatedSince");
     stmt.bind(1, static_cast<sqlite3_int64>(since_ts));
     stmt.for_each([&](sqlite3_stmt* s) { articles.push_back(RowToArticle(s)); });
     return articles;

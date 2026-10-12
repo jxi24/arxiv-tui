@@ -58,12 +58,16 @@ class AppCore {
         Recommended = 5,
         FollowedAuthors = 6,
         NewArticles = 7,
-        Unread = 8,
+        // The mirror image of NewArticles: same anchor, the replacement side of
+        // the split. Between the two, every article the feed carried since the
+        // last session is reachable from exactly one view.
+        Updated = 8,
+        Unread = 9,
         // Filter indices [TagBase, m_project_start_index) are tags.
         // Filter indices [m_project_start_index, ...) are projects.
         // GetFilterView() uses those runtime boundaries — TagBase and Project
         // are used only as return-value tags in switch statements.
-        TagBase = 9,
+        TagBase = 10,
         Project = 100, // sentinel returned by GetFilterView() for project indices
     };
 
