@@ -1555,7 +1555,10 @@ std::string AppCore::ExportSelectedToObsidian() {
         return "";
     }
 
-    // Per-paper notes with YAML frontmatter + abstract + PDF embed.
+    // Per-paper notes with YAML frontmatter + abstract + a PDF link (or embed).
+    // By default the PDF stays on arXiv: vaults are often git repos, and
+    // committing every downloaded PDF bloats them for no benefit.
+    const bool download_pdfs = m_config.get_obsidian_download_pdfs();
     int pdf_ok = 0;
     for (const auto& a : picked) {
         const std::string aid = a.id();
@@ -1581,8 +1584,12 @@ std::string AppCore::ExportSelectedToObsidian() {
         nf << "# " << a.title << "\n\n";
         nf << "**Authors:** " << a.authors << "\n\n";
         nf << "**Link:** [" << a.link << "](" << a.link << ")\n\n";
-        // Obsidian PDF embed: ![[file.pdf]] renders inline when colocated.
-        nf << "![[" << aid << ".pdf]]\n\n";
+        if (download_pdfs) {
+            // Obsidian PDF embed: ![[file.pdf]] renders inline when colocated.
+            nf << "![[" << aid << ".pdf]]\n\n";
+        } else {
+            nf << "[PDF on arXiv](https://arxiv.org/pdf/" << aid << ")\n\n";
+        }
         if (!a.abstract.empty()) {
             nf << "## Abstract\n\n" << a.abstract << "\n";
         }
@@ -1595,9 +1602,11 @@ std::string AppCore::ExportSelectedToObsidian() {
         // its own base_path (the configured download_dir), which is *not*
         // the vault. Use an absolute path via the std::filesystem API
         // instead so the file lands in the vault directory.
-        fs::path pdf_path = note_dir / (aid + ".pdf");
-        if (m_fetcher->DownloadPaper(aid, pdf_path.string()))
-            ++pdf_ok;
+        if (download_pdfs) {
+            fs::path pdf_path = note_dir / (aid + ".pdf");
+            if (m_fetcher->DownloadPaper(aid, pdf_path.string()))
+                ++pdf_ok;
+        }
     }
 
     // Index note that links to every paper imported today.
@@ -1620,10 +1629,15 @@ std::string AppCore::ExportSelectedToObsidian() {
     }
     idx.close();
 
-    spdlog::info("[AppCore]: Obsidian digest written to {} ({}/{} PDFs)",
-                 index_path.string(),
-                 pdf_ok,
-                 picked.size());
+    if (download_pdfs)
+        spdlog::info("[AppCore]: Obsidian digest written to {} ({}/{} PDFs)",
+                     index_path.string(),
+                     pdf_ok,
+                     picked.size());
+    else
+        spdlog::info("[AppCore]: Obsidian digest written to {} ({} notes, PDFs linked on arXiv)",
+                     index_path.string(),
+                     picked.size());
     return index_path.string();
 }
 
