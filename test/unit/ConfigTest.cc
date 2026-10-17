@@ -9,6 +9,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <string>
 #include <unistd.h>
 
@@ -126,6 +127,51 @@ TEST_CASE("Config: empty obsidian_vault is not written and loads as empty", "[co
 
     Config loaded(tmp.path);
     REQUIRE(loaded.get_obsidian_vault().empty());
+}
+
+// ---------------------------------------------------------------------------
+// Config: keywords_file (interest keywords for ranking; shared with other tools)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Config: keywords_file is read from the YAML", "[config]") {
+    TempConfig tmp;
+    {
+        std::ofstream out(tmp.path);
+        out << "article_settings:\n"
+               "  download_dir: /tmp\n"
+               "  topics:\n"
+               "    - hep-ph\n"
+               "keywords_file: /home/user/vault/Utility/arxiv/keywords.txt\n";
+    }
+    Config loaded(tmp.path);
+    REQUIRE(loaded.get_keywords_file() == "/home/user/vault/Utility/arxiv/keywords.txt");
+}
+
+TEST_CASE("Config: keywords_file round-trips through save/load", "[config]") {
+    TempConfig tmp;
+
+    Config cfg;
+    cfg.set_topics({"hep-ph"});
+    cfg.set_download_dir("/tmp");
+    cfg.set_keywords_file("/tmp/keywords.txt");
+    cfg.save_to_file(tmp.path);
+
+    Config loaded(tmp.path);
+    REQUIRE(loaded.get_keywords_file() == "/tmp/keywords.txt");
+}
+
+TEST_CASE("Config: empty keywords_file is not written and loads as empty", "[config]") {
+    TempConfig tmp;
+
+    Config cfg;
+    cfg.set_topics({"hep-ph"});
+    cfg.set_download_dir("/tmp");
+    cfg.save_to_file(tmp.path);
+
+    std::ifstream in(tmp.path);
+    std::string yaml((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    REQUIRE(yaml.find("keywords_file") == std::string::npos);
+    REQUIRE(Config(tmp.path).get_keywords_file().empty());
 }
 
 // ---------------------------------------------------------------------------

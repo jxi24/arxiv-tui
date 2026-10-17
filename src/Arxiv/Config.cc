@@ -64,6 +64,11 @@ void Config::load_from_file(const std::string& config_file) {
         obsidian_vault_ = config["obsidian_vault"].as<std::string>();
     }
 
+    // Interest keywords file (optional; empty = <data_dir>/keywords.txt, set in main)
+    if (config["keywords_file"]) {
+        keywords_file_ = config["keywords_file"].as<std::string>();
+    }
+
     // Download PDFs into the vault on Obsidian export (optional; default off)
     if (config["obsidian_download_pdfs"]) {
         obsidian_download_pdfs_ = config["obsidian_download_pdfs"].as<bool>();
@@ -138,6 +143,9 @@ void Config::save_to_file(const std::string& config_file) const {
         config["obsidian_vault"] = obsidian_vault_;
     }
     config["obsidian_download_pdfs"] = obsidian_download_pdfs_;
+    if (!keywords_file_.empty()) {
+        config["keywords_file"] = keywords_file_;
+    }
 
     std::ofstream fout(config_file);
     fout << config;

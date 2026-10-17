@@ -82,6 +82,8 @@ int main(int argc, char* argv[]) {
         config.set_download_dir((paths.data_dir / "downloads").string());
     config.set_db_file((paths.data_dir / "articles.db").string());
     config.set_ranker_file((paths.data_dir / "ranker.bin").string());
+    if (config.get_keywords_file().empty())
+        config.set_keywords_file((paths.data_dir / "keywords.txt").string());
 
     // Headless feed fetch: update the DB and exit without opening the TUI.
     // Suitable for use in a cron job to keep the database current.
@@ -102,6 +104,7 @@ int main(int argc, char* argv[]) {
             config,
             std::make_unique<Arxiv::DatabaseManager>(config.get_db_file()),
             std::make_unique<Arxiv::Fetcher>(config.get_topics(), config.get_download_dir()));
+        core->ReloadKeywords(); // interest keywords feed the YAML digest's ranking
 
         if (!export_today_path.empty()) {
             bool ok = core->ExportDailyDigest(export_today_path);
