@@ -278,3 +278,33 @@ TEST_CASE("AppCore::ExportSelectedDigestArchive produces a .tar.gz archive", "[d
     fs::remove_all(tmp_dir);
     fs::remove(archive_path);
 }
+
+TEST_CASE("AppCore::ExportDailyDigestYAML leaves out replacements (new versions of older papers)",
+          "[digest]") {
+    DatabaseManagerMock* db_ptr = nullptr;
+    FetcherMock* fetcher_ptr = nullptr;
+    auto core = make_core(db_ptr, fetcher_ptr);
+
+    Arxiv::Article fresh;
+    fresh.link = "https://arxiv.org/abs/2610.00001";
+    fresh.title = "First posted today";
+    Arxiv::Article replaced;
+    replaced.link = "https://arxiv.org/abs/2301.00002";
+    replaced.title = "Old paper, new version";
+    replaced.is_replacement = true;
+
+    fs::path tmp = fs::temp_directory_path() / "digest_no_replacements_test.yaml";
+    fs::remove(tmp);
+    ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(std::vector<Arxiv::Article>{replaced, fresh});
+
+    REQUIRE(core->ExportDailyDigestYAML(tmp.string()));
+    std::string content = read_file(tmp);
+    SECTION("the new paper is listed") {
+        REQUIRE_THAT(content, ContainsSubstring("First posted today"));
+    }
+    SECTION("the replacement is not") {
+        REQUIRE_THAT(content, !ContainsSubstring("Old paper, new version"));
+    }
+
+    fs::remove(tmp);
+}
