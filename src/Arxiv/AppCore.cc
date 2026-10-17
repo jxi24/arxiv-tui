@@ -1288,8 +1288,12 @@ bool AppCore::ExportDailyDigestYAML(const std::string& output_path) const {
         auto recent = m_db->GetRecent(1);
         std::lock_guard<std::mutex> lock(m_ranker_mutex);
         scored.reserve(recent.size());
-        for (auto& a : recent)
+        for (auto& a : recent) {
+            // Only papers first posted today: a replacement is a new version of an older paper
+            if (a.is_replacement)
+                continue;
             scored.emplace_back(m_ranker.PredictBlended(a), std::move(a));
+        }
     }
     std::stable_sort(scored.begin(), scored.end(), [](const auto& lhs, const auto& rhs) {
         return lhs.first > rhs.first;
