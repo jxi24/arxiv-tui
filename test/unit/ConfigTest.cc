@@ -9,6 +9,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <string>
 #include <unistd.h>
 
@@ -157,6 +158,20 @@ TEST_CASE("Config: keywords_file round-trips through save/load", "[config]") {
 
     Config loaded(tmp.path);
     REQUIRE(loaded.get_keywords_file() == "/tmp/keywords.txt");
+}
+
+TEST_CASE("Config: empty keywords_file is not written and loads as empty", "[config]") {
+    TempConfig tmp;
+
+    Config cfg;
+    cfg.set_topics({"hep-ph"});
+    cfg.set_download_dir("/tmp");
+    cfg.save_to_file(tmp.path);
+
+    std::ifstream in(tmp.path);
+    std::string yaml((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    REQUIRE(yaml.find("keywords_file") == std::string::npos);
+    REQUIRE(Config(tmp.path).get_keywords_file().empty());
 }
 
 // ---------------------------------------------------------------------------
