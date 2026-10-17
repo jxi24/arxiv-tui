@@ -320,6 +320,15 @@ a cron job:</p>
 <span class="m">0</span><span class="w"> </span><span class="m">7</span><span class="w"> </span>*<span class="w"> </span>*<span class="w"> </span><span class="m">1</span>-5<span class="w">  </span>arxiv-tui<span class="w"> </span>--fetch
 </pre></div>
 </div>
+<p>Today’s articles can also be exported without the TUI. <code class="docutils literal notranslate"><span class="pre">--export-yaml</span></code>
+writes them ranked by predicted score (the trained model blended with the
+interest keywords), highest first, with <code class="docutils literal notranslate"><span class="pre">id</span></code>, <code class="docutils literal notranslate"><span class="pre">title</span></code>, <code class="docutils literal notranslate"><span class="pre">authors</span></code>,
+<code class="docutils literal notranslate"><span class="pre">link</span></code>, <code class="docutils literal notranslate"><span class="pre">category</span></code>, <code class="docutils literal notranslate"><span class="pre">score</span></code> and <code class="docutils literal notranslate"><span class="pre">abstract</span></code> per article, so another
+tool can take the top few as-is (<code class="docutils literal notranslate"><span class="pre">--export-today</span></code> writes the Markdown
+digest):</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>arxiv-tui<span class="w"> </span>--fetch<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>arxiv-tui<span class="w"> </span>--export-yaml<span class="w"> </span>~/notes/arxiv-today.yml
+</pre></div>
+</div>
 <p>Set <code class="docutils literal notranslate"><span class="pre">auto_refresh_minutes</span></code> in the config to have the background thread
 re-fetch feeds automatically while the TUI is open.</p>
 </section>
