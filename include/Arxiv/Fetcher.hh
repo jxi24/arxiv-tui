@@ -37,6 +37,17 @@ class Fetcher {
     /// e.g. "http://arxiv.org/abs/2605.28788v1" → "https://arxiv.org/abs/2605.28788"
     static std::string NormalizeLink(const std::string& link);
 
+    /// Concatenate today's RSS announcement with the API backfill, announcement
+    /// first. The two feeds date a paper differently — RSS carries the
+    /// announcement date, the API the v1 submission date — and a paper
+    /// submitted a day or two ago but announced today appears in both.
+    /// DatabaseManager::AddArticle upserts and never rewrites `date`, so
+    /// whichever batch reaches it first fixes the date for good; the
+    /// announcement has to win, or today's papers are stored dated two days ago
+    /// and vanish from every recency view.
+    static std::vector<Article> MergeAnnouncementFirst(std::vector<Article> announcement,
+                                                       std::vector<Article> backfill);
+
     // Parsing helpers exposed for testing.
     std::vector<Article> ParseFeed(const std::string& xml) const;
     std::vector<Article> ParseAtomFeed(const std::string& xml) const;

@@ -70,6 +70,9 @@ void ArxivApp::SetupMainRenderer() {
         case AppCore::FilterView::NewArticles:
             filter_label = "New Articles";
             break;
+        case AppCore::FilterView::Updated:
+            filter_label = "Updated";
+            break;
         case AppCore::FilterView::Unread:
             filter_label = "Unread";
             break;
