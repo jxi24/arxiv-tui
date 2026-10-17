@@ -421,6 +421,9 @@ A brief record of what has been implemented. Consult `README.md` for user-facing
 ### Unreleased — Ranked headless YAML digest
 - **`--export-yaml` ranked** — `AppCore::ExportDailyDigestYAML` sorts today's articles by `Ranker::PredictBlended` (highest first) and writes `id`, `category` and `score` alongside title/authors/link/abstract; `main.cc` calls `ReloadKeywords()` before headless exports so keyword boosts apply. Tests: `DigestTest.cc` (`[digest]`).
 
+### Unreleased — keywords_file config key
+- **`keywords_file`** — YAML key for the interest-keywords file (`Config` load/save); defaults to `<data_dir>/keywords.txt` in `main.cc`. Before this the path was never set, so keyword boosts and the keyword editor had no file. Lets headless installs (a Raspberry Pi running `--fetch` + `--export-yaml`) share a keywords list kept elsewhere. Tests: `ConfigTest.cc` (`keywords_file` read and round-trip).
+
 ### Unreleased — Obsidian export without PDFs
 - **`obsidian_download_pdfs`** (default `false`) — Obsidian export writes `[PDF on arXiv](https://arxiv.org/pdf/<id>)` into each note and never calls `Fetcher::DownloadPaper`; `true` restores downloading the PDF next to the note with a `![[<id>.pdf]]` embed. Toggled in the Settings dialog (Export section, second field; Enter flips it). Tests: `AppTest.cc` (`ExportSelectedToObsidian` link-only / download sections), `ConfigTest.cc` (default and round-trip).
 

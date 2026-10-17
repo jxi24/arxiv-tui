@@ -129,6 +129,37 @@ TEST_CASE("Config: empty obsidian_vault is not written and loads as empty", "[co
 }
 
 // ---------------------------------------------------------------------------
+// Config: keywords_file (interest keywords for ranking; shared with other tools)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Config: keywords_file is read from the YAML", "[config]") {
+    TempConfig tmp;
+    {
+        std::ofstream out(tmp.path);
+        out << "article_settings:\n"
+               "  download_dir: /tmp\n"
+               "  topics:\n"
+               "    - hep-ph\n"
+               "keywords_file: /home/user/vault/Utility/arxiv/keywords.txt\n";
+    }
+    Config loaded(tmp.path);
+    REQUIRE(loaded.get_keywords_file() == "/home/user/vault/Utility/arxiv/keywords.txt");
+}
+
+TEST_CASE("Config: keywords_file round-trips through save/load", "[config]") {
+    TempConfig tmp;
+
+    Config cfg;
+    cfg.set_topics({"hep-ph"});
+    cfg.set_download_dir("/tmp");
+    cfg.set_keywords_file("/tmp/keywords.txt");
+    cfg.save_to_file(tmp.path);
+
+    Config loaded(tmp.path);
+    REQUIRE(loaded.get_keywords_file() == "/tmp/keywords.txt");
+}
+
+// ---------------------------------------------------------------------------
 // Config: obsidian_download_pdfs (off by default; PDFs stay on arXiv)
 // ---------------------------------------------------------------------------
 
