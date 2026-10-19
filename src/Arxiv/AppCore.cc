@@ -1083,8 +1083,10 @@ bool AppCore::ImportProjectJSON(const std::string& input_path) {
             article.authors = entry.value("authors", "");
             article.abstract = entry.value("abstract", "");
             article.bookmarked = false;
-            int64_t ts = entry.value("date", int64_t{0});
-            article.date = std::chrono::system_clock::from_time_t(static_cast<time_t>(ts));
+            // Read as time_t directly: a cast from int64_t is a -Wuseless-cast error where they are the same type
+            // (64-bit Linux GCC, e.g. a Raspberry Pi).
+            std::time_t ts = entry.value("date", std::time_t{0});
+            article.date = std::chrono::system_clock::from_time_t(ts);
 
             m_db->AddArticle(article);
             m_db->LinkArticleToProject(link, project_name);
