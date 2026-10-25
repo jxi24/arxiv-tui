@@ -565,3 +565,46 @@ TEST_CASE("Fetcher: an RSS item with a /pdf/ link is kept", "[fetcher][links]") 
     REQUIRE(articles.size() == 1);
     REQUIRE(articles[0].link == "https://arxiv.org/abs/2403.12345");
 }
+
+// ---------------------------------------------------------------------------
+// InspireHEP lookup: the paper id goes into a query string and the response
+// names the next URL to fetch — both come from outside.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Fetcher::InspireSearchUrl", "[fetcher][inspire][regression]") {
+    SECTION("new-style id") {
+        REQUIRE(
+            Fetcher::InspireSearchUrl("2401.12345") ==
+            "https://inspirehep.net/api/literature?q=eprint%202401.12345&fields=texkeys&size=1");
+    }
+    SECTION("old-style id has its slash encoded") {
+        REQUIRE(Fetcher::InspireSearchUrl("hep-ph/0101001") ==
+                "https://inspirehep.net/api/"
+                "literature?q=eprint%20hep-ph%2F0101001&fields=texkeys&size=1");
+    }
+    SECTION("rejects an id that would add query parameters") {
+        REQUIRE_FALSE(Fetcher::InspireSearchUrl("2401.12345&size=1000").has_value());
+    }
+    SECTION("rejects an id with spaces") {
+        REQUIRE_FALSE(Fetcher::InspireSearchUrl("2401.12345 or title x").has_value());
+    }
+    SECTION("rejects an empty id") { REQUIRE_FALSE(Fetcher::InspireSearchUrl("").has_value()); }
+}
+
+TEST_CASE("Fetcher::IsInspireUrl only accepts inspirehep.net over https",
+          "[fetcher][inspire][regression]") {
+    SECTION("the API's own bibtex link") {
+        REQUIRE(Fetcher::IsInspireUrl("https://inspirehep.net/api/literature/123?format=bibtex"));
+    }
+    SECTION("another host") { REQUIRE_FALSE(Fetcher::IsInspireUrl("https://evil.example/x")); }
+    SECTION("a host that only starts with inspirehep.net") {
+        REQUIRE_FALSE(Fetcher::IsInspireUrl("https://inspirehep.net.evil.example/x"));
+    }
+    SECTION("user-info trick") {
+        REQUIRE_FALSE(Fetcher::IsInspireUrl("https://inspirehep.net@evil.example/x"));
+    }
+    SECTION("plain http") {
+        REQUIRE_FALSE(Fetcher::IsInspireUrl("http://inspirehep.net/api/literature/1"));
+    }
+    SECTION("a local file") { REQUIRE_FALSE(Fetcher::IsInspireUrl("file:///etc/passwd")); }
+}

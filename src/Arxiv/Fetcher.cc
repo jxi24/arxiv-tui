@@ -796,13 +796,34 @@ std::optional<Arxiv::time_point> Fetcher::ParseAtomDate(const std::string& date)
     return std::chrono::system_clock::from_time_t(timegm(&tm));
 }
 
+std::optional<std::string> Fetcher::InspireSearchUrl(const std::string& paper_id) {
+    // New style (2401.12345) or old style (hep-ph/0101001, math.AG/0101001),
+    // optionally versioned. Anything else could smuggle query syntax.
+    static const std::regex arxiv_id(
+        R"(^(?:\d{4}\.\d{4,5}|[A-Za-z-]+(?:\.[A-Za-z]{2})?/\d{7})(?:v\d+)?$)");
+    if (!std::regex_match(paper_id, arxiv_id))
+        return std::nullopt;
+    std::string encoded;
+    for (char c : paper_id)
+        encoded += (c == '/') ? std::string("%2F") : std::string(1, c);
+    return "https://inspirehep.net/api/literature?q=eprint%20" + encoded + "&fields=texkeys&size=1";
+}
+
+bool Fetcher::IsInspireUrl(const std::string& url) {
+    constexpr std::string_view origin = "https://inspirehep.net/";
+    return url.compare(0, origin.size(), origin) == 0;
+}
+
 std::string Fetcher::FetchBibTeX(const std::string& paper_id) {
     // --- 1. Try InspireHEP ---
     // Query the literature search API for the arXiv eprint.
-    const std::string inspire_search =
-        "https://inspirehep.net/api/literature?q=eprint+" + paper_id + "&fields=texkeys&size=1";
+    const auto inspire_search = InspireSearchUrl(paper_id);
+    if (!inspire_search) {
+        spdlog::warn("[Fetcher]: Not an arXiv id, skipping InspireHEP: {}", paper_id);
+        return {};
+    }
     try {
-        auto search_resp = cpr::Get(cpr::Url{inspire_search}, cpr::Timeout{5000});
+        auto search_resp = cpr::Get(cpr::Url{*inspire_search}, cpr::Timeout{5000});
 
         if (search_resp.status_code == 200) {
             auto js = nlohmann::json::parse(search_resp.text);
@@ -810,6 +831,13 @@ std::string Fetcher::FetchBibTeX(const std::string& paper_id) {
             if (!hits.empty()) {
                 // The hit object carries a links.bibtex URL
                 std::string bibtex_url = hits[0].at("links").at("bibtex").get<std::string>();
+                // The response chooses the next URL; only follow it to
+                // InspireHEP itself.
+                if (!IsInspireUrl(bibtex_url)) {
+                    spdlog::warn("[Fetcher]: Ignoring BibTeX link outside InspireHEP: {}",
+                                 bibtex_url);
+                    return {};
+                }
 
                 auto bib_resp = cpr::Get(cpr::Url{bibtex_url}, cpr::Timeout{5000});
                 if (bib_resp.status_code == 200 && !bib_resp.text.empty()) {

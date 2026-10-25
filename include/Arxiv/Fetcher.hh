@@ -52,6 +52,14 @@ class Fetcher {
     /// rejected.
     static bool IsArxivLink(const std::string& link);
 
+    /// InspireHEP literature search for an arXiv id, with the id
+    /// percent-encoded; nullopt if `paper_id` is not an arXiv identifier.
+    static std::optional<std::string> InspireSearchUrl(const std::string& paper_id);
+
+    /// True if `url` is an https URL on inspirehep.net — the only place the
+    /// BibTeX link from a search response is allowed to point.
+    static bool IsInspireUrl(const std::string& url);
+
     /// Concatenate today's RSS announcement with the API backfill, announcement
     /// first. The two feeds date a paper differently — RSS carries the
     /// announcement date, the API the v1 submission date — and a paper
