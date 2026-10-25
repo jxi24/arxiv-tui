@@ -507,6 +507,18 @@ TEST_CASE("Replay regression: a wrongly typed field is reported, not thrown",
     REQUIRE_FALSE(result.error.empty());
 }
 
+TEST_CASE("Replay regression: a number JSON cannot hold is reported, not thrown",
+          "[replay][player][regression]") {
+    // nlohmann throws out_of_range, not parse_error, for 1e70000 (the same
+    // bug fuzz_import_json found in ImportProjectJSON).
+    auto core = make_real_replay_core();
+
+    Arxiv::ReplayPlayer::Result result;
+    REQUIRE_NOTHROW(result = Arxiv::ReplayPlayer::FromString(
+                        R"({"action":"set_filter_index","index":1e70000})", *core));
+    REQUIRE_FALSE(result.error.empty());
+}
+
 TEST_CASE("Replay regression: an out-of-range article index is clamped",
           "[replay][player][regression]") {
     auto core = make_real_replay_core();
