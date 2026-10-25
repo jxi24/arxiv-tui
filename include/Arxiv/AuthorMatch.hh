@@ -16,4 +16,7 @@ namespace Arxiv {
 /// last name alone matches that last name. Case-insensitive.
 bool AuthorMatches(const std::string& followed, const std::string& author);
 
+/// Whether `name` gives at least a first initial besides the last name.
+bool HasFirstInitial(const std::string& name);
+
 } // namespace Arxiv

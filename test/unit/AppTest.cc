@@ -1844,3 +1844,18 @@ TEST_CASE("AppCore: following an author by initial picks out that author", "[app
     REQUIRE(followed.size() == 1);
     REQUIRE(followed[0].link == wei.link);
 }
+
+TEST_CASE("AppCore: following an author updates the Followed Authors view at once",
+          "[app][author]") {
+    auto article = make_article("2401.00090", "Wei Li, A. Other", "hep-ph");
+    auto core = make_memory_core({article});
+    core->SetFilterIndex(AppCore::FilterView::FollowedAuthors);
+    REQUIRE(core->GetCurrentArticles().empty());
+
+    core->FollowAuthor("W. Li");
+    SECTION("follow") { REQUIRE(core->GetCurrentArticles().size() == 1); }
+    SECTION("unfollow") {
+        core->UnfollowAuthor("W. Li");
+        REQUIRE(core->GetCurrentArticles().empty());
+    }
+}

@@ -46,7 +46,8 @@ class KeyBindings {
         UndoDelete,
         ExportDigestArchive,
         OpenInBrowser,
-        RateSelection
+        RateSelection,
+        FollowAuthors
     };
 
     KeyBindings() = default;

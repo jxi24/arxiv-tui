@@ -69,24 +69,31 @@ GivenName given_name(const std::string& token) {
 
 ParsedName parse(const std::string& name) {
     std::vector<std::string> tokens;
-    std::istringstream in(lower(name));
-    for (std::string t; in >> t;) {
+    std::vector<bool> lower_case; // as written: particles are lower-case ("van der")
+    std::istringstream in(name);
+    for (std::string original; in >> original;) {
+        const bool written_lower = std::islower(static_cast<unsigned char>(original[0])) != 0;
+        const std::string t = lower(original);
         // "j.a." -> "j." "a." (initials written together)
         bool joined_initials = t.size() >= 4 && t.size() % 2 == 0;
         for (std::size_t i = 0; joined_initials && i < t.size(); i += 2)
             joined_initials = std::isalpha(static_cast<unsigned char>(t[i])) && t[i + 1] == '.';
         if (joined_initials) {
-            for (std::size_t i = 0; i < t.size(); i += 2)
+            for (std::size_t i = 0; i < t.size(); i += 2) {
                 tokens.push_back(t.substr(i, 2));
+                lower_case.push_back(written_lower);
+            }
         } else if (!is_suffix(t)) {
             tokens.push_back(t);
+            lower_case.push_back(written_lower);
         }
     }
     ParsedName p;
     if (tokens.empty())
         return p;
     std::size_t last_start = tokens.size() - 1;
-    while (last_start > 1 && is_particle(tokens[last_start - 1]))
+    // "van der Berg", but "Van Morrison" / "Le Wang" are given names.
+    while (last_start > 0 && lower_case[last_start - 1] && is_particle(tokens[last_start - 1]))
         --last_start;
     for (std::size_t i = last_start; i < tokens.size(); ++i)
         p.last += (p.last.empty() ? "" : " ") + tokens[i];
@@ -122,6 +129,11 @@ bool AuthorMatches(const std::string& followed, const std::string& author) {
         if (!compatible(f.given[i], a.given[i]))
             return false;
     return true;
+}
+
+bool HasFirstInitial(const std::string& name) {
+    const ParsedName p = parse(name);
+    return !p.last.empty() && !p.given.empty();
 }
 
 } // namespace Arxiv

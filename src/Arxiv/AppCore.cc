@@ -1140,9 +1140,17 @@ std::vector<Article> AppCore::FuzzySearchArticles(const std::string& query, int 
 // Author subscriptions
 // ---------------------------------------------------------------------------
 
-void AppCore::FollowAuthor(const std::string& author_name) { m_db->FollowAuthor(author_name); }
+void AppCore::FollowAuthor(const std::string& author_name) {
+    m_db->FollowAuthor(author_name);
+    if (GetFilterView() == FilterView::FollowedAuthors)
+        FetchArticles(); // the view is defined by the followed list
+}
 
-void AppCore::UnfollowAuthor(const std::string& author_name) { m_db->UnfollowAuthor(author_name); }
+void AppCore::UnfollowAuthor(const std::string& author_name) {
+    m_db->UnfollowAuthor(author_name);
+    if (GetFilterView() == FilterView::FollowedAuthors)
+        FetchArticles();
+}
 
 std::vector<std::string> AppCore::GetFollowedAuthors() const { return m_db->GetFollowedAuthors(); }
 

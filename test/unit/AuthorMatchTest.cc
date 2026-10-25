@@ -63,3 +63,18 @@ TEST_CASE("Author matching: details", "[author][match]") {
     }
     SECTION("empty never matches") { REQUIRE_FALSE(AuthorMatches("", "Wei Li")); }
 }
+
+TEST_CASE("Author names: whether a first initial is given", "[author][match]") {
+    using Arxiv::HasFirstInitial;
+    SECTION("initial") { REQUIRE(HasFirstInitial("W. Li")); }
+    SECTION("spelled out") { REQUIRE(HasFirstInitial("Wei Li")); }
+    SECTION("last name alone") { REQUIRE_FALSE(HasFirstInitial("Li")); }
+    SECTION("particle and last name alone") { REQUIRE_FALSE(HasFirstInitial("van der Berg")); }
+    SECTION("empty") { REQUIRE_FALSE(HasFirstInitial("  ")); }
+}
+
+TEST_CASE("Author names: capitalised particles are given names", "[author][match]") {
+    // Only lower-case "van", "le", ... belong to the last name.
+    REQUIRE(Arxiv::HasFirstInitial("Le Wang"));
+    REQUIRE(AuthorMatches("L. Wang", "Le Wang"));
+}

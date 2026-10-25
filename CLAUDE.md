@@ -213,6 +213,7 @@ CREATE TABLE project_articles (
 | `d` | Download article PDF |
 | `a` | Toggle detail view |
 | `p` | Open project assignment dialog |
+| `f` | Followed-authors dialog (follow/unfollow; warns on names without a first initial) |
 | `x` | Delete project |
 | `r` | Set date range filter |
 | `/` | Open search dialog |

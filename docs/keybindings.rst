@@ -73,6 +73,9 @@ Article actions
    * - ``N``
      - ``edit_note``
      - Edit the per-article note for the current project
+   * - ``f``
+     - ``follow_authors``
+     - Follow or unfollow authors: the focused article's authors, your followed list, or a typed name (``+``)
 
 Selection and bulk actions
 --------------------------

@@ -51,6 +51,10 @@ Unreleased
   stored in full; link normalisation only strips real version suffixes;
   out-of-range dates in feeds are rejected instead of overflowing; a corrupt
   stored date no longer aborts startup.
+- **Follow authors from the TUI** — ``f`` opens a *Followed Authors* dialog
+  with the focused article's authors and your followed list; ``+`` adds a
+  typed name. Names without a first initial are flagged and need a second
+  Enter, since they match everyone with that last name.
 - **Themes** — ``theme`` selects ``frappe`` (default), ``latte``,
   ``mocha``, ``high-contrast`` or ``terminal``; ``theme_colors`` overrides
   individual colours. Settings → General → Theme cycles them live.

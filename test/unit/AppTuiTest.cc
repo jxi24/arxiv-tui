@@ -8,6 +8,7 @@
 
 #include "Arxiv/App.hh"
 #include "Arxiv/Config.hh"
+#include "Arxiv/DatabaseManager.hh"
 #include "Arxiv/KeyBindings.hh"
 #include "Arxiv/Views/Colors.hh"
 
@@ -17,6 +18,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <unistd.h>
@@ -499,4 +501,127 @@ TEST_CASE("A bad config value is reported in a pop-up at startup", "[tui][config
 TEST_CASE("A valid config shows no pop-up", "[tui][config]") {
     auto app = make_app();
     REQUIRE_THAT(render(*app), !Catch::Matchers::ContainsSubstring("Config problem"));
+}
+
+// ---------------------------------------------------------------------------
+// Followed-authors dialog (f)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Real in-memory DB; the newest article (focused first) is by Wei Li and Jane Smith.
+std::unique_ptr<ArxivApp> make_follow_app() {
+    static int counter = 0;
+    auto db = std::make_unique<DatabaseManager>(":memory:");
+    const auto now = std::chrono::system_clock::now();
+    db->AddArticle(Article(
+        "Newest", "https://arxiv.org/abs/2401.00100", "A", "Wei Li, Jane Smith", now, "hep-ph"));
+    db->AddArticle(Article("Older",
+                           "https://arxiv.org/abs/2401.00101",
+                           "B",
+                           "Xiao Li",
+                           now - std::chrono::hours(48),
+                           "hep-ph"));
+    Config cfg = make_test_config();
+    cfg.set_ranker_file((std::filesystem::temp_directory_path() /
+                         ("arxiv_follow_ui_" + std::to_string(counter++) + ".bin"))
+                            .string());
+    KeyBindings kb{std::vector<Config::KeyMapping>{}};
+    auto app = std::make_unique<ArxivApp>(
+        cfg, std::move(db), std::make_unique<FetcherMock>(), std::move(kb));
+    app->GetCore().SetFilterIndex(AppCore::FilterView::All);
+    return app;
+}
+
+void type(ArxivApp& app, const std::string& s) {
+    for (char c : s)
+        app.GetEventHandler()->OnEvent(Event::Character(c));
+}
+
+} // namespace
+
+TEST_CASE("KeyBindings: Follow Authors defaults to f", "[tui][follow]") {
+    KeyBindings kb{std::vector<Config::KeyMapping>{}};
+    REQUIRE(kb.get_key(KeyBindings::Action::FollowAuthors) == "f");
+}
+
+TEST_CASE("f opens the followed-authors dialog with the focused article's authors",
+          "[tui][follow]") {
+    auto app = make_follow_app();
+    app->GetEventHandler()->OnEvent(Event::Character("f"));
+    const std::string out = render(*app);
+
+    SECTION("title") { REQUIRE_THAT(out, Catch::Matchers::ContainsSubstring("Followed Authors")); }
+    SECTION("first author") { REQUIRE_THAT(out, Catch::Matchers::ContainsSubstring("Wei Li")); }
+    SECTION("second author") {
+        REQUIRE_THAT(out, Catch::Matchers::ContainsSubstring("Jane Smith"));
+    }
+}
+
+TEST_CASE("Enter on an article author follows and unfollows them", "[tui][follow]") {
+    auto app = make_follow_app();
+    auto handler = app->GetEventHandler();
+    handler->OnEvent(Event::Character("f"));
+
+    handler->OnEvent(Event::Return); // first row: Wei Li
+    SECTION("follows") {
+        REQUIRE(app->GetCore().GetFollowedAuthors() == std::vector<std::string>{"Wei Li"});
+    }
+    SECTION("second Enter unfollows") {
+        handler->OnEvent(Event::Return);
+        REQUIRE(app->GetCore().GetFollowedAuthors().empty());
+    }
+}
+
+TEST_CASE("A typed name can be followed", "[tui][follow]") {
+    auto app = make_follow_app();
+    app->GetEventHandler()->OnEvent(Event::Character("f"));
+    app->GetEventHandler()->OnEvent(Event::Character("+"));
+    type(*app, "J. K. Rowling"); // j and k are text here, not navigation
+    app->GetEventHandler()->OnEvent(Event::Return);
+
+    REQUIRE(app->GetCore().GetFollowedAuthors() == std::vector<std::string>{"J. K. Rowling"});
+}
+
+TEST_CASE("Following a name without a first initial asks for confirmation", "[tui][follow]") {
+    auto app = make_follow_app();
+    auto handler = app->GetEventHandler();
+    handler->OnEvent(Event::Character("f"));
+    handler->OnEvent(Event::Character("+"));
+    type(*app, "Li");
+    handler->OnEvent(Event::Return);
+
+    SECTION("warns and waits") {
+        REQUIRE_THAT(render(*app), Catch::Matchers::ContainsSubstring("no first initial"));
+        REQUIRE(app->GetCore().GetFollowedAuthors().empty());
+    }
+    SECTION("Enter again follows anyway") {
+        handler->OnEvent(Event::Return);
+        REQUIRE(app->GetCore().GetFollowedAuthors() == std::vector<std::string>{"Li"});
+    }
+    SECTION("Esc cancels") {
+        handler->OnEvent(Event::Escape);
+        REQUIRE(app->GetCore().GetFollowedAuthors().empty());
+    }
+}
+
+TEST_CASE("A followed name without a first initial is flagged in the list", "[tui][follow]") {
+    auto app = make_follow_app();
+    app->GetCore().FollowAuthor("Li");
+    app->GetEventHandler()->OnEvent(Event::Character("f"));
+
+    REQUIRE_THAT(render(*app), Catch::Matchers::ContainsSubstring("no first initial"));
+}
+
+TEST_CASE("d removes a followed author from the list", "[tui][follow]") {
+    auto app = make_follow_app();
+    app->GetCore().FollowAuthor("X. Li");
+    auto handler = app->GetEventHandler();
+    handler->OnEvent(Event::Character("f"));
+    // Rows: Wei Li, Jane Smith (this article), then X. Li (following).
+    handler->OnEvent(Event::Character("j"));
+    handler->OnEvent(Event::Character("j"));
+    handler->OnEvent(Event::Character("d"));
+
+    REQUIRE(app->GetCore().GetFollowedAuthors().empty());
 }

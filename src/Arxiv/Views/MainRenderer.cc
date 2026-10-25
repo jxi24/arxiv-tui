@@ -202,6 +202,8 @@ void ArxivApp::SetupMainRenderer() {
             document = dbox({document, import_dialog->Render()});
         } else if (dialog_depth == Dialog::KeywordEditor) {
             document = dbox({document, keyword_dialog->Render()});
+        } else if (dialog_depth == Dialog::FollowAuthors) {
+            document = dbox({document, follow_dialog->Render()});
         } else if (dialog_depth == Dialog::CategoryFilter) {
             document = dbox({document, category_dialog->Render()});
         } else if (dialog_depth == Dialog::Settings) {
@@ -352,6 +354,8 @@ void ArxivApp::SetupEventHandler() {
             return HandleCategoryFilterEvent(event);
         if (dialog_depth == Dialog::KeywordEditor)
             return HandleKeywordEditorEvent(event);
+        if (dialog_depth == Dialog::FollowAuthors)
+            return HandleFollowAuthorsEvent(event);
         if (dialog_depth == Dialog::Settings)
             return HandleSettingsEvent(event);
 
@@ -408,6 +412,16 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
         keyword_new_entry.clear();
         keyword_selected_index = 0;
         dialog_depth = Dialog::KeywordEditor;
+        return true;
+    }
+
+    // Open the followed-authors dialog (authors of the focused article + list)
+    if (key_bindings.matches(event, KeyBindings::Action::FollowAuthors)) {
+        follow_selected_index = 0;
+        follow_adding = false;
+        follow_new_name.clear();
+        follow_pending_name.clear();
+        dialog_depth = Dialog::FollowAuthors;
         return true;
     }
 

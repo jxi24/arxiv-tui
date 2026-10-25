@@ -31,6 +31,7 @@ add_library(libarxiv-tui
     Views/ExportDialog.cc
     Views/ImportDialog.cc
     Views/KeywordEditorDialog.cc
+    Views/FollowAuthorsDialog.cc
     Views/CategoryFilterDialog.cc
     Views/SettingsDialog.cc
     Views/NewProjectDialog.cc
