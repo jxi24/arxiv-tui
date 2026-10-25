@@ -192,9 +192,12 @@ class DatabaseManagerMock : public Arxiv::DatabaseManager {
         m_rated_articles = rated;
         m_expectations.push_back(
             NAMED_ALLOW_CALL(*this, GetRatedArticles()).RETURN(m_rated_articles));
-        for (const auto& [article, rating] : rated) {
+        // No structured bindings: RETURN captures them, which Clang rejects
+        // before C++20.
+        for (const auto& entry : rated) {
+            const int rating = entry.second;
             m_expectations.push_back(
-                NAMED_ALLOW_CALL(*this, GetRating(article.link)).RETURN(rating));
+                NAMED_ALLOW_CALL(*this, GetRating(entry.first.link)).RETURN(rating));
         }
     }
 
