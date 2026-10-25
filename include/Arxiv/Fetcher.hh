@@ -10,6 +10,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace Arxiv {
@@ -22,6 +23,42 @@ struct Article;
 /// with an error, so callers can tell "nothing new" from "fetch failed".
 struct FetchError : std::runtime_error {
     using std::runtime_error::runtime_error;
+};
+
+/// Receives a downloaded PDF in chunks. The bytes go to a temporary file
+/// beside `target`; Commit() checks the result is a PDF and renames it into
+/// place, so a failed, bogus or oversized download never replaces (or
+/// creates) `target`. Without a successful Commit the temporary file is
+/// removed on destruction.
+class PdfWriter {
+  public:
+    static constexpr std::size_t kDefaultMaxBytes = std::size_t{256} << 20;
+
+    explicit PdfWriter(std::filesystem::path target, std::size_t max_bytes = kDefaultMaxBytes);
+    ~PdfWriter();
+    PdfWriter(const PdfWriter&) = delete;
+    PdfWriter& operator=(const PdfWriter&) = delete;
+
+    /// Append a chunk. False once the data cannot become a valid download
+    /// (not a PDF, over the size limit, write error): stop the transfer.
+    bool Write(std::string_view chunk);
+    /// Finish: true if the complete file is a PDF and now sits at `target`.
+    bool Commit();
+    /// Why Write or Commit failed.
+    const std::string& Error() const { return m_error; }
+
+  private:
+    std::filesystem::path m_target;
+    std::filesystem::path m_temp;
+    std::size_t m_max_bytes;
+    std::size_t m_size = 0;
+    std::string m_head; // first bytes, for the "%PDF-" check
+    int m_fd = -1;
+    bool m_failed = false;
+    bool m_committed = false;
+    std::string m_error;
+
+    bool Fail(std::string why);
 };
 
 class Fetcher {

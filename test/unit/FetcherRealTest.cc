@@ -11,6 +11,8 @@
 #include <filesystem>
 #include <fixtures/test_data.hh>
 #include <fstream>
+#include <iterator>
+#include <unistd.h>
 
 using namespace Arxiv;
 using namespace Catch::Matchers;
@@ -607,4 +609,83 @@ TEST_CASE("Fetcher::IsInspireUrl only accepts inspirehep.net over https",
         REQUIRE_FALSE(Fetcher::IsInspireUrl("http://inspirehep.net/api/literature/1"));
     }
     SECTION("a local file") { REQUIRE_FALSE(Fetcher::IsInspireUrl("file:///etc/passwd")); }
+}
+
+// ---------------------------------------------------------------------------
+// PdfWriter: DownloadPaper streams the response through it, so a failed or
+// bogus download never leaves a file at (or clobbers) the target path.
+// ---------------------------------------------------------------------------
+
+namespace {
+std::filesystem::path pdf_dir() {
+    static int counter = 0;
+    auto dir = std::filesystem::temp_directory_path() /
+               ("arxiv_pdf_" + std::to_string(::getpid()) + "_" + std::to_string(counter++));
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
+    return dir;
+}
+std::string slurp(const std::filesystem::path& p) {
+    std::ifstream f(p, std::ios::binary);
+    return {std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>()};
+}
+std::size_t entries(const std::filesystem::path& dir) {
+    return static_cast<std::size_t>(std::distance(std::filesystem::directory_iterator(dir),
+                                                  std::filesystem::directory_iterator()));
+}
+} // namespace
+
+TEST_CASE("PdfWriter: a PDF arriving in pieces is committed to the target", "[fetcher][pdf]") {
+    auto dir = pdf_dir();
+    auto target = dir / "paper.pdf";
+    {
+        PdfWriter out(target);
+        REQUIRE(out.Write("%PD"));
+        REQUIRE(out.Write("F-1.7\nbody"));
+        REQUIRE(out.Commit());
+    }
+    REQUIRE(slurp(target) == "%PDF-1.7\nbody");
+    REQUIRE(entries(dir) == 1); // no temp file left behind
+}
+
+TEST_CASE("PdfWriter: rejects a body that is not a PDF", "[fetcher][pdf][regression]") {
+    // arXiv answers some requests (rate limiting, withdrawn papers) with an
+    // HTML page and status 200.
+    auto dir = pdf_dir();
+    auto target = dir / "paper.pdf";
+    {
+        PdfWriter out(target);
+        CHECK_FALSE(out.Write("<!DOCTYPE html><html>"));
+        CHECK_FALSE(out.Commit());
+    }
+    REQUIRE_FALSE(std::filesystem::exists(target));
+    REQUIRE(entries(dir) == 0);
+}
+
+TEST_CASE("PdfWriter: a failed download keeps the previous file", "[fetcher][pdf][regression]") {
+    auto dir = pdf_dir();
+    auto target = dir / "paper.pdf";
+    { std::ofstream(target) << "%PDF-old"; }
+    {
+        PdfWriter out(target);
+        REQUIRE(out.Write("%PDF-1.7 trunc")); // connection drops: no Commit
+    }
+    REQUIRE(slurp(target) == "%PDF-old");
+    REQUIRE(entries(dir) == 1);
+}
+
+TEST_CASE("PdfWriter: stops at the size limit", "[fetcher][pdf][regression]") {
+    auto dir = pdf_dir();
+    auto target = dir / "paper.pdf";
+    PdfWriter out(target, 16);
+    REQUIRE(out.Write("%PDF-0123456789"));
+    REQUIRE_FALSE(out.Write("too much"));
+    REQUIRE_FALSE(out.Commit());
+    REQUIRE_FALSE(std::filesystem::exists(target));
+}
+
+TEST_CASE("PdfWriter: an empty body is not a PDF", "[fetcher][pdf]") {
+    auto dir = pdf_dir();
+    PdfWriter out(dir / "paper.pdf");
+    REQUIRE_FALSE(out.Commit());
 }
