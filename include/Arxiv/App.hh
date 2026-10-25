@@ -69,6 +69,7 @@ class ArxivApp {
              KeyBindings kb,
              const std::string& config_path = "");
     Component GetEventHandler() const { return event_handler; }
+    AppCore& GetCore() { return core; }
 #endif
 
   private:

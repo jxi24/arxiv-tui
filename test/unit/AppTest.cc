@@ -4,10 +4,13 @@
 
 #include <Arxiv/AppCore.hh>
 #include <Arxiv/Config.hh>
+#include <Arxiv/DatabaseManager.hh>
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <cstdio>
+#include <filesystem>
 #include <fixtures/test_data.hh>
 #include <fstream>
 #include <mocks/DatabaseManagerMock.hh>
@@ -1495,4 +1498,210 @@ TEST_CASE("AppCore::GetLinksToOpen returns browser targets", "[app][browser]") {
         AppCore empty_core(config, std::move(db2), std::make_unique<FetcherMock>());
         REQUIRE(empty_core.GetLinksToOpen().empty());
     }
+}
+
+// ---------------------------------------------------------------------------
+// Regressions found in code review — each fails until the bug is fixed.
+// These run AppCore against a real in-memory database so they exercise the
+// SQL, not a mock's idea of it.
+// ---------------------------------------------------------------------------
+namespace {
+
+Config regression_config() {
+    static int counter = 0;
+    auto tmp = std::filesystem::temp_directory_path();
+    Config cfg;
+    cfg.set_topics({"hep-ph"});
+    cfg.set_download_dir(tmp.string());
+    // Unique per core: a model saved by one test must not leak into another.
+    auto ranker = tmp / ("arxiv_app_regression_" + std::to_string(::getpid()) + "_" +
+                         std::to_string(counter++) + ".bin");
+    std::filesystem::remove(ranker);
+    cfg.set_ranker_file(ranker.string());
+    return cfg;
+}
+
+std::unique_ptr<AppCore> make_memory_core(const std::vector<Article>& articles = {},
+                                          Config cfg = regression_config()) {
+    auto db = std::make_unique<DatabaseManager>(":memory:");
+    for (const auto& a : articles)
+        db->AddArticle(a);
+    return std::make_unique<AppCore>(cfg, std::move(db), std::make_unique<FetcherMock>());
+}
+
+Article make_article(const std::string& id, const std::string& authors, const std::string& cat) {
+    return Article("Title " + id,
+                   "https://arxiv.org/abs/" + id,
+                   "Abstract " + id,
+                   authors,
+                   std::chrono::system_clock::now(),
+                   cat);
+}
+
+std::string write_temp_json(const std::string& name, const std::string& body) {
+    auto path = (std::filesystem::temp_directory_path() /
+                 ("arxiv_app_regression_" + std::to_string(::getpid()) + "_" + name + ".json"))
+                    .string();
+    std::ofstream(path) << body;
+    return path;
+}
+
+bool has_link(const std::vector<Article>& articles, const std::string& link) {
+    return std::any_of(
+        articles.begin(), articles.end(), [&](const Article& a) { return a.link == link; });
+}
+
+} // namespace
+
+TEST_CASE("AppCore regression: ImportProjectJSON survives wrongly typed fields",
+          "[app][import][regression]") {
+    auto core = make_memory_core();
+    auto path = write_temp_json("bad_types",
+                                R"({"name": "p", "articles": [
+                                      1, "x", null,
+                                      {"link": "https://arxiv.org/abs/2401.00001", "date": "2024-01-01"},
+                                      {"link": "https://arxiv.org/abs/2401.00002", "title": 7},
+                                      {"link": "https://arxiv.org/abs/2401.00003"}
+                                    ]})");
+
+    REQUIRE_NOTHROW(core->ImportProjectJSON(path));
+    REQUIRE(has_link(core->GetArticlesForProject("p"), "https://arxiv.org/abs/2401.00003"));
+    std::filesystem::remove(path);
+}
+
+TEST_CASE("AppCore regression: ImportProjectJSON rejects links that are not arXiv abstract URLs",
+          "[app][import][regression]") {
+    // Links reach xdg-open through a shell and become file names on export.
+    auto core = make_memory_core();
+    auto path = write_temp_json("bad_links",
+                                R"json({"name": "p", "articles": [
+                                      {"link": "https://arxiv.org/abs/2401.1\"; touch /tmp/pwned; \""},
+                                      {"link": "javascript:alert(1)"},
+                                      {"link": "https://arxiv.org/abs/2401.00003"}
+                                    ]})json");
+
+    REQUIRE(core->ImportProjectJSON(path));
+    auto imported = core->GetArticlesForProject("p");
+    REQUIRE(imported.size() == 1);
+    REQUIRE(imported[0].link == "https://arxiv.org/abs/2401.00003");
+    std::filesystem::remove(path);
+}
+
+TEST_CASE("AppCore regression: importing into an existing sub-project keeps it nested",
+          "[app][import][regression]") {
+    auto core = make_memory_core();
+    core->AddProject("parent");
+    core->AddProject("child");
+    core->SetProjectParent("child", "parent");
+    auto path = write_temp_json("nested", R"({"name": "child", "articles": []})");
+
+    REQUIRE(core->ImportProjectJSON(path));
+
+    auto opts = core->GetFilterOptions();
+    REQUIRE(std::find(opts.begin(), opts.end(), "  child") != opts.end());
+    std::filesystem::remove(path);
+}
+
+TEST_CASE("AppCore regression: sub-projects deeper than one level appear in the filter list",
+          "[app][project][regression]") {
+    auto core = make_memory_core();
+    core->AddProject("A");
+    core->AddProject("B");
+    core->AddProject("C");
+    core->SetProjectParent("B", "A");
+    core->SetProjectParent("C", "B");
+
+    auto opts = core->GetFilterOptions();
+    bool has_c = std::any_of(opts.begin(), opts.end(), [](const std::string& o) {
+        return o.find_first_not_of(' ') != std::string::npos &&
+               o.substr(o.find_first_not_of(' ')) == "C";
+    });
+    REQUIRE(has_c);
+}
+
+TEST_CASE("AppCore regression: a project whose parent no longer exists stays visible",
+          "[app][project][regression]") {
+    auto core = make_memory_core();
+    core->AddProject("orphan");
+    core->SetProjectParent("orphan", "missing");
+
+    auto opts = core->GetFilterOptions();
+    bool has_orphan = std::any_of(opts.begin(), opts.end(), [](const std::string& o) {
+        return o.find("orphan") != std::string::npos;
+    });
+    REQUIRE(has_orphan);
+}
+
+TEST_CASE("AppCore regression: the category filter matches whole category names",
+          "[app][category][regression]") {
+    Config cfg = regression_config();
+    cfg.set_topics({"math", "math-ph"});
+    auto mathph = make_article("2401.00010", "A", "math-ph");
+    auto mathag = make_article("2401.00011", "B", "math.AG");
+    auto core = make_memory_core({mathph, mathag}, cfg);
+    core->SetFilterIndex(AppCore::FilterView::All);
+
+    core->ToggleCategory("math-ph"); // only "math" stays active
+
+    // "math" is a substring of "math-ph", but math-ph is a different archive.
+    REQUIRE_FALSE(has_link(core->GetCurrentArticles(), mathph.link));
+}
+
+TEST_CASE("AppCore regression: SetArticleIndex keeps the index inside the article list",
+          "[app][index][regression]") {
+    SECTION("past the end clamps to the last article") {
+        auto core = make_memory_core(
+            {make_article("2401.00020", "A", "hep-ph"), make_article("2401.00021", "B", "hep-ph")});
+        core->SetFilterIndex(AppCore::FilterView::All);
+        core->SetArticleIndex(99);
+        REQUIRE(core->GetArticleIndex() == 1);
+    }
+    SECTION("negative clamps to zero") {
+        auto core = make_memory_core({make_article("2401.00022", "A", "hep-ph")});
+        core->SetFilterIndex(AppCore::FilterView::All);
+        core->SetArticleIndex(-1);
+        REQUIRE(core->GetArticleIndex() == 0);
+    }
+    SECTION("empty list stays at zero") {
+        auto core = make_memory_core();
+        core->SetArticleIndex(5);
+        REQUIRE(core->GetArticleIndex() == 0);
+    }
+}
+
+TEST_CASE("AppCore regression: following an author does not match longer names",
+          "[app][author][regression]") {
+    auto lin = make_article("2401.00030", "Wei Lin, X. Other", "hep-ph");
+    auto li = make_article("2401.00031", "Y. Other, Wei Li", "hep-ph");
+    auto core = make_memory_core({lin, li});
+
+    core->FollowAuthor("Wei Li");
+    auto followed = core->GetArticlesForFollowedAuthors();
+
+    REQUIRE_FALSE(has_link(followed, lin.link));
+}
+
+TEST_CASE("AppCore regression: Recommended view does not race the training thread",
+          "[app][threads][regression]") {
+    // Only observable under ThreadSanitizer (the Sanitizers CI workflow):
+    // FetchArticles scores the Recommended view through m_ranker without
+    // m_ranker_mutex while the training thread move-assigns a new model.
+    std::vector<Article> articles;
+    for (int i = 0; i < 6; ++i)
+        articles.push_back(make_article("2401.0004" + std::to_string(i), "A", "hep-ph"));
+    auto db = std::make_unique<DatabaseManager>(":memory:");
+    for (std::size_t i = 0; i < articles.size(); ++i) {
+        db->AddArticle(articles[i]);
+        db->SetRating(articles[i].link, static_cast<int>(i % 5) + 1);
+    }
+    AppCore core(regression_config(), std::move(db), std::make_unique<FetcherMock>());
+    REQUIRE(core.IsRankerTrained()); // trained by the constructor, so the view scores
+
+    core.ForceRetrain();
+    for (int i = 0; i < 3000; ++i) {
+        core.SetFilterIndex(AppCore::FilterView::All);
+        core.SetFilterIndex(AppCore::FilterView::Recommended);
+    }
+
+    SUCCEED("no data race reported");
 }

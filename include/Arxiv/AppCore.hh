@@ -267,6 +267,27 @@ class AppCore {
     // string if the vault isn't configured / the write fails.
     std::string ExportSelectedToObsidian();
 
+    // ── Background tasks ────────────────────────────────────────────────────
+    // Exports that write many files or download PDFs run on a worker thread so
+    // the UI stays responsive; the UI polls GetBackgroundTaskStatus() to show
+    // progress. One task runs at a time: Start* returns false if a task is
+    // already running or there is nothing to do. The selection is captured
+    // when the task starts.
+    // NOTE: not implemented yet — stubs only; see test/unit/BackgroundTaskTest.cc.
+    struct BackgroundTaskStatus {
+        bool running{false};
+        std::string label;   // e.g. "Exporting to Obsidian"
+        std::size_t done{0}; // items finished
+        std::size_t total{0};
+        std::string result; // output path once the task has succeeded
+        std::string error;  // set if the task failed
+    };
+    bool StartExportSelectedToObsidian();
+    bool StartExportSelectedDigest();
+    bool StartDownloadArticle(const std::string& article_link);
+    BackgroundTaskStatus GetBackgroundTaskStatus() const;
+    void WaitForBackgroundTask();
+
     // Live config access (used by settings dialog)
     const Config& GetConfig() const { return m_config; }
 

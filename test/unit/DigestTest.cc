@@ -6,6 +6,8 @@
 #include "Arxiv/Article.hh"
 #include "Arxiv/Config.hh"
 
+#include <yaml-cpp/yaml.h>
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <chrono>
@@ -306,5 +308,33 @@ TEST_CASE("AppCore::ExportDailyDigestYAML leaves out replacements (new versions 
         REQUIRE_THAT(content, !ContainsSubstring("Old paper, new version"));
     }
 
+    fs::remove(tmp);
+}
+
+// ---------------------------------------------------------------------------
+// Regressions found in code review — each fails until the bug is fixed.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Digest regression: YAML digest stays valid when fields contain LaTeX backslashes",
+          "[digest][regression]") {
+    // In a double-quoted YAML scalar "\m" is an invalid escape and "\t" is a
+    // tab, so arXiv titles like the one below broke the file.
+    DatabaseManagerMock* db_ptr = nullptr;
+    FetcherMock* fetcher_ptr = nullptr;
+    auto core = make_core(db_ptr, fetcher_ptr);
+
+    Arxiv::Article article = arxiv_tui::test::fixtures::sample_articles[0];
+    article.title = R"(Bounds on $\mu\to e\gamma$)";
+    article.abstract = "Line one\nwith \\textbf{bold} and a tab\there";
+    ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(std::vector<Arxiv::Article>{article});
+
+    fs::path tmp = fs::temp_directory_path() / "digest_regression_latex.yaml";
+    fs::remove(tmp);
+    REQUIRE(core->ExportDailyDigestYAML(tmp.string()));
+
+    YAML::Node doc;
+    REQUIRE_NOTHROW(doc = YAML::LoadFile(tmp.string()));
+    REQUIRE(doc["articles"][0]["title"].as<std::string>() == article.title);
+    REQUIRE(doc["articles"][0]["abstract"].as<std::string>() == article.abstract);
     fs::remove(tmp);
 }

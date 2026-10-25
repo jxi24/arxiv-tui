@@ -7,6 +7,7 @@
 #include "Arxiv/AppCore.hh"
 #include "Arxiv/Config.hh"
 #include "Arxiv/CrashHandler.hh"
+#include "Arxiv/DatabaseManager.hh"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
@@ -469,4 +470,44 @@ TEST_CASE("ReplayPlayer: handles malformed lines in replay file", "[replay][play
     }
 
     fs::remove(tmp);
+}
+
+// ---------------------------------------------------------------------------
+// Regressions found in code review — each fails until the bug is fixed.
+// A replay file is untrusted input: a malformed line must be reported, not
+// terminate the process, and must not leave AppCore in an invalid state.
+// ---------------------------------------------------------------------------
+namespace {
+
+std::unique_ptr<Arxiv::AppCore> make_real_replay_core() {
+    static int counter = 0;
+    auto tmp = fs::temp_directory_path();
+    Arxiv::Config cfg;
+    cfg.set_topics({"cs.AI"});
+    cfg.set_download_dir(tmp.string());
+    cfg.set_ranker_file(
+        (tmp / ("arxiv_replay_regression_" + std::to_string(counter++) + ".bin")).string());
+    return std::make_unique<Arxiv::AppCore>(
+        cfg, std::make_unique<Arxiv::DatabaseManager>(":memory:"), std::make_unique<FetcherMock>());
+}
+
+} // namespace
+
+TEST_CASE("Replay regression: a wrongly typed field is reported, not thrown",
+          "[replay][player][regression]") {
+    auto core = make_real_replay_core();
+
+    Arxiv::ReplayPlayer::Result result;
+    REQUIRE_NOTHROW(result = Arxiv::ReplayPlayer::FromString(
+                        R"({"action":"set_filter_index","index":"abc"})", *core));
+    REQUIRE_FALSE(result.error.empty());
+}
+
+TEST_CASE("Replay regression: an out-of-range article index is clamped",
+          "[replay][player][regression]") {
+    auto core = make_real_replay_core();
+
+    Arxiv::ReplayPlayer::FromString(R"({"action":"set_article_index","index":999999})", *core);
+
+    REQUIRE(core->GetArticleIndex() == 0); // the list is empty
 }

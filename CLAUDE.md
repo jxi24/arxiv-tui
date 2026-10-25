@@ -276,6 +276,10 @@ object programmatically.
 | `test/unit/FetcherTest.cc` | RSS parsing, PDF download, error handling |
 | `test/unit/AppTest.cc` | AppCore filtering, project/bookmark logic, edge cases |
 | `test/unit/RankerTest.cc` | Vocabulary fitting, training, prediction, persistence |
+| `test/unit/ArticleTest.cc` | `Article::id` for new- and old-style identifiers |
+| `test/unit/BackgroundTaskTest.cc` | Non-blocking exports/downloads: `AppCore` background task API and TUI progress |
+
+Tests tagged `[regression]` reproduce bugs found in code review and fail until each is fixed; the `[threads]` one only fails under ThreadSanitizer. `[background]` specifies the background-task feature (its `AppCore` methods are stubs for now).
 
 ### Mocks
 - `test/mocks/DatabaseManagerMock.hh` — mocks all `DatabaseManager` virtual methods; stores `NAMED_ALLOW_CALL` handles in `m_expectations` so they outlive helper function scopes

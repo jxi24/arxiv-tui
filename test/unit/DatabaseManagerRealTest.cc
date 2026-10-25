@@ -885,3 +885,46 @@ TEST_CASE("DB migration: updated_at column is added to a pre-existing database",
     // Existing rows carry no update stamp — they were never seen as updates.
     REQUIRE(db.GetArticlesUpdatedSince(0).empty());
 }
+
+// ---------------------------------------------------------------------------
+// Regressions found in code review — each fails until the bug is fixed.
+// ---------------------------------------------------------------------------
+TEST_CASE("Real DB regression: AddProject on an existing project keeps its parent and bib path",
+          "[database][real][regression]") {
+    DatabaseManager db(":memory:");
+    db.AddProject("parent");
+    db.AddProject("child");
+    db.SetProjectParent("child", "parent");
+    db.SetProjectBibPath("child", "/tmp/child.bib");
+
+    // INSERT OR REPLACE deletes and re-inserts the row, resetting every
+    // other column to its default.
+    db.AddProject("child");
+
+    SECTION("parent survives") { REQUIRE(db.GetProjectParent("child") == "parent"); }
+    SECTION("bib path survives") { REQUIRE(db.GetProjectBibPath("child") == "/tmp/child.bib"); }
+}
+
+TEST_CASE("Real DB regression: DeleteArticle removes the article's tag links",
+          "[database][real][regression]") {
+    DatabaseManager db(":memory:");
+    db.AddArticle(sample_articles[0]);
+    db.LinkArticleToTag(sample_articles[0].link, "to-read");
+
+    db.DeleteArticle(sample_articles[0].link);
+
+    REQUIRE(db.GetTagsForArticle(sample_articles[0].link).empty());
+}
+
+TEST_CASE("Real DB regression: PruneArticles keeps tagged articles",
+          "[database][real][regression]") {
+    DatabaseManager db(":memory:");
+    Article old_article = sample_articles[0];
+    old_article.date = std::chrono::system_clock::from_time_t(1000); // 1970
+    db.AddArticle(old_article);
+    db.LinkArticleToTag(old_article.link, "keep");
+
+    db.PruneArticles(30);
+
+    REQUIRE(db.GetArticlesForTag("keep").size() == 1);
+}

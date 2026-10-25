@@ -319,3 +319,48 @@ TEST_CASE("ArxivApp: navigating with detail panel open marks article as read",
     REQUIRE_CALL(*db_ptr, MarkArticleRead(second_link));
     handler->OnEvent(Event::Character("j"));
 }
+
+// ---------------------------------------------------------------------------
+// Regressions found in code review — each fails until the bug is fixed.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("ArxivApp regression: reopening settings shows the values saved last time",
+          "[tui][settings][regression]") {
+    auto app = make_app(); // download_dir "/tmp"
+    auto handler = app->GetEventHandler();
+    handler->OnEvent(Event::Character("S"));
+    handler->OnEvent(Event::Return);         // edit "Download dir"
+    handler->OnEvent(Event::Character("X")); // "/tmpX"
+    handler->OnEvent(Event::Return);         // commit
+    handler->OnEvent(Event::Escape);         // save and close
+
+    handler->OnEvent(Event::Character("S")); // reopen
+
+    REQUIRE_THAT(render(*app), Catch::Matchers::ContainsSubstring("/tmpX"));
+}
+
+TEST_CASE("ArxivApp regression: saved settings take effect without a restart",
+          "[tui][settings][regression]") {
+    auto app = make_app();
+    auto handler = app->GetEventHandler();
+    handler->OnEvent(Event::Character("S"));
+    handler->OnEvent(Event::Return);
+    handler->OnEvent(Event::Character("X"));
+    handler->OnEvent(Event::Return);
+    handler->OnEvent(Event::Escape);
+
+    REQUIRE(app->GetCore().GetConfig().get_download_dir() == "/tmpX");
+}
+
+TEST_CASE("ArxivApp regression: navigation keys can be typed into a settings field",
+          "[tui][settings][regression]") {
+    auto app = make_app();
+    auto handler = app->GetEventHandler();
+    handler->OnEvent(Event::Character("S"));
+    handler->OnEvent(Event::Return); // edit "Download dir" = "/tmp"
+
+    handler->OnEvent(Event::Character("j"));
+    handler->OnEvent(Event::Character("k"));
+
+    REQUIRE_THAT(render(*app), Catch::Matchers::ContainsSubstring("/tmpjk"));
+}

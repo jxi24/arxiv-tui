@@ -10,8 +10,10 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <optional>
 #include <string>
 #include <unistd.h>
+#include <vector>
 
 using Arxiv::Config;
 
@@ -283,4 +285,61 @@ TEST_CASE("Config: article_columns absent from file gives default", "[config]") 
     REQUIRE_FALSE(cols.empty());
     bool has_title = std::find(cols.begin(), cols.end(), "title") != cols.end();
     REQUIRE(has_title);
+}
+
+// ---------------------------------------------------------------------------
+// Regressions found in code review — each fails until the bug is fixed.
+// A hand-edited config with a bad value must not crash the app at startup;
+// the bad key falls back to its default.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Config regression: a wrongly typed value falls back to its default",
+          "[config][regression]") {
+    TempConfig tmp;
+    {
+        std::ofstream f(tmp.path);
+        f << "article_settings:\n"
+          << "  download_dir: /tmp\n"
+          << "  topics: [cs.AI]\n"
+          << "retrain_interval: five\n";
+    }
+
+    std::optional<Config> loaded;
+    REQUIRE_NOTHROW(loaded.emplace(tmp.path));
+    REQUIRE(loaded->get_retrain_interval() == 5);
+}
+
+TEST_CASE("Config regression: article_settings without download_dir loads",
+          "[config][regression]") {
+    TempConfig tmp;
+    {
+        std::ofstream f(tmp.path);
+        f << "article_settings:\n"
+          << "  topics: [cs.AI]\n";
+    }
+
+    std::optional<Config> loaded;
+    REQUIRE_NOTHROW(loaded.emplace(tmp.path));
+    REQUIRE(loaded->get_topics() == std::vector<std::string>{"cs.AI"});
+}
+
+TEST_CASE("Config regression: out-of-range numbers fall back to their defaults",
+          "[config][regression]") {
+    TempConfig tmp;
+    {
+        std::ofstream f(tmp.path);
+        f << "article_settings:\n"
+          << "  download_dir: /tmp\n"
+          << "  topics: [cs.AI]\n"
+          << "retrain_interval: 0\n"
+          << "undo_buffer_size: -1\n";
+    }
+
+    std::optional<Config> loaded;
+    REQUIRE_NOTHROW(loaded.emplace(tmp.path));
+
+    SECTION("retrain_interval must be positive") { REQUIRE(loaded->get_retrain_interval() == 5); }
+    SECTION("undo_buffer_size must not wrap around") {
+        REQUIRE(loaded->get_undo_buffer_size() == 10);
+    }
 }

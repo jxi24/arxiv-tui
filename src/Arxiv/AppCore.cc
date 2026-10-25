@@ -1709,6 +1709,20 @@ std::string AppCore::ExportSelectedToObsidian() {
 }
 
 // ---------------------------------------------------------------------------
+// Background tasks — stubs, see test/unit/BackgroundTaskTest.cc
+// ---------------------------------------------------------------------------
+
+bool AppCore::StartExportSelectedToObsidian() { return false; }
+
+bool AppCore::StartExportSelectedDigest() { return false; }
+
+bool AppCore::StartDownloadArticle(const std::string&) { return false; }
+
+AppCore::BackgroundTaskStatus AppCore::GetBackgroundTaskStatus() const { return {}; }
+
+void AppCore::WaitForBackgroundTask() {}
+
+// ---------------------------------------------------------------------------
 // Keyword management
 // ---------------------------------------------------------------------------
 

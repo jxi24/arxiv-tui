@@ -476,3 +476,54 @@ TEST_CASE("Fetcher::MergeAnnouncementFirst puts the announcement ahead of the ba
         REQUIRE(merged[0].link == backfilled.link);
     }
 }
+
+// ---------------------------------------------------------------------------
+// Regressions found in code review — each fails until the bug is fixed.
+// ---------------------------------------------------------------------------
+TEST_CASE("Fetcher regression: arXiv API error entries are not stored as articles",
+          "[fetcher][real][regression]") {
+    // The arXiv API reports errors as an ordinary Atom <entry>.
+    const std::string error_feed = R"(<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>http://arxiv.org/api/errors#incorrect_id_format_for_1234</id>
+    <title>Error</title>
+    <summary>incorrect id format for 1234</summary>
+    <updated>2026-05-04T00:00:00-04:00</updated>
+    <author><name>arXiv api core</name></author>
+  </entry>
+</feed>)";
+    auto tmp = std::filesystem::temp_directory_path() / "arxiv_fetcher_regression";
+    Fetcher fetcher({"hep-ph"}, tmp.string());
+
+    REQUIRE(fetcher.ParseAtomFeed(error_feed).empty());
+}
+
+TEST_CASE("Fetcher regression: RSS items whose link is not an arXiv abstract URL are dropped",
+          "[fetcher][real][regression]") {
+    // Links end up in shell commands (xdg-open) and file names, and the RSS
+    // feed is fetched over plain http, so anything that is not a canonical
+    // arXiv abstract link must be rejected at the parser.
+    auto feed_with_link = [](const std::string& link) {
+        return std::string(R"(<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/"><channel><item>
+  <title>T</title><link>)") +
+               link + R"(</link>
+  <description>Abstract: A</description>
+  <pubDate>Mon, 25 Mar 2024 12:00:00 -0400</pubDate>
+  <dc:creator>A. Author</dc:creator><category>hep-ph</category>
+</item></channel></rss>)";
+    };
+    auto tmp = std::filesystem::temp_directory_path() / "arxiv_fetcher_regression";
+    Fetcher fetcher({"hep-ph"}, tmp.string());
+
+    SECTION("shell metacharacters") {
+        REQUIRE(fetcher
+                    .ParseFeed(feed_with_link("https://arxiv.org/abs/2403.1&quot;; touch "
+                                              "/tmp/pwned; &quot;"))
+                    .empty());
+    }
+    SECTION("foreign host") {
+        REQUIRE(fetcher.ParseFeed(feed_with_link("https://evil.example/abs/2403.12345")).empty());
+    }
+}
