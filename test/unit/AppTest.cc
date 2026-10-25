@@ -1746,3 +1746,76 @@ TEST_CASE("AppCore regression: offline mode neither fetches nor moves the New Ar
         REQUIRE(db_raw->GetMetadata("new_articles_anchor_ts") == "946684800");
     }
 }
+
+TEST_CASE("AppCore: re-linking an article does not duplicate it in the project's .bib",
+          "[app][bibtex]") {
+    auto article = make_article("2401.00050", "J. Doe", "hep-ph");
+    auto db = std::make_unique<DatabaseManager>(":memory:");
+    db->AddArticle(article);
+    auto fetcher = std::make_unique<FetcherMock>();
+    ALLOW_CALL(*fetcher, FetchBibTeX(ANY(std::string))).RETURN(std::string{});
+    AppCore core(regression_config(), std::move(db), std::move(fetcher));
+    core.AddProject("p");
+    auto bib = std::filesystem::temp_directory_path() /
+               ("arxiv_relink_" + std::to_string(::getpid()) + ".bib");
+    REQUIRE(core.ExportProjectBibTeX("p", bib.string())); // empty; remembers the path
+
+    core.LinkArticleToProject(article.link, "p");
+    core.UnlinkArticleFromProject(article.link, "p");
+    core.LinkArticleToProject(article.link, "p");
+
+    std::ifstream in(bib);
+    std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    std::size_t entries = 0;
+    for (auto pos = content.find("@article{"); pos != std::string::npos;
+         pos = content.find("@article{", pos + 1))
+        ++entries;
+    REQUIRE(entries == 1);
+    std::filesystem::remove(bib);
+}
+
+TEST_CASE("AppCore: an export whose writes fail reports failure", "[app][export]") {
+    // /dev/full opens fine and then fails every write (like a full disk);
+    // the export used to report success regardless.
+    if (!std::filesystem::exists("/dev/full"))
+        SKIP("/dev/full not available");
+    auto article = make_article("2401.00060", "J. Doe", "hep-ph");
+    auto core = make_memory_core({article});
+    core->AddProject("p");
+    core->LinkArticleToProject(article.link, "p");
+
+    SECTION("Markdown") { REQUIRE_FALSE(core->ExportProjectMarkdown("p", "/dev/full")); }
+    SECTION("JSON") { REQUIRE_FALSE(core->ExportProjectJSON("p", "/dev/full")); }
+    SECTION("daily digest") { REQUIRE_FALSE(core->ExportDailyDigest("/dev/full")); }
+}
+
+TEST_CASE("AppCore: adding a tag keeps the current project view selected", "[app][project]") {
+    // Tags sit before projects in the filter list, so a new tag shifted every
+    // project index and the view silently switched to a different project.
+    auto core = make_memory_core();
+    core->AddProject("alpha");
+    core->AddProject("beta");
+    const auto& opts = core->GetFilterOptions();
+    const auto beta = std::find(opts.begin(), opts.end(), "beta") - opts.begin();
+    core->SetFilterIndex(static_cast<int>(beta));
+    REQUIRE(core->GetProjectNameForFilter(core->GetFilterIndex()) == "beta");
+
+    core->AddTag("to-read");
+
+    REQUIRE(core->GetFilterView() == AppCore::FilterView::Project);
+    REQUIRE(core->GetProjectNameForFilter(core->GetFilterIndex()) == "beta");
+}
+
+TEST_CASE("AppCore: removing the project being viewed refreshes the list", "[app][project]") {
+    auto article = make_article("2401.00070", "J. Doe", "hep-ph");
+    auto core = make_memory_core({article});
+    core->AddProject("p");
+    const auto& opts = core->GetFilterOptions();
+    core->SetFilterIndex(static_cast<int>(std::find(opts.begin(), opts.end(), "p") - opts.begin()));
+    REQUIRE(core->GetCurrentArticles().empty()); // nothing linked yet
+
+    core->RemoveProject("p");
+
+    REQUIRE(core->GetFilterView() == AppCore::FilterView::NewArticles);
+    REQUIRE(core->GetCurrentArticles().size() == 1); // the New Articles list, not the stale one
+}

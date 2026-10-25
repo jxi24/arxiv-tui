@@ -161,3 +161,23 @@ TEST_CASE("AppCore regression: auto-refresh fetches from the network and leaves 
         REQUIRE(core->GetCurrentArticles().size() == before + 1);
     }
 }
+
+TEST_CASE("AppCore::TryRefetchIfNeeded reports whether the view changed", "[refresh][appcore]") {
+    // The UI redraws only when this (or an animation) says something changed,
+    // instead of 20 times a second while idle.
+    DatabaseManagerMock* db = nullptr;
+    FetcherMock* fetcher = nullptr;
+    auto core = make_core(db, fetcher);
+
+    SECTION("idle") { REQUIRE_FALSE(core->TryRefetchIfNeeded()); }
+    SECTION("after a background refresh") {
+        core->StartAutoRefresh(std::chrono::milliseconds(10));
+        bool changed = false;
+        for (int i = 0; i < 200 && !changed; ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            changed = core->TryRefetchIfNeeded();
+        }
+        core->StopAutoRefresh();
+        REQUIRE(changed);
+    }
+}

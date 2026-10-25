@@ -31,13 +31,11 @@ class Fetcher {
     virtual ~Fetcher() = default;
     /// Today's RSS announcement. Throws FetchError if the feed is unreachable.
     virtual std::vector<Article> Fetch();
-    virtual std::vector<Article> FetchToday();
     /// Fetch all articles submitted since utc_date ("YYYY-MM-DD", inclusive
     /// of the day after utc_date) using the arXiv search API. Throws FetchError
     /// if any page fails, so a partial result is never mistaken for a full one.
     virtual std::vector<Article> FetchSince(const std::string& utc_date);
     virtual bool DownloadPaper(const std::string& paper_id, const std::string& output_path);
-    virtual std::string GetPaperAbstract(const std::string& paper_id);
     /// Fetch BibTeX for an arXiv paper. Tries InspireHEP first; returns an
     /// empty string if the lookup fails (caller should generate fallback BibTeX).
     virtual std::string FetchBibTeX(const std::string& paper_id);
@@ -69,8 +67,6 @@ class Fetcher {
     std::optional<time_point> ParseDate(const std::string& date) const;
     std::optional<time_point> ParseAtomDate(const std::string& date) const;
     std::string ReplaceLatexAccents(const std::string& text) const;
-    /// Strip LaTeX formatting commands, leaving plain text.
-    std::string StyleLatex(const std::string& text) const;
     /// Convert LaTeX formatting commands to Markdown equivalents:
     /// \textit → *x*, \textbf → **x**, \texttt → `x`, \st → ~~x~~.
     /// $...$ math spans are preserved unchanged.
@@ -92,7 +88,6 @@ class Fetcher {
     std::string FetchSinceWindowStart(const std::string& utc_date) const;
 
   private:
-    static constexpr bool testing = false;
     std::vector<std::string> m_topics;
 
     std::optional<std::string> FetchFeeds();

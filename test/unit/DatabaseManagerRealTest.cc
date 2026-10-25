@@ -1060,3 +1060,114 @@ TEST_CASE("Real DB regression: a malformed date for GetArticlesSince is not fata
     std::vector<Article> found;
     REQUIRE_NOTHROW(found = db.GetArticlesSince("not-a-date"));
 }
+
+// ---------------------------------------------------------------------------
+// DB-layer cleanup (code review §4) — behaviour the refactor must provide.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+std::string temp_db_path(const std::string& stem) {
+    auto p = (std::filesystem::temp_directory_path() /
+              ("arxiv_" + stem + "_" + std::to_string(::getpid()) + ".db"))
+                 .string();
+    for (const char* suffix : {"", "-wal", "-shm"})
+        std::filesystem::remove(p + suffix);
+    return p;
+}
+
+std::string query_text(const std::string& path, const char* sql) {
+    sqlite3* raw = nullptr;
+    sqlite3_open(path.c_str(), &raw);
+    sqlite3_stmt* st = nullptr;
+    sqlite3_prepare_v2(raw, sql, -1, &st, nullptr);
+    std::string out;
+    if (sqlite3_step(st) == SQLITE_ROW && sqlite3_column_text(st, 0))
+        out = reinterpret_cast<const char*>(sqlite3_column_text(st, 0));
+    sqlite3_finalize(st);
+    sqlite3_close(raw);
+    return out;
+}
+
+} // namespace
+
+TEST_CASE("Real DB: list queries return the newest articles first", "[database][real]") {
+    DatabaseManager db(":memory:");
+    Article older = sample_articles[0];
+    older.date = std::chrono::system_clock::from_time_t(1'700'000'000);
+    older.bookmarked = true;
+    Article newer = sample_articles[1];
+    newer.date = std::chrono::system_clock::from_time_t(1'800'000'000);
+    newer.bookmarked = true;
+    db.AddArticle(older); // inserted first: rowid order would put it first
+    db.AddArticle(newer);
+    db.LinkArticleToProject(older.link, "p");
+    db.LinkArticleToProject(newer.link, "p");
+    db.LinkArticleToTag(older.link, "t");
+    db.LinkArticleToTag(newer.link, "t");
+
+    SECTION("bookmarks") { REQUIRE(db.ListBookmarked().front().link == newer.link); }
+    SECTION("unread") { REQUIRE(db.GetUnreadArticles().front().link == newer.link); }
+    SECTION("project") { REQUIRE(db.GetArticlesForProject("p").front().link == newer.link); }
+    SECTION("tag") { REQUIRE(db.GetArticlesForTag("t").front().link == newer.link); }
+}
+
+TEST_CASE("Real DB: file databases use WAL journaling", "[database][real]") {
+    // WAL lets the TUI read while a cron --fetch writes.
+    auto path = temp_db_path("wal");
+    { DatabaseManager db(path); }
+    REQUIRE(query_text(path, "PRAGMA journal_mode") == "wal");
+}
+
+TEST_CASE("Real DB: a write waits for another connection's lock instead of failing",
+          "[database][real]") {
+    auto path = temp_db_path("busy");
+    DatabaseManager db(path);
+    db.AddArticle(sample_articles[0]);
+
+    sqlite3* other = nullptr;
+    sqlite3_open(path.c_str(), &other);
+    REQUIRE(sqlite3_exec(other, "BEGIN IMMEDIATE", nullptr, nullptr, nullptr) == SQLITE_OK);
+    std::thread release([other] {
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        sqlite3_exec(other, "COMMIT", nullptr, nullptr, nullptr);
+    });
+
+    bool failed = false;
+    try {
+        db.ToggleBookmark(sample_articles[0].link, true);
+    } catch (const std::exception&) {
+        failed = true; // SQLITE_BUSY without a busy timeout
+    }
+    release.join();
+    sqlite3_close(other);
+    REQUIRE_FALSE(failed);
+}
+
+TEST_CASE("Real DB: the full-text index is only rewritten when indexed columns change",
+          "[database][real]") {
+    // Bookmarking, read marks and relevance scores used to rewrite the FTS
+    // row on every UPDATE.
+    auto path = temp_db_path("fts_trigger");
+    { DatabaseManager db(path); }
+    const std::string trigger =
+        query_text(path, "SELECT sql FROM sqlite_master WHERE name = 'articles_au'");
+    REQUIRE_THAT(trigger, ContainsSubstring("UPDATE OF title, authors, abstract"));
+}
+
+TEST_CASE("Real DB regression: search input never throws", "[database][real][regression]") {
+    // Found by fuzz_db_ops once statement errors stopped being swallowed: a
+    // NUL byte inside a quoted token is an FTS5 syntax error.
+    DatabaseManager db(":memory:");
+    db.AddArticle(sample_articles[0]);
+    std::vector<Article> found;
+
+    SECTION("embedded NUL") {
+        REQUIRE_NOTHROW(found = db.SearchArticles(std::string("Sam\0ple", 7)));
+    }
+    SECTION("control characters") { REQUIRE_NOTHROW(found = db.SearchArticles("\x01\x02 \x7f")); }
+    SECTION("still finds the article around them") {
+        found = db.SearchArticles(std::string("Sample\x01", 7));
+        REQUIRE(found.size() == 1);
+    }
+}

@@ -126,7 +126,7 @@ TUI shell. Owns the FTXUI `ScreenInteractive`, all UI `Component` objects, and t
 Business logic. Receives `DatabaseManager` and `Fetcher` via `unique_ptr` (dependency injection). Manages filter state, article index, date range, search query, and project membership. Triggers UI refresh via callbacks.
 
 **`DatabaseManager`** (`DatabaseManager.hh/cc`)
-SQLite3 persistence layer. All virtual methods — mock-friendly for testing.
+SQLite3 persistence layer. All virtual methods — mock-friendly for testing. File databases use WAL with a 5 s busy timeout (TUI and cron `--fetch` share the file). Every public method holds a recursive mutex (one connection is shared with the background fetch). Statement errors throw (`Stmt::for_each` no longer stops silently); schema additions use `AddColumnIfMissing`; strings are bound and read by length (NUL-safe).
 
 **`Fetcher`** (`Fetcher.hh/cc`)
 Parses arXiv RSS/XML feeds via `cpr` + `pugixml`. Downloads PDFs. All virtual methods.
@@ -145,6 +145,12 @@ Plain data struct: `link`, `title`, `authors`, `abstract`, `date` (Unix timestam
 
 **Background tasks** (`AppCore::Start*`)
 Obsidian export, selected digest (and archive) and PDF download run on one worker thread (`StartTask`). Inputs are captured on the UI thread; the worker only uses the fetcher, the filesystem and the DB, and reports via `GetBackgroundTaskStatus()`, which the main renderer shows as a badge. Worker threads (fetch, auto-refresh, training, tasks) never touch `m_current_articles` or invoke the update callback — they set `m_needs_refetch` / `m_pending_read` for the UI thread's `TryRefetchIfNeeded()`.
+
+**`Export`** (`Export.hh/cc`)
+File formats for every export (project Markdown/text/JSON, daily digest Markdown/YAML, selected digest, Obsidian notes, BibTeX file, tar archive). Pure functions over articles passed in — no DB, selection or UI state; `AppCore` gathers the data and delegates. Writes are checked after the fact (a full disk reports failure).
+
+**`BibTeX`** (`BibTeX.hh/cc`)
+The single fallback BibTeX builder (`BibTeX::Build`) used by the clipboard and file exports when InspireHEP has no record: escapes `% & #`, balances braces, ASCII cite key, UTC year.
 
 **`Process`** (`Process.hh/cc`)
 Starts external programs (`xdg-open`, `tar`) via `posix_spawnp` with an argument vector and stdio on `/dev/null`. Never build shell command strings from article data.

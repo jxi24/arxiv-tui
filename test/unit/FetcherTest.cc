@@ -27,15 +27,6 @@ TEST_CASE("Article fetching", "[fetcher]") {
         REQUIRE(articles.size() == 2);
         REQUIRE_THAT(articles[0].title, ContainsSubstring("Sample Article Title"));
     }
-
-    SECTION("Should fetch today's articles") {
-        // Set up mock expectations
-        REQUIRE_CALL(fetcher, FetchToday()).RETURN(fixtures::sample_articles);
-
-        auto articles = fetcher.FetchToday();
-        REQUIRE(articles.size() == 2);
-        REQUIRE_THAT(articles[0].title, ContainsSubstring("Sample Article Title"));
-    }
 }
 
 TEST_CASE("Paper downloading", "[fetcher]") {
@@ -63,32 +54,6 @@ TEST_CASE("Paper downloading", "[fetcher]") {
         REQUIRE_CALL(fetcher, DownloadPaper(paper_id, output_path)).RETURN(false);
 
         REQUIRE_FALSE(fetcher.DownloadPaper(paper_id, output_path));
-    }
-}
-
-TEST_CASE("Abstract retrieval", "[fetcher]") {
-    Config config("test/fixtures/test_config.yml");
-    FetcherMock fetcher;
-
-    SECTION("Should retrieve paper abstract") {
-        std::string paper_id = "2403.12345";
-        std::string expected_abstract = "This is a sample abstract for testing purposes.";
-
-        // Set up mock expectations
-        REQUIRE_CALL(fetcher, GetPaperAbstract(paper_id)).RETURN(expected_abstract);
-
-        std::string abstract = fetcher.GetPaperAbstract(paper_id);
-        REQUIRE_THAT(abstract, ContainsSubstring(expected_abstract));
-    }
-
-    SECTION("Should handle missing abstracts") {
-        std::string paper_id = "2403.12345";
-
-        // Set up mock expectations
-        REQUIRE_CALL(fetcher, GetPaperAbstract(paper_id)).RETURN("");
-
-        std::string abstract = fetcher.GetPaperAbstract(paper_id);
-        REQUIRE(abstract.empty());
     }
 }
 

@@ -124,9 +124,12 @@ class DatabaseManager {
     // AddArticle, LinkArticleToTag → AddTag).
     std::recursive_mutex m_mutex;
 
-    void SetupTracing();
+    void Initialise();
     void ExecuteSQL(const std::string& sql);
-    void Query(const std::string& query);
+    void AddColumnIfMissing(const std::string& table,
+                            const std::string& column,
+                            const std::string& declaration);
+    void MigrateFTSUpdateTrigger();
     Article RowToArticle(sqlite3_stmt* stmt);
     std::string ExtractColumn(sqlite3_stmt* stmt, int index);
     void MigrateNormalizeLinks();

@@ -97,7 +97,8 @@ class AppCore {
     int PendingRatings() const { return m_ratings_since_train; }
     // Called from the UI refresh loop to re-fetch articles after background
     // training completes. Must be called on the main thread.
-    void TryRefetchIfNeeded();
+    // Returns true if the article list changed (the UI should redraw).
+    bool TryRefetchIfNeeded();
     // Force a full cold-start retrain (new vocabulary, reset weights) regardless
     // of the pending-ratings counter.
     void ForceRetrain();
@@ -355,6 +356,8 @@ class AppCore {
     // warm_start=false: refit vocabulary and reset weights (full retrain).
     void SpawnTrainingThread(bool warm_start);
     void RefreshFromNetwork();
+    // Replay/diagnostic event; a no-op without a recorder.
+    void Record(const std::string& name, const std::string& detail = "") const;
     // The selection if any, otherwise the focused article (empty if none).
     std::vector<std::string> TargetLinks() const;
     // An article by link: the current list first, then the DB.
@@ -363,16 +366,8 @@ class AppCore {
     std::vector<Article> SelectedArticles() const;
     bool MatchesActiveCategory(const std::string& categories) const;
 
-    // Export jobs shared by the synchronous Export* methods and the
-    // background tasks. `progress` (may be empty) is called once per article.
-    std::string RunDigestExport(const std::vector<Article>& picked,
-                                const std::string& download_dir,
-                                const std::function<void()>& progress);
-    std::string RunObsidianExport(const std::vector<Article>& picked,
-                                  const std::string& vault,
-                                  bool download_pdfs,
-                                  const std::function<void()>& progress);
-    std::string PackDigestArchive(const std::string& dir);
+    // Project notes as a lookup for Export::Project*.
+    std::function<std::string(const std::string&)> NotesFor(const std::string& project) const;
 
     struct TaskOutcome {
         std::string result, error, message;
@@ -479,7 +474,6 @@ class AppCore {
     void RefreshTitles();
     void RefreshFilterOptions();
     void NotifyArticleUpdate();
-    std::string ConstructBibtexFromArticle(const Article& article) const;
 };
 
 } // namespace Arxiv

@@ -515,3 +515,16 @@ TEST_CASE("Replay regression: an out-of-range article index is clamped",
 
     REQUIRE(core->GetArticleIndex() == 0); // the list is empty
 }
+
+TEST_CASE("ReplayRecorder keeps a bounded in-memory history", "[replay][recorder]") {
+    // The in-memory copy exists for crash reports; it used to grow for the
+    // whole session (about one event per second from the UI tick alone).
+    Arxiv::ReplayRecorder recorder;
+    for (int i = 0; i < Arxiv::ReplayRecorder::kMaxEntries + 500; ++i)
+        recorder.RecordEvent("tick", std::to_string(i));
+
+    REQUIRE(recorder.GetCount() == Arxiv::ReplayRecorder::kMaxEntries);
+    const std::string last = std::to_string(Arxiv::ReplayRecorder::kMaxEntries + 499);
+    REQUIRE_THAT(recorder.GetJSONL(), ContainsSubstring("\"detail\":\"" + last + "\""));
+    REQUIRE_THAT(recorder.GetJSONL(), !ContainsSubstring("\"detail\":\"0\""));
+}

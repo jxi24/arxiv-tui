@@ -207,6 +207,8 @@ long long ReplayRecorder::NowMs() {
 void ReplayRecorder::Record(const std::string& json_line) {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_entries.push_back(json_line);
+    if (m_entries.size() > static_cast<std::size_t>(kMaxEntries))
+        m_entries.pop_front();
     if (m_file.is_open()) {
         m_file << json_line << '\n';
         m_file.flush();

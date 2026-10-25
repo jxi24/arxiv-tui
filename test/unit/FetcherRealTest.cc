@@ -275,34 +275,6 @@ TEST_CASE("Fetcher::ReplaceLatexAccents", "[fetcher][real][latex]") {
 }
 
 // ---------------------------------------------------------------------------
-// StyleLatex
-// ---------------------------------------------------------------------------
-TEST_CASE("Fetcher::StyleLatex", "[fetcher][real][latex]") {
-    Fetcher fetcher({"hep-ph"});
-
-    SECTION("Strips \\textit{} completely") {
-        REQUIRE(fetcher.StyleLatex("\\textit{hello}") == "hello");
-    }
-
-    SECTION("Strips \\textbf{} completely") {
-        REQUIRE(fetcher.StyleLatex("\\textbf{bold}") == "bold");
-    }
-
-    SECTION("Strips nested formatting commands") {
-        REQUIRE(fetcher.StyleLatex("\\textit{\\textbf{word}}") == "word");
-    }
-
-    SECTION("Leaves plain text unchanged") {
-        REQUIRE(fetcher.StyleLatex("plain text") == "plain text");
-    }
-
-    SECTION("Replaces $...$ math delimiters") {
-        auto result = fetcher.StyleLatex("Energy is $E=mc^2$.");
-        REQUIRE_THAT(result, ContainsSubstring("E=mc^2"));
-    }
-}
-
-// ---------------------------------------------------------------------------
 // LatexToMarkdown
 // ---------------------------------------------------------------------------
 TEST_CASE("Fetcher::LatexToMarkdown", "[fetcher][real][latex]") {

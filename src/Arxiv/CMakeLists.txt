@@ -6,6 +6,8 @@ add_library(libarxiv-tui
     Paths.cc
     App.cc
     AppCore.cc
+    BibTeX.cc
+    Export.cc
     Clipboard.cc
     Process.cc
     Fetcher.cc

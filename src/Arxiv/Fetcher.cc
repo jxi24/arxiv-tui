@@ -41,8 +41,7 @@ constexpr std::string_view ARXIV_QUERY_FROM_FORMAT = "%Y%m%d0000";
 constexpr std::string_view ARXIV_QUERY_TO_FORMAT = "%Y%m%d2359";
 
 // Apply every (find, replace) entry in `table` to `text` in order, in-place.
-// Both StyleLatex and ReplaceLatexAccents do this exact loop; isolating it
-// removes the duplicate find-and-advance bookkeeping.
+// Used by ReplaceLatexAccents.
 void apply_replacements(std::string& text,
                         const std::vector<std::pair<std::string, std::string>>& table) {
     for (const auto& [needle, sub] : table) {
@@ -93,19 +92,7 @@ std::vector<Article> Fetcher::Fetch() {
     return all_articles;
 }
 
-std::vector<Article> Fetcher::FetchToday() {
-    // For now, just return the most recent articles from Fetch()
-    // In a real implementation, this would filter for today's articles
-    return Fetch();
-}
-
 bool Fetcher::DownloadPaper(const std::string& paper_id, const std::string& output_path) {
-    if (testing) {
-        // In testing mode, just create an empty file
-        std::ofstream file(output_path);
-        return file.good();
-    }
-
     try {
         auto url = ConstructPaperUrl(paper_id, "pdf");
         auto response = cpr::Get(cpr::Url{url}, cpr::Timeout{120000});
@@ -131,34 +118,6 @@ bool Fetcher::DownloadPaper(const std::string& paper_id, const std::string& outp
     } catch (const std::exception& e) {
         spdlog::error("[Fetcher]: Error downloading paper {}: {}", paper_id, e.what());
         return false;
-    }
-}
-
-std::string Fetcher::GetPaperAbstract(const std::string& paper_id) {
-    if (testing) {
-        return "Sample abstract for testing purposes.";
-    }
-
-    try {
-        auto url = ConstructPaperUrl(paper_id, "abs");
-        auto response = cpr::Get(cpr::Url{url});
-
-        if (response.status_code == 200) {
-            pugi::xml_document doc;
-            if (doc.load_string(response.text.c_str())) {
-                auto abstract_node = doc.select_node("//div[@class='abstract']");
-                if (abstract_node) {
-                    return abstract_node.node().text().get();
-                }
-            }
-        }
-        spdlog::error("[Fetcher]: Failed to fetch abstract for paper {}: HTTP {}",
-                      paper_id,
-                      response.status_code);
-        return "";
-    } catch (const std::exception& e) {
-        spdlog::error("[Fetcher]: Error fetching abstract for paper {}: {}", paper_id, e.what());
-        return "";
     }
 }
 
@@ -200,12 +159,6 @@ std::string Fetcher::ConstructPaperUrl(const std::string& paper_id,
 }
 
 std::optional<std::string> Fetcher::FetchFeeds() {
-    if (testing) {
-        std::ifstream rss("hep-ph+hep-ex.rss");
-        std::stringstream buffer;
-        buffer << rss.rdbuf();
-        return buffer.str();
-    }
     spdlog::trace("[Fetcher]: Fetching articles for topics [{}]", fmt::join(m_topics, ", "));
     try {
         auto url = fmt::format("https://rss.arxiv.org/rss/{}", fmt::join(m_topics, "+"));
@@ -437,51 +390,6 @@ std::string Fetcher::LatexToMarkdown(const std::string& text) const {
         prev = result;
         apply_latex_conversions(result, conversions);
     } while (result != prev);
-
-    return result;
-}
-
-std::string Fetcher::StyleLatex(const std::string& text) const {
-    std::string result = text;
-
-    // For each formatting command, replace \cmd{content} with content in one
-    // pass so both the opening marker and its matching closing brace are
-    // removed together.  Processing innermost first (repeated until stable)
-    // handles nested commands correctly.
-    static const std::vector<std::string> commands = {"\\textit",
-                                                      "\\textbf",
-                                                      "\\emph",
-                                                      "\\textsl",
-                                                      "\\textsc",
-                                                      "\\texttt",
-                                                      "\\textnormal",
-                                                      "\\textrm",
-                                                      "\\textsf",
-                                                      "\\textmd",
-                                                      "\\textup",
-                                                      "\\textdown",
-                                                      "\\underline",
-                                                      "\\overline",
-                                                      "\\st"};
-    bool changed = true;
-    while (changed) {
-        changed = false;
-        for (const auto& cmd : commands) {
-            std::string open = cmd + "{";
-            size_t pos = 0;
-            while ((pos = result.find(open, pos)) != std::string::npos) {
-                size_t content_start = pos + open.size();
-                size_t close = result.find("}", content_start);
-                if (close == std::string::npos)
-                    break;
-                result.replace(
-                    pos, close - pos + 1, result.substr(content_start, close - content_start));
-                changed = true;
-                // Re-scan from same position — the replacement may itself
-                // contain a further instance of the same command.
-            }
-        }
-    }
 
     return result;
 }

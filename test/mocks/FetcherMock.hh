@@ -26,10 +26,8 @@ class FetcherMock : public Arxiv::Fetcher {
 
     // Mock methods using trompeloeil
     MAKE_MOCK0(Fetch, std::vector<Arxiv::Article>(), override);
-    MAKE_MOCK0(FetchToday, std::vector<Arxiv::Article>(), override);
     MAKE_MOCK1(FetchSince, std::vector<Arxiv::Article>(const std::string&), override);
     MAKE_MOCK2(DownloadPaper, bool(const std::string&, const std::string&), override);
-    MAKE_MOCK1(GetPaperAbstract, std::string(const std::string&), override);
     MAKE_MOCK1(FetchBibTeX, std::string(const std::string&), override);
 
     // Helper methods for testing
@@ -37,18 +35,9 @@ class FetcherMock : public Arxiv::Fetcher {
         m_expectations.push_back(NAMED_ALLOW_CALL(*this, Fetch()).RETURN(articles));
     }
 
-    void setFetchTodayResponse(const std::vector<Arxiv::Article>& articles) {
-        m_expectations.push_back(NAMED_ALLOW_CALL(*this, FetchToday()).RETURN(articles));
-    }
-
     void setDownloadPaperResponse(bool success) {
         m_expectations.push_back(
             NAMED_ALLOW_CALL(*this, DownloadPaper(trompeloeil::_, trompeloeil::_)).RETURN(success));
-    }
-
-    void setGetPaperAbstractResponse(const std::string& abstract) {
-        m_expectations.push_back(
-            NAMED_ALLOW_CALL(*this, GetPaperAbstract(trompeloeil::_)).RETURN(abstract));
     }
 
     /// Set the BibTeX response for a specific paper_id, or for any ID when

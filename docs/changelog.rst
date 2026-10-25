@@ -47,6 +47,19 @@ Unreleased
   stored in full; link normalisation only strips real version suffixes;
   out-of-range dates in feeds are rejected instead of overflowing; a corrupt
   stored date no longer aborts startup.
+- **Smoother under load** — the database uses WAL journaling and waits for
+  a busy lock instead of failing, so a cron ``--fetch`` and the TUI can run
+  together; bookmarking or marking read no longer rewrites the search index;
+  lists are ordered newest first; the idle TUI no longer redraws 20 times a
+  second; fuzzy search is much faster on long abstracts and matches a typo
+  that drops a letter.
+- **BibTeX** — clipboard and file exports produce the same entry; ``%``,
+  ``&`` and ``#`` are escaped and braces balanced; the year is the UTC year;
+  re-linking an article no longer appends it to the project ``.bib`` again.
+- **Fixes** — exports report failure when the disk is full; adding a tag no
+  longer switches the view to a different project; removing the project you
+  are viewing switches to New Articles; search input with control
+  characters no longer errors.
 - **Builds with Clang** — fixed a ``class``/``struct`` mismatch that Clang
   rejects, and cpr's own ``-Werror`` no longer trips on libstdc++ 13.
 

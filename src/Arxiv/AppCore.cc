@@ -4,6 +4,8 @@
 
 #include "Arxiv/AppCore.hh"
 
+#include "Arxiv/BibTeX.hh"
+#include "Arxiv/Export.hh"
 #include "Arxiv/FuzzyMatch.hh"
 #include "Arxiv/Process.hh"
 #include "Arxiv/Replay.hh"
@@ -16,6 +18,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <iterator>
 #include <map>
 #include <string_view>
 
@@ -68,8 +71,7 @@ AppCore::AppCore(const Config& config,
     m_undo_buffer.resize(m_undo_capacity);
 
     spdlog::info("ArxivAppCore Initialized");
-    if (m_recorder)
-        m_recorder->RecordEvent("appcore/ctor_begin");
+    Record("appcore/ctor_begin");
 
     // Show every configured topic by default; user toggles via the filter
     // dialog.
@@ -106,9 +108,7 @@ AppCore::AppCore(const Config& config,
     }
     m_new_articles_since_date = anchor;
 
-    if (m_recorder)
-        m_recorder->RecordEvent("appcore/metadata_loaded",
-                                "prev_fetch=" + prev_fetch + " anchor=" + anchor);
+    Record("appcore/metadata_loaded", "prev_fetch=" + prev_fetch + " anchor=" + anchor);
 
     // Prune old articles before showing the list.
     if (!offline && m_config.get_max_article_age_days() > 0)
@@ -117,9 +117,8 @@ AppCore::AppCore(const Config& config,
     // Show whatever is already in the local DB immediately.
     RefreshFilterOptions();
     FetchArticles();
-    if (m_recorder)
-        m_recorder->RecordEvent("appcore/initial_fetcharticles_done",
-                                "count=" + std::to_string(m_current_articles.size()));
+    Record("appcore/initial_fetcharticles_done",
+           "count=" + std::to_string(m_current_articles.size()));
 
     // Try to restore a previously saved model; fall back to training if absent.
     if (!m_ranker.Load(m_ranker_path)) {
@@ -131,9 +130,7 @@ AppCore::AppCore(const Config& config,
             m_ranker.Save(m_ranker_path);
         }
     }
-    if (m_recorder)
-        m_recorder->RecordEvent("appcore/ranker_loaded",
-                                std::string("trained=") + (m_ranker.IsTrained() ? "1" : "0"));
+    Record("appcore/ranker_loaded", std::string("trained=") + (m_ranker.IsTrained() ? "1" : "0"));
 
     // Network fetch. In Async mode it runs on a background thread so the TUI
     // launches immediately; IsFetching() reports its state. In Sync mode
@@ -146,10 +143,8 @@ AppCore::AppCore(const Config& config,
     // avoids racing with UI-thread reads and avoids invoking the callback
     // before App's SetupUI() has installed it.
     auto do_fetch = [this, prev_fetch, today, fetch_mode]() {
-        if (m_recorder)
-            m_recorder->RecordEvent(
-                "appcore/bg_fetch_begin",
-                "mode=" + std::string(fetch_mode == FetchMode::Async ? "async" : "sync"));
+        Record("appcore/bg_fetch_begin",
+               "mode=" + std::string(fetch_mode == FetchMode::Async ? "async" : "sync"));
         std::vector<Article> articles;
         try {
             if (!prev_fetch.empty() && prev_fetch < today) {
@@ -164,23 +159,18 @@ AppCore::AppCore(const Config& config,
             // Leave last_fetch_date alone so the next launch retries the
             // same backfill window instead of skipping the missed days.
             spdlog::error("[AppCore]: Fetch failed: {}", e.what());
-            if (m_recorder)
-                m_recorder->RecordEvent("appcore/bg_fetch_failed", e.what());
+            Record("appcore/bg_fetch_failed", e.what());
             m_fetching.store(false);
             return;
         }
-        if (m_recorder)
-            m_recorder->RecordEvent("appcore/bg_fetch_returned",
-                                    "n=" + std::to_string(articles.size()));
+        Record("appcore/bg_fetch_returned", "n=" + std::to_string(articles.size()));
 
         // Wrap the bulk insert in a single transaction. Without this each
         // AddArticle is its own commit (ms-scale fsync each); the UI-thread
         // DB read could block for the entire window.
-        if (m_recorder)
-            m_recorder->RecordEvent("appcore/bg_db_insert_begin");
+        Record("appcore/bg_db_insert_begin");
         m_db->AddArticles(articles);
-        if (m_recorder)
-            m_recorder->RecordEvent("appcore/bg_db_insert_end");
+        Record("appcore/bg_db_insert_end");
 
         // Stamped after the insert so the next session's New Articles window
         // starts past everything this fetch stored — otherwise today's papers
@@ -199,31 +189,25 @@ AppCore::AppCore(const Config& config,
             m_needs_refetch.store(true);
         }
         m_fetching.store(false);
-        if (m_recorder)
-            m_recorder->RecordEvent("appcore/bg_fetch_done");
+        Record("appcore/bg_fetch_done");
     };
 
     if (offline) {
-        if (m_recorder)
-            m_recorder->RecordEvent("appcore/ctor_end", "offline");
+        Record("appcore/ctor_end", "offline");
         return;
     }
     m_fetching.store(true);
     if (fetch_mode == FetchMode::Async) {
-        if (m_recorder)
-            m_recorder->RecordEvent("appcore/fetch_thread_spawning");
+        Record("appcore/fetch_thread_spawning");
         m_initial_fetch_thread = std::thread(std::move(do_fetch));
     } else {
         do_fetch();
     }
-    if (m_recorder)
-        m_recorder->RecordEvent("appcore/ctor_end");
+    Record("appcore/ctor_end");
 }
 
 AppCore::~AppCore() {
-    if (m_recorder)
-        m_recorder->RecordEvent("appcore/dtor_begin",
-                                std::string("fetching=") + (m_fetching.load() ? "1" : "0"));
+    Record("appcore/dtor_begin", std::string("fetching=") + (m_fetching.load() ? "1" : "0"));
     StopAutoRefresh();
     WaitForInitialFetch();
     WaitForBackgroundTask();
@@ -231,8 +215,12 @@ AppCore::~AppCore() {
     if (m_train_thread.joinable()) {
         m_train_thread.join();
     }
+    Record("appcore/dtor_end");
+}
+
+void AppCore::Record(const std::string& name, const std::string& detail) const {
     if (m_recorder)
-        m_recorder->RecordEvent("appcore/dtor_end");
+        m_recorder->RecordEvent(name, detail);
 }
 
 void AppCore::WaitForInitialFetch() {
@@ -303,9 +291,8 @@ bool AppCore::MatchesActiveCategory(const std::string& categories) const {
 }
 
 void AppCore::FetchArticles() {
-    if (m_recorder)
-        m_recorder->RecordEvent("appcore/fetcharticles_begin",
-                                "view=" + std::to_string(static_cast<int>(GetFilterView())));
+    Record("appcore/fetcharticles_begin",
+           "view=" + std::to_string(static_cast<int>(GetFilterView())));
     m_current_articles.clear();
 
     switch (GetFilterView()) {
@@ -458,9 +445,7 @@ void AppCore::FetchArticles() {
 
     RefreshTitles();
     m_article_index = 0;
-    if (m_recorder)
-        m_recorder->RecordEvent("appcore/fetcharticles_end",
-                                "count=" + std::to_string(m_current_articles.size()));
+    Record("appcore/fetcharticles_end", "count=" + std::to_string(m_current_articles.size()));
     NotifyArticleUpdate();
 }
 
@@ -506,80 +491,10 @@ std::vector<Article> AppCore::SelectedArticles() const {
 }
 
 std::string AppCore::GetBibtex(const Article& article) {
-    std::string arxiv_id = article.id();
-    if (arxiv_id.empty())
+    if (article.id().empty())
         return "";
-
-    std::string bibtex = m_fetcher->FetchBibTeX(arxiv_id);
-    if (!bibtex.empty()) {
-        return bibtex;
-    }
-
-    return ConstructBibtexFromArticle(article);
-}
-
-std::string AppCore::ConstructBibtexFromArticle(const Article& article) const {
-    std::string arxiv_id = article.id();
-    if (arxiv_id.empty())
-        return "";
-
-    // Extract first author's last name for the cite key
-    std::string first_author_last;
-    std::string authors_str = article.authors;
-    size_t comma_pos = authors_str.find(',');
-    std::string first_author =
-        (comma_pos != std::string::npos) ? authors_str.substr(0, comma_pos) : authors_str;
-
-    // Get last name (last word of the first author)
-    size_t last_space = first_author.rfind(' ');
-    if (last_space != std::string::npos) {
-        first_author_last = first_author.substr(last_space + 1);
-    } else {
-        first_author_last = first_author;
-    }
-
-    // Extract year and month from article date
-    auto time_t = std::chrono::system_clock::to_time_t(article.date);
-    std::tm tm = *std::localtime(&time_t);
-    std::string year = std::to_string(1900 + tm.tm_year);
-    std::string month = std::to_string(1 + tm.tm_mon);
-
-    // Extract primary class from category (first one)
-    std::string primary_class = article.category;
-    size_t cat_comma = primary_class.find(',');
-    if (cat_comma != std::string::npos) {
-        primary_class = primary_class.substr(0, cat_comma);
-    }
-    // Trim whitespace
-    while (!primary_class.empty() && primary_class.back() == ' ')
-        primary_class.pop_back();
-
-    // Format authors for BibTeX (replace ", " with " and ")
-    std::string bibtex_authors = article.authors;
-    std::string search = ", ";
-    std::string replace = " and ";
-    size_t pos = 0;
-    while ((pos = bibtex_authors.find(search, pos)) != std::string::npos) {
-        bibtex_authors.replace(pos, search.length(), replace);
-        pos += replace.length();
-    }
-
-    return fmt::format("@article{{{0}:{1},\n"
-                       "    author = \"{2}\",\n"
-                       "    title = \"{{{3}}}\",\n"
-                       "    eprint = \"{1}\",\n"
-                       "    archivePrefix = \"arXiv\",\n"
-                       "    primaryClass = \"{4}\",\n"
-                       "    year = \"{5}\",\n"
-                       "    month = \"{6}\"\n"
-                       "}}",
-                       first_author_last,
-                       arxiv_id,
-                       bibtex_authors,
-                       article.title,
-                       primary_class,
-                       year,
-                       month);
+    std::string bibtex = m_fetcher->FetchBibTeX(article.id());
+    return bibtex.empty() ? BibTeX::Build(article) : bibtex;
 }
 
 const std::vector<Article>& AppCore::GetCurrentArticles() const { return m_current_articles; }
@@ -608,41 +523,39 @@ void AppCore::AddProject(const std::string& project_name) {
 
 void AppCore::RemoveProject(const std::string& project_name) {
     m_db->RemoveProject(project_name);
+    const int index_before = m_filter_index;
     RefreshFilterOptions();
     if (m_project_update_callback) {
         m_project_update_callback();
     }
-    NotifyArticleUpdate();
+    // The viewed project is gone (or moved): show what the filter now says.
+    if (m_filter_index != index_before)
+        FetchArticles();
+    else
+        NotifyArticleUpdate();
 }
 
 void AppCore::LinkArticleToProject(const std::string& article_link,
                                    const std::string& project_name) {
     m_db->LinkArticleToProject(article_link, project_name);
 
-    // Auto-append to the project's .bib file if one has been exported before.
+    // Auto-append to the project's .bib file if one has been exported before,
+    // unless the paper is already in it (re-linking used to add it again).
     std::string bib_path = m_db->GetProjectBibPath(project_name);
     if (!bib_path.empty() && std::filesystem::exists(bib_path)) {
-        // Find the article in the current list (fast path) or fall back to DB.
-        Article article;
-        auto it = std::find_if(m_current_articles.begin(),
-                               m_current_articles.end(),
-                               [&](const Article& a) { return a.link == article_link; });
-        if (it != m_current_articles.end()) {
-            article = *it;
-        } else {
-            auto all = m_db->GetRecent(-1);
-            auto jt = std::find_if(
-                all.begin(), all.end(), [&](const Article& a) { return a.link == article_link; });
-            if (jt == all.end()) {
-                NotifyArticleUpdate();
-                return;
+        if (auto article = FindArticle(article_link)) {
+            std::ifstream existing(bib_path);
+            const std::string content((std::istreambuf_iterator<char>(existing)),
+                                      std::istreambuf_iterator<char>());
+            const bool present = content.find("{" + article->id() + "}") != std::string::npos ||
+                                 content.find("\"" + article->id() + "\"") != std::string::npos;
+            if (!present) {
+                std::ofstream f(bib_path, std::ios::app);
+                if (f.is_open()) {
+                    f << "\n" << GetBibtex(*article);
+                    spdlog::info("[AppCore]: Appended BibTeX for {} to {}", article_link, bib_path);
+                }
             }
-            article = *jt;
-        }
-        std::ofstream f(bib_path, std::ios::app);
-        if (f.is_open()) {
-            f << "\n" << GetBibtex(article);
-            spdlog::info("[AppCore]: Appended BibTeX for {} to {}", article_link, bib_path);
         }
     }
 
@@ -783,6 +696,15 @@ void AppCore::RefreshTitles() {
 }
 
 void AppCore::RefreshFilterOptions() {
+    // Tags and projects are addressed by position, and adding or removing one
+    // shifts everything after it. Remember what is selected by name and
+    // re-select it once the list is rebuilt.
+    const FilterView view_before = GetFilterView();
+    const std::string tag_before =
+        view_before == FilterView::TagBase ? GetTagNameForFilter(m_filter_index) : "";
+    const std::string project_before =
+        view_before == FilterView::Project ? GetProjectNameForFilter(m_filter_index) : "";
+
     m_filter_options = {"All Articles",
                         "Bookmarks",
                         "Today",
@@ -835,6 +757,17 @@ void AppCore::RefreshFilterOptions() {
     // Members of a parent cycle have no root; list them rather than lose them.
     for (const auto& name : all_projects)
         add(name, 0);
+
+    auto reselect = [&](const std::vector<std::string>& names, const std::string& name, int base) {
+        auto it = std::find(names.begin(), names.end(), name);
+        // Gone (deleted): fall back to New Articles rather than a neighbour.
+        m_filter_index = it == names.end() ? static_cast<int>(FilterView::NewArticles)
+                                           : base + static_cast<int>(it - names.begin());
+    };
+    if (!tag_before.empty())
+        reselect(m_filter_tag_names, tag_before, static_cast<int>(FilterView::TagBase));
+    else if (!project_before.empty())
+        reselect(m_filter_project_names, project_before, m_project_start_index);
 }
 
 void AppCore::SetDateRange(const std::string& start, const std::string& end) {
@@ -967,7 +900,7 @@ bool AppCore::IsRankerTrained() const {
     return m_ranker.IsTrained();
 }
 
-void AppCore::TryRefetchIfNeeded() {
+bool AppCore::TryRefetchIfNeeded() {
     // Articles a background download marked read: update the list in place
     // rather than re-querying (which would reset the cursor).
     std::vector<std::string> newly_read;
@@ -975,29 +908,30 @@ void AppCore::TryRefetchIfNeeded() {
         std::lock_guard<std::mutex> lock(m_task_mutex);
         newly_read.swap(m_pending_read);
     }
+    bool changed = false;
     if (!newly_read.empty()) {
         for (auto& a : m_current_articles)
             if (std::find(newly_read.begin(), newly_read.end(), a.link) != newly_read.end())
                 a.read = true;
         RefreshTitles();
+        changed = true;
     }
 
     // Don't query the DB while the background fetch is still writing —
     // SQLite would serialise the read against every pending insert and the
     // UI thread would block for the duration of the bulk insert.
     if (m_fetching.load()) {
-        if (m_recorder)
-            m_recorder->RecordEvent("appcore/try_refetch_skipped", "fetching");
-        return;
+        Record("appcore/try_refetch_skipped", "fetching");
+        return changed;
     }
     if (m_needs_refetch.exchange(false)) {
-        if (m_recorder)
-            m_recorder->RecordEvent("appcore/try_refetch_executing");
+        Record("appcore/try_refetch_executing");
         FetchArticles(); // FetchArticles also fires NotifyArticleUpdate
-        if (m_recorder)
-            m_recorder->RecordEvent("appcore/try_refetch_executed",
-                                    "count=" + std::to_string(m_current_articles.size()));
+        Record("appcore/try_refetch_executed",
+               "count=" + std::to_string(m_current_articles.size()));
+        changed = true;
     }
+    return changed;
 }
 
 int AppCore::GetArticleRating(const std::string& article_link) const {
@@ -1061,104 +995,36 @@ std::string AppCore::GetProjectNameForFilter(int index) const {
     return "";
 }
 
-// ─── Export helpers ───────────────────────────────────────────────────────────
-
-static std::string format_date_str(const std::chrono::system_clock::time_point& tp) {
-    auto tt = std::chrono::system_clock::to_time_t(tp);
-    std::tm tm = {};
-    localtime_r(&tt, &tm);
-    char buf[32];
-    std::strftime(buf, sizeof(buf), "%Y-%m-%d", &tm);
-    return buf;
-}
-
 // ---------------------------------------------------------------------------
-// Export helper
-//
-// All Export* methods share the same skeleton: open the output file, bail
-// out if that fails, write format-specific content, and log success. This
-// helper isolates the boilerplate so each Export* body is just "fetch data,
-// describe how to write it."
+// Exports — data gathering here, file formats in Export.cc
 // ---------------------------------------------------------------------------
-namespace {
-bool write_export(const std::string& path,
-                  std::string_view log_subject,
-                  const std::function<void(std::ofstream&)>& writer) {
-    std::ofstream file(path);
-    if (!file.is_open())
-        return false;
-    writer(file);
-    spdlog::info("[AppCore]: Exported {} to {}", log_subject, path);
-    return true;
+
+std::function<std::string(const std::string&)> AppCore::NotesFor(const std::string& project) const {
+    return [this, project](const std::string& link) { return m_db->GetProjectNote(project, link); };
 }
-} // namespace
 
 bool AppCore::ExportProjectMarkdown(const std::string& project_name,
                                     const std::string& output_path) const {
-    auto articles = m_db->GetArticlesForProject(project_name);
-    return write_export(
-        output_path, "project '" + project_name + "' Markdown", [&](std::ofstream& file) {
-            file << "# " << project_name << "\n\n";
-            file << articles.size() << " article(s)\n\n---\n\n";
-            for (const auto& article : articles) {
-                std::string note = m_db->GetProjectNote(project_name, article.link);
-                file << "## " << article.title << "\n\n";
-                file << "**Authors:** " << article.authors << "  \n";
-                file << "**Date:** " << format_date_str(article.date) << "  \n";
-                file << "**Link:** " << article.link << "  \n\n";
-                file << article.abstract << "\n\n";
-                if (!note.empty()) {
-                    file << "> **Note:** " << note << "\n\n";
-                }
-                file << "---\n\n";
-            }
-        });
+    return Export::ProjectMarkdown(output_path,
+                                   project_name,
+                                   m_db->GetArticlesForProject(project_name),
+                                   NotesFor(project_name));
 }
 
 bool AppCore::ExportProjectText(const std::string& project_name,
                                 const std::string& output_path) const {
-    auto articles = m_db->GetArticlesForProject(project_name);
-    return write_export(
-        output_path, "project '" + project_name + "' plain text", [&](std::ofstream& file) {
-            file << project_name << "\n" << std::string(project_name.size(), '=') << "\n\n";
-            file << articles.size() << " article(s)\n\n";
-            for (size_t i = 0; i < articles.size(); ++i) {
-                const auto& article = articles[i];
-                std::string note = m_db->GetProjectNote(project_name, article.link);
-                file << "[" << (i + 1) << "] " << article.title << "\n";
-                file << "    Authors: " << article.authors << "\n";
-                file << "    Date: " << format_date_str(article.date) << "\n";
-                file << "    Link: " << article.link << "\n";
-                if (!note.empty())
-                    file << "    Note: " << note << "\n";
-                file << "\n";
-            }
-        });
+    return Export::ProjectText(output_path,
+                               project_name,
+                               m_db->GetArticlesForProject(project_name),
+                               NotesFor(project_name));
 }
 
 bool AppCore::ExportProjectJSON(const std::string& project_name,
                                 const std::string& output_path) const {
-    auto articles = m_db->GetArticlesForProject(project_name);
-    return write_export(
-        output_path, "project '" + project_name + "' JSON", [&](std::ofstream& file) {
-            nlohmann::json j;
-            j["name"] = project_name;
-            j["articles"] = nlohmann::json::array();
-            for (const auto& a : articles) {
-                auto ts =
-                    std::chrono::duration_cast<std::chrono::seconds>(a.date.time_since_epoch())
-                        .count();
-                nlohmann::json entry;
-                entry["link"] = a.link;
-                entry["title"] = a.title;
-                entry["authors"] = a.authors;
-                entry["abstract"] = a.abstract;
-                entry["date"] = ts;
-                entry["note"] = m_db->GetProjectNote(project_name, a.link);
-                j["articles"].push_back(std::move(entry));
-            }
-            file << j.dump(2) << "\n";
-        });
+    return Export::ProjectJSON(output_path,
+                               project_name,
+                               m_db->GetArticlesForProject(project_name),
+                               NotesFor(project_name));
 }
 
 bool AppCore::ImportProjectJSON(const std::string& input_path) {
@@ -1237,88 +1103,15 @@ bool AppCore::ImportProjectJSON(const std::string& input_path) {
 }
 
 // ---------------------------------------------------------------------------
-// BibTeX helpers
+// BibTeX export — InspireHEP when it has the paper, else BibTeX::Build
 // ---------------------------------------------------------------------------
-
-namespace {
-
-/// Extract the last name from the first author in a comma-separated list.
-/// e.g. "John Doe, Jane Smith" → "Doe"
-static std::string first_author_last_name(const std::string& authors) {
-    // Take the portion before the first comma (= first author)
-    std::string first = authors.substr(0, authors.find(','));
-    // Last word is the last name
-    std::size_t space = first.rfind(' ');
-    if (space == std::string::npos)
-        return first;
-    return first.substr(space + 1);
-}
-
-/// Build a fallback BibTeX entry from Article metadata.
-static std::string build_fallback_bibtex(const Arxiv::Article& article) {
-    // Extract arXiv ID from link (last path component)
-    std::string arxiv_id = article.id();
-
-    // Year from date
-    auto tt = std::chrono::system_clock::to_time_t(article.date);
-    std::tm tm = {};
-    localtime_r(&tt, &tm);
-    char year_buf[8];
-    std::strftime(year_buf, sizeof(year_buf), "%Y", &tm);
-
-    // Citation key: LastnameYear:arxivID
-    std::string key = first_author_last_name(article.authors) + ":" + year_buf + "_" + arxiv_id;
-    // Replace non-alphanumeric (except :_.) with underscore
-    for (char& c : key) {
-        if (!std::isalnum(static_cast<unsigned char>(c)) && c != ':' && c != '_' && c != '.') {
-            c = '_';
-        }
-    }
-
-    std::string bib;
-    bib += "@article{" + key + ",\n";
-    bib += "  author        = {" + article.authors + "},\n";
-    bib += "  title         = {{" + article.title + "}},\n";
-    bib += "  eprint        = {" + arxiv_id + "},\n";
-    bib += "  archivePrefix = {arXiv},\n";
-    if (!article.category.empty()) {
-        bib += "  primaryClass  = {" + article.category + "},\n";
-    }
-    bib += "  year          = {" + std::string(year_buf) + "},\n";
-    bib += "  url           = {" + article.link + "},\n";
-    bib += "}\n";
-    return bib;
-}
-
-} // anonymous namespace
-
-// ---------------------------------------------------------------------------
-// BibTeX export — AppCore methods
-// ---------------------------------------------------------------------------
-
-/// Fetch BibTeX for one article: try InspireHEP via the fetcher; fall back
-/// to constructing from article metadata.
-static std::string get_bibtex(const Arxiv::Article& article, Arxiv::Fetcher* fetcher) {
-    std::string arxiv_id = article.id();
-    std::string bib;
-    if (!arxiv_id.empty() && fetcher) {
-        bib = fetcher->FetchBibTeX(arxiv_id);
-    }
-    if (bib.empty()) {
-        bib = build_fallback_bibtex(article);
-    }
-    return bib;
-}
 
 bool AppCore::ExportArticlesBibTeX(const std::vector<Article>& articles,
                                    const std::string& output_path) const {
-    return write_export(output_path,
-                        std::to_string(articles.size()) + " article(s) BibTeX",
-                        [&](std::ofstream& file) {
-                            for (const auto& a : articles) {
-                                file << get_bibtex(a, m_fetcher.get()) << "\n";
-                            }
-                        });
+    return Export::BibTeXFile(output_path, articles, [this](const Article& a) {
+        std::string bib = a.id().empty() ? "" : m_fetcher->FetchBibTeX(a.id());
+        return bib.empty() ? BibTeX::Build(a) : bib;
+    });
 }
 
 bool AppCore::ExportArticleBibTeX(const Article& article, const std::string& output_path) const {
@@ -1385,35 +1178,8 @@ std::vector<Article> AppCore::GetArticlesForFollowedAuthors() const {
 // Daily-digest export
 // ---------------------------------------------------------------------------
 
-static std::string today_string() {
-    auto now = std::chrono::system_clock::now();
-    std::time_t t = std::chrono::system_clock::to_time_t(now);
-    std::tm tm_val{};
-    localtime_r(&t, &tm_val);
-    char buf[32];
-    std::strftime(buf, sizeof(buf), "%Y-%m-%d", &tm_val);
-    return buf;
-}
-
 bool AppCore::ExportDailyDigest(const std::string& output_path) const {
-    auto articles = m_db->GetRecent(1); // last 24 hours
-    return write_export(output_path,
-                        "daily digest (" + std::to_string(articles.size()) + " articles)",
-                        [&](std::ofstream& f) {
-                            f << "# arXiv Daily Digest — " << today_string() << "\n\n";
-                            if (articles.empty()) {
-                                f << "_No articles fetched today._\n";
-                            } else {
-                                for (const auto& a : articles) {
-                                    f << "## " << a.title << "\n";
-                                    f << "**Authors:** " << a.authors << "  \n";
-                                    f << "**Link:** <" << a.link << ">  \n";
-                                    if (!a.abstract.empty())
-                                        f << "\n" << a.abstract << "\n";
-                                    f << "\n---\n\n";
-                                }
-                            }
-                        });
+    return Export::DailyDigestMarkdown(output_path, m_db->GetRecent(1)); // last 24 hours
 }
 
 bool AppCore::ExportDailyDigestYAML(const std::string& output_path) const {
@@ -1434,35 +1200,7 @@ bool AppCore::ExportDailyDigestYAML(const std::string& output_path) const {
     std::stable_sort(scored.begin(), scored.end(), [](const auto& lhs, const auto& rhs) {
         return lhs.first > rhs.first;
     });
-    std::vector<Article> articles;
-    articles.reserve(scored.size());
-    for (auto& entry : scored)
-        articles.push_back(std::move(entry.second));
-    // yaml-cpp does the quoting: titles and abstracts are full of LaTeX
-    // backslashes, which hand-rolled double-quoted scalars turned into
-    // invalid escapes ("\\m") or silently into control characters ("\\t").
-    YAML::Emitter out;
-    out << YAML::BeginMap;
-    out << YAML::Key << "date" << YAML::Value << YAML::DoubleQuoted << today_string();
-    out << YAML::Key << "articles" << YAML::Value << YAML::BeginSeq;
-    for (std::size_t i = 0; i < articles.size(); ++i) {
-        const auto& a = articles[i];
-        out << YAML::BeginMap;
-        out << YAML::Key << "id" << YAML::Value << YAML::DoubleQuoted << a.id();
-        out << YAML::Key << "title" << YAML::Value << YAML::DoubleQuoted << a.title;
-        out << YAML::Key << "authors" << YAML::Value << YAML::DoubleQuoted << a.authors;
-        out << YAML::Key << "link" << YAML::Value << YAML::DoubleQuoted << a.link;
-        out << YAML::Key << "category" << YAML::Value << YAML::DoubleQuoted << a.category;
-        out << YAML::Key << "score" << YAML::Value << fmt::format("{:.3f}", scored[i].first);
-        if (!a.abstract.empty())
-            out << YAML::Key << "abstract" << YAML::Value << YAML::DoubleQuoted << a.abstract;
-        out << YAML::EndMap;
-    }
-    out << YAML::EndSeq << YAML::EndMap;
-
-    return write_export(output_path,
-                        "daily digest YAML (" + std::to_string(articles.size()) + " articles)",
-                        [&](std::ofstream& f) { f << out.c_str() << "\n"; });
+    return Export::DailyDigestYAML(output_path, scored);
 }
 
 // ---------------------------------------------------------------------------
@@ -1562,141 +1300,12 @@ std::string AppCore::ExportSelectedDigest() {
         spdlog::warn("[AppCore]: ExportSelectedDigest: nothing selected");
         return "";
     }
-    return RunDigestExport(picked, m_config.get_download_dir(), {});
+    return Export::SelectedDigest(*m_fetcher, picked, m_config.get_download_dir(), {});
 }
-
-std::string AppCore::RunDigestExport(const std::vector<Article>& picked,
-                                     const std::string& download_dir,
-                                     const std::function<void()>& progress) {
-    const std::string date_dir = today_string();
-    namespace fs = std::filesystem;
-    fs::path digest_dir = fs::path(download_dir) / date_dir;
-    std::error_code ec;
-    fs::create_directories(digest_dir, ec);
-    if (ec) {
-        spdlog::error(
-            "[AppCore]: Cannot create digest dir {}: {}", digest_dir.string(), ec.message());
-        return "";
-    }
-
-    // Write the markdown digest.
-    fs::path md_path = digest_dir / "digest.md";
-    std::ofstream f(md_path);
-    if (!f.is_open()) {
-        spdlog::error("[AppCore]: Cannot open digest file {}", md_path.string());
-        return "";
-    }
-    f << "# arXiv Selected Digest — " << date_dir << "\n\n";
-    f << picked.size() << " selected article(s)\n\n---\n\n";
-    for (const auto& a : picked) {
-        f << "## " << a.title << "\n\n";
-        f << "**Authors:** " << a.authors << "  \n";
-        f << "**Link:** <" << a.link << ">  \n";
-        f << "**PDF:** [" << a.file_stem() << ".pdf](" << a.file_stem() << ".pdf)  \n";
-        if (!a.category.empty())
-            f << "**Category:** " << a.category << "  \n";
-        if (!a.abstract.empty())
-            f << "\n" << a.abstract << "\n";
-        f << "\n---\n\n";
-    }
-    f.close();
-
-    // Download each PDF next to the digest.
-    int ok = 0;
-    for (const auto& a : picked) {
-        if (m_fetcher->DownloadPaper(a.id(), (digest_dir / (a.file_stem() + ".pdf")).string()))
-            ++ok;
-        if (progress)
-            progress();
-    }
-    spdlog::info("[AppCore]: Selected digest written to {} ({}/{} PDFs downloaded)",
-                 digest_dir.string(),
-                 ok,
-                 picked.size());
-
-    return digest_dir.string();
-}
-
-namespace {
-
-// Quote a string for YAML frontmatter — wrap in double quotes and escape
-// embedded backslashes / double quotes. Newlines are folded to spaces so a
-// single-line value remains valid in flow style.
-std::string yaml_quote(const std::string& s) {
-    std::string out = "\"";
-    out.reserve(s.size() + 2);
-    for (char c : s) {
-        if (c == '\\')
-            out += "\\\\";
-        else if (c == '"')
-            out += "\\\"";
-        else if (c == '\n' || c == '\r')
-            out += ' ';
-        else
-            out += c;
-    }
-    out += '"';
-    return out;
-}
-
-// Split a comma-separated category string into a YAML inline list.
-// "hep-ph, hep-lat" -> "[hep-ph, hep-lat]"
-std::string yaml_inline_list(const std::string& csv) {
-    std::string out = "[";
-    bool first = true;
-    std::string token;
-    auto flush = [&]() {
-        // trim
-        size_t a = token.find_first_not_of(" \t");
-        size_t b = token.find_last_not_of(" \t");
-        if (a == std::string::npos) {
-            token.clear();
-            return;
-        }
-        std::string t = token.substr(a, b - a + 1);
-        token.clear();
-        if (t.empty())
-            return;
-        if (!first)
-            out += ", ";
-        out += t;
-        first = false;
-    };
-    for (char c : csv) {
-        if (c == ',')
-            flush();
-        else
-            token += c;
-    }
-    flush();
-    out += "]";
-    return out;
-}
-
-} // namespace
 
 std::string AppCore::ExportSelectedDigestArchive() {
     std::string dir = ExportSelectedDigest();
-    return dir.empty() ? "" : PackDigestArchive(dir);
-}
-
-std::string AppCore::PackDigestArchive(const std::string& dir) {
-    namespace fs = std::filesystem;
-    fs::path dir_path(dir);
-    fs::path archive = dir_path.parent_path() / (dir_path.filename().string() + ".tar.gz");
-
-    // Pack the digest directory into a .tar.gz alongside it.
-    if (Process::RunAndWait({"tar",
-                             "-czf",
-                             archive.string(),
-                             "-C",
-                             dir_path.parent_path().string(),
-                             dir_path.filename().string()}) != 0) {
-        spdlog::error("[AppCore]: tar failed for digest archive {}", archive.string());
-        return "";
-    }
-    spdlog::info("[AppCore]: Digest archive written to {}", archive.string());
-    return archive.string();
+    return dir.empty() ? "" : Export::PackArchive(dir);
 }
 
 std::string AppCore::ExportSelectedToObsidian() {
@@ -1710,116 +1319,8 @@ std::string AppCore::ExportSelectedToObsidian() {
         spdlog::warn("[AppCore]: ExportSelectedToObsidian: nothing selected");
         return "";
     }
-    return RunObsidianExport(picked, vault, m_config.get_obsidian_download_pdfs(), {});
-}
-
-std::string AppCore::RunObsidianExport(const std::vector<Article>& picked,
-                                       const std::string& vault,
-                                       bool download_pdfs,
-                                       const std::function<void()>& progress) {
-    namespace fs = std::filesystem;
-    const std::string date_str = today_string();
-    fs::path note_dir = fs::path(vault) / "arxiv-tui" / date_str;
-    std::error_code ec;
-    fs::create_directories(note_dir, ec);
-    if (ec) {
-        spdlog::error("[AppCore]: Cannot create vault dir {}: {}", note_dir.string(), ec.message());
-        return "";
-    }
-
-    // Per-paper notes with YAML frontmatter + abstract + a PDF link (or embed).
-    // By default the PDF stays on arXiv: vaults are often git repos, and
-    // committing every downloaded PDF bloats them for no benefit.
-    int pdf_ok = 0;
-    for (const auto& a : picked) {
-        const std::string aid = a.id();
-        const std::string stem = a.file_stem();
-        fs::path note_path = note_dir / (stem + ".md");
-
-        std::ofstream nf(note_path);
-        if (!nf.is_open()) {
-            spdlog::error("[AppCore]: Cannot write note {}", note_path.string());
-            if (progress)
-                progress();
-            continue;
-        }
-        nf << "---\n";
-        nf << "title: " << yaml_quote(a.title) << "\n";
-        nf << "authors: " << yaml_quote(a.authors) << "\n";
-        nf << "arxiv_id: " << yaml_quote(aid) << "\n";
-        nf << "url: " << yaml_quote(a.link) << "\n";
-        if (!a.category.empty()) {
-            nf << "tags: " << yaml_inline_list(a.category) << "\n";
-            nf << "category: " << yaml_quote(a.category) << "\n";
-        }
-        nf << "imported: " << date_str << "\n";
-        nf << "related-projects: []\n";
-        nf << "---\n\n";
-        nf << "# " << a.title << "\n\n";
-        nf << "**Authors:** " << a.authors << "\n\n";
-        nf << "**Link:** [" << a.link << "](" << a.link << ")\n\n";
-        if (download_pdfs) {
-            // Obsidian PDF embed: ![[file.pdf]] renders inline when colocated.
-            nf << "![[" << stem << ".pdf]]\n\n";
-        } else {
-            nf << "[PDF on arXiv](https://arxiv.org/pdf/" << aid << ")\n\n";
-        }
-        if (!a.abstract.empty()) {
-            nf << "## Abstract\n\n" << a.abstract << "\n";
-        }
-        nf << "\n## Reading Notes\n\n"
-           << "**Relevance:**\n\n"
-           << "**Key ideas:**\n\n"
-           << "**Open questions:**\n";
-
-        // Download the PDF next to the note. Fetcher writes relative to
-        // its own base_path (the configured download_dir), which is *not*
-        // the vault. Use an absolute path via the std::filesystem API
-        // instead so the file lands in the vault directory.
-        if (download_pdfs) {
-            fs::path pdf_path = note_dir / (stem + ".pdf");
-            if (m_fetcher->DownloadPaper(aid, pdf_path.string()))
-                ++pdf_ok;
-        }
-        if (progress)
-            progress();
-    }
-
-    // Index note that links to every paper imported today.
-    fs::path index_path = note_dir / ("digest-" + date_str + ".md");
-    std::ofstream idx(index_path);
-    if (!idx.is_open()) {
-        spdlog::error("[AppCore]: Cannot write index note {}", index_path.string());
-        return "";
-    }
-    idx << "---\n";
-    idx << "title: " << yaml_quote("arXiv digest " + date_str) << "\n";
-    idx << "tags: [arxiv-digest]\n";
-    idx << "date: " << date_str << "\n";
-    idx << "---\n\n";
-    idx << "# arXiv Digest — " << date_str << "\n\n";
-    idx << picked.size() << " paper(s) imported.\n\n";
-    for (const auto& a : picked) {
-        // Wikilink with display text — Obsidian uses [[file|alias]].
-        // "|" and "]]" would end the wikilink early.
-        std::string alias = a.title;
-        std::replace(alias.begin(), alias.end(), '|', '/');
-        for (auto pos = alias.find("]]"); pos != std::string::npos; pos = alias.find("]]"))
-            alias.replace(pos, 2, "] ]");
-        idx << "- [[" << a.file_stem() << "|" << alias << "]]\n";
-    }
-    idx.close();
-
-    if (download_pdfs)
-        spdlog::info("[AppCore]: Obsidian digest written to {} ({}/{} PDFs)",
-                     index_path.string(),
-                     pdf_ok,
-                     picked.size());
-    else
-        spdlog::info("[AppCore]: Obsidian digest written to {} ({} notes, PDFs linked on arXiv)",
-                     index_path.string(),
-                     picked.size());
-    return index_path.string();
+    return Export::ObsidianNotes(
+        *m_fetcher, picked, vault, m_config.get_obsidian_download_pdfs(), {});
 }
 
 // ---------------------------------------------------------------------------
@@ -1875,7 +1376,7 @@ bool AppCore::StartExportSelectedToObsidian() {
         n,
         [this, picked = std::move(picked), vault, download](const std::function<void()>& progress) {
             TaskOutcome out;
-            out.result = RunObsidianExport(picked, vault, download, progress);
+            out.result = Export::ObsidianNotes(*m_fetcher, picked, vault, download, progress);
             if (out.result.empty())
                 out.error = "Obsidian export failed — check the vault path";
             else
@@ -1899,11 +1400,11 @@ bool AppCore::StartDigestTask(bool archive) {
         n,
         [this, picked = std::move(picked), dir, archive](const std::function<void()>& progress) {
             TaskOutcome out;
-            out.result = RunDigestExport(picked, dir, progress);
+            out.result = Export::SelectedDigest(*m_fetcher, picked, dir, progress);
             if (out.result.empty()) {
                 out.error = "Failed to export digest";
             } else if (archive) {
-                out.result = PackDigestArchive(out.result);
+                out.result = Export::PackArchive(out.result);
                 if (out.result.empty())
                     out.error = "Failed to create digest archive";
                 else

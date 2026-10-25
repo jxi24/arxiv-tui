@@ -123,11 +123,22 @@ void ArxivApp::SetupUI() {
         while (refresh_ui_continue) {
             using namespace std::chrono_literals;
             std::this_thread::sleep_for(0.05s);
+            // Redraw only when something changed or is animating; an idle
+            // TUI used to repaint 20 times a second.
             screen.Post([&] {
-                UpdateTitleScrollPositions();
-                core.TryRefetchIfNeeded();
+                bool dirty = core.TryRefetchIfNeeded();
+                if (focused_pane == 1 && show_detail) { // scrolling title
+                    UpdateTitleScrollPositions();
+                    dirty = true;
+                }
+                const auto task = core.GetBackgroundTaskStatus();
+                const bool badge_visible =
+                    task.running ||
+                    (!task.label.empty() &&
+                     std::chrono::steady_clock::now() - task.finished_at < std::chrono::seconds(9));
+                if (dirty || badge_visible || core.IsFetching())
+                    screen.PostEvent(Event::Custom);
             });
-            screen.Post(Event::Custom);
             if (m_recorder && (tick++ % 20) == 0) {
                 m_recorder->RecordEvent("app/refresh_tick",
                                         std::string("fetching=") + (core.IsFetching() ? "1" : "0"));
