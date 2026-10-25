@@ -542,6 +542,20 @@ TEST_CASE("AppCore project import", "[app][projects]") {
         REQUIRE_FALSE(ok);
     }
 
+    SECTION("ImportProjectJSON returns false for a number JSON cannot hold") {
+        // Found by fuzz_import_json: nlohmann throws out_of_range, not
+        // parse_error, for 1e70000.
+        const std::string huge_path = "/tmp/test_import_huge_number.json";
+        {
+            std::ofstream f(huge_path);
+            f << R"({"name":"p","date":1e70000})";
+        }
+        bool ok = true;
+        REQUIRE_NOTHROW(ok = core_import.ImportProjectJSON(huge_path));
+        std::filesystem::remove(huge_path);
+        REQUIRE_FALSE(ok);
+    }
+
     SECTION("ImportProjectJSON returns false for invalid JSON") {
         const std::string bad_path = "/tmp/test_bad.json";
         std::ofstream f(bad_path);

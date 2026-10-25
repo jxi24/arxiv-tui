@@ -133,14 +133,29 @@ void copy_tail(int out, const char* path) {
         return;
     struct stat st{};
     if (::fstat(in, &st) == 0 && S_ISREG(st.st_mode)) {
+        // Starting mid-file lands inside a line: skip to the next one so
+        // the copied log stays replayable JSONL.
+        bool skip_partial = false;
         if (st.st_size > kReplayTailBytes) {
             ::lseek(in, st.st_size - kReplayTailBytes, SEEK_SET);
             put(out, "(earlier entries omitted)\n");
+            skip_partial = true;
         }
         char chunk[4096];
         ssize_t n;
-        while ((n = ::read(in, chunk, sizeof(chunk))) > 0)
-            put(out, chunk, static_cast<std::size_t>(n));
+        while ((n = ::read(in, chunk, sizeof(chunk))) > 0) {
+            const char* start = chunk;
+            std::size_t len = static_cast<std::size_t>(n);
+            if (skip_partial) {
+                const void* nl = std::memchr(start, '\n', len);
+                if (!nl)
+                    continue;
+                skip_partial = false;
+                len -= static_cast<std::size_t>(static_cast<const char*>(nl) + 1 - start);
+                start = static_cast<const char*>(nl) + 1;
+            }
+            put(out, start, len);
+        }
     }
     ::close(in);
 }

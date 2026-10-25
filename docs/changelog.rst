@@ -26,7 +26,9 @@ Unreleased
   back to ``https://inspirehep.net/``. PDF downloads are streamed to a
   temporary file, must start with ``%PDF-`` and stay under 256 MiB, and
   replace the target only when complete — an HTML error page or a dropped
-  connection no longer leaves a broken ``.pdf`` behind. ``--replay`` runs on
+  connection no longer leaves a broken ``.pdf`` behind. ``--replay`` accepts a
+  crash report as well as ``replay.jsonl`` (it never could: the report's
+  text header stopped it at line 1), and runs on
   an in-memory copy of the database and skips exports, imports, downloads
   and keyword saves. Project import files over 64 MiB are refused.
 
