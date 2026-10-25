@@ -7,6 +7,11 @@ Changelog
 Unreleased
 ----------
 
+- **Polite to arXiv** — every request identifies itself
+  (``arxiv-tui/<version> (+https://github.com/jxi24/arxiv-tui)``), and the
+  backfill after missed days waits 3 s between arXiv API pages, as the API
+  terms of use ask.
+
 - **No more half-written files** — ``config.yml``, ``ranker.bin``, the
   keywords file, exports, Obsidian notes and project ``.bib`` files are
   written to a temporary file and renamed into place, so a full disk or a

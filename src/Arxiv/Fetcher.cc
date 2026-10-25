@@ -5,6 +5,7 @@
 #include "Arxiv/Fetcher.hh"
 
 #include "Arxiv/Article.hh"
+#include "Arxiv/Version.hh"
 
 #include <nlohmann/json.hpp>
 
@@ -71,6 +72,17 @@ bool parse_ymd_prefix(const std::string& date, std::tm& out) {
         return false;
     }
     return true;
+}
+
+// Every request identifies the client (Fetcher::UserAgent) and has a
+// timeout. (cpr's variadic Get/Download with three options trips
+// -Wduplicated-branches inside cpr's own header, so set them on a Session.)
+cpr::Session session_for(const std::string& url, std::chrono::milliseconds timeout) {
+    cpr::Session session;
+    session.SetUrl(cpr::Url{url});
+    session.SetUserAgent(cpr::UserAgent{Fetcher::UserAgent()});
+    session.SetTimeout(cpr::Timeout{timeout});
+    return session;
 }
 
 } // namespace
@@ -174,15 +186,33 @@ bool Arxiv::PdfWriter::Commit() {
     return true;
 }
 
+Arxiv::RequestPacer::RequestPacer(Clock::duration interval, SleepFn sleep, NowFn now)
+    : m_interval(interval)
+    , m_sleep(std::move(sleep))
+    , m_now(std::move(now)) {}
+
+void Arxiv::RequestPacer::Wait() {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (m_last) {
+        auto elapsed = m_now() - *m_last;
+        if (elapsed < m_interval)
+            m_sleep(m_interval - elapsed);
+    }
+    m_last = m_now();
+}
+
+std::string Fetcher::UserAgent() {
+    return fmt::format("arxiv-tui/{} (+https://github.com/jxi24/arxiv-tui)", kVersion);
+}
+
 bool Fetcher::DownloadPaper(const std::string& paper_id, const std::string& output_path) {
     try {
         auto url = ConstructPaperUrl(paper_id, "pdf");
         // Stream to disk instead of holding the whole PDF in memory.
         PdfWriter out(base_path / output_path);
-        auto response = cpr::Download(
-            cpr::WriteCallback{[&out](std::string data, intptr_t) { return out.Write(data); }},
-            cpr::Url{url},
-            cpr::Timeout{120000});
+        auto response = session_for(url, std::chrono::milliseconds(120000))
+                            .Download(cpr::WriteCallback{
+                                [&out](std::string data, intptr_t) { return out.Write(data); }});
 
         if (response.status_code != 200) {
             spdlog::error(
@@ -253,7 +283,7 @@ std::optional<std::string> Fetcher::FetchFeeds() {
     try {
         auto url = fmt::format("https://rss.arxiv.org/rss/{}", fmt::join(m_topics, "+"));
 
-        auto response = cpr::Get(cpr::Url{url}, cpr::Timeout{30000});
+        auto response = session_for(url, std::chrono::milliseconds(30000)).Get();
 
         if (response.status_code == 200) {
             return response.text;
@@ -750,7 +780,8 @@ std::vector<Article> Fetcher::FetchSince(const std::string& utc_date) {
         // (shorter) result: the caller would mark the missed days as fetched.
         cpr::Response resp;
         try {
-            resp = cpr::Get(cpr::Url{url}, cpr::Timeout{15000});
+            m_api_pacer.Wait();
+            resp = session_for(url, std::chrono::milliseconds(15000)).Get();
         } catch (const std::exception& e) {
             throw FetchError(std::string("arXiv API network error: ") + e.what());
         }
@@ -903,7 +934,7 @@ std::string Fetcher::FetchBibTeX(const std::string& paper_id) {
         return {};
     }
     try {
-        auto search_resp = cpr::Get(cpr::Url{*inspire_search}, cpr::Timeout{5000});
+        auto search_resp = session_for(*inspire_search, std::chrono::milliseconds(5000)).Get();
 
         if (search_resp.status_code == 200) {
             auto js = nlohmann::json::parse(search_resp.text);
@@ -919,7 +950,7 @@ std::string Fetcher::FetchBibTeX(const std::string& paper_id) {
                     return {};
                 }
 
-                auto bib_resp = cpr::Get(cpr::Url{bibtex_url}, cpr::Timeout{5000});
+                auto bib_resp = session_for(bibtex_url, std::chrono::milliseconds(5000)).Get();
                 if (bib_resp.status_code == 200 && !bib_resp.text.empty()) {
                     spdlog::info("[Fetcher]: Got InspireHEP BibTeX for {}", paper_id);
                     return bib_resp.text;

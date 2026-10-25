@@ -129,7 +129,7 @@ Business logic. Receives `DatabaseManager` and `Fetcher` via `unique_ptr` (depen
 SQLite3 persistence layer. All virtual methods — mock-friendly for testing. File databases use WAL with a 5 s busy timeout (TUI and cron `--fetch` share the file). Every public method holds a recursive mutex (one connection is shared with the background fetch). Statement errors throw (`Stmt::for_each` no longer stops silently); schema additions use `AddColumnIfMissing`; strings are bound and read by length (NUL-safe).
 
 **`Fetcher`** (`Fetcher.hh/cc`)
-Parses arXiv RSS/XML feeds via `cpr` + `pugixml`. Downloads PDFs. All virtual methods.
+Parses arXiv RSS/XML feeds via `cpr` + `pugixml`. Downloads PDFs. All virtual methods. Every request goes through `session_for` (User-Agent `Fetcher::UserAgent()`, timeout); `FetchSince` API pages are spaced 3 s apart by `RequestPacer`. The version comes from the generated `Version.hh` (`Version.hh.in`).
 
 **`Config`** (`Config.hh/cc`)
 Loads `config.yml` from the XDG config path on startup; creates defaults if missing. Stores topics, download directory, key bindings, and runtime file paths (`db_file_`, `ranker_file_`). The db and ranker paths are not written to YAML — they are set programmatically by `main.cc` from `Paths::Resolve()` before the app is constructed.
