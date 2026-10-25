@@ -646,3 +646,37 @@ TEST_CASE("TUI shows an article's arXiv day in any time zone", "[tui][regression
     REQUIRE_THAT(screen, Catch::Matchers::ContainsSubstring("2026-07-04"));
     REQUIRE_THAT(screen, !Catch::Matchers::ContainsSubstring("2026-07-03"));
 }
+
+TEST_CASE("Keyword editor takes every letter as text", "[tui][keywords][regression]") {
+    // j/k (next/previous) and d (delete) used to be handled before text, so
+    // "dark jets" could not be typed.
+    auto file = std::filesystem::temp_directory_path() /
+                ("arxiv_kw_editor_" + std::to_string(::getpid()) + ".txt");
+    std::filesystem::remove(file);
+    Config cfg = make_test_config();
+    cfg.set_keywords_file(file.string());
+    auto app = make_app_with_articles(cfg).app;
+    auto handler = app->GetEventHandler();
+    auto type = [&](const std::string& text) {
+        for (char c : text)
+            handler->OnEvent(Event::Character(std::string(1, c)));
+    };
+
+    handler->OnEvent(Event::Character("K"));
+    type("dark jets");
+    handler->OnEvent(Event::Return);
+    type("kaon");
+    handler->OnEvent(Event::Return);
+
+    SECTION("both keywords are saved as typed") {
+        handler->OnEvent(Event::Escape);
+        REQUIRE(app->GetCore().GetKeywords() == std::vector<std::string>{"dark jets", "kaon"});
+    }
+    SECTION("arrows select and Delete removes") {
+        handler->OnEvent(Event::ArrowUp);
+        handler->OnEvent(Event::Delete);
+        handler->OnEvent(Event::Escape);
+        REQUIRE(app->GetCore().GetKeywords() == std::vector<std::string>{"kaon"});
+    }
+    std::filesystem::remove(file);
+}

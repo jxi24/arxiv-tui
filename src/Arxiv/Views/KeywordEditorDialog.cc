@@ -38,6 +38,8 @@ void ArxivApp::SetupKeywordEditorDialog() {
         kw_entries.push_back(hbox({
             text("Enter") | bold | color(TextColors::primary()),
             text(": add  ") | color(TextColors::subtext()),
+            text("↑/↓") | bold | color(TextColors::primary()),
+            text(": select  ") | color(TextColors::subtext()),
             text("Del") | bold | color(TextColors::primary()),
             text(": remove selected  ") | color(TextColors::subtext()),
             text("Esc") | bold | color(TextColors::primary()),
@@ -54,7 +56,9 @@ bool ArxivApp::HandleKeywordEditorEvent(ftxui::Event event) {
         keyword_new_entry.clear();
         return true;
     }
-    if (event == Event::Delete || event == Event::Character("d")) {
+    // Letters are always text (a keyword may contain d, j or k), so the list
+    // is driven by the arrow keys and Delete only.
+    if (event == Event::Delete) {
         if (!keyword_edit_list.empty()) {
             keyword_edit_list.erase(keyword_edit_list.begin() + keyword_selected_index);
             keyword_selected_index = std::max(
@@ -63,13 +67,13 @@ bool ArxivApp::HandleKeywordEditorEvent(ftxui::Event event) {
         }
         return true;
     }
-    if (key_bindings.matches(event, KeyBindings::Action::Next)) {
+    if (event == Event::ArrowDown) {
         keyword_selected_index =
             std::min(keyword_selected_index + 1,
                      std::max(0, static_cast<int>(keyword_edit_list.size()) - 1));
         return true;
     }
-    if (key_bindings.matches(event, KeyBindings::Action::Previous)) {
+    if (event == Event::ArrowUp) {
         keyword_selected_index = std::max(0, keyword_selected_index - 1);
         return true;
     }

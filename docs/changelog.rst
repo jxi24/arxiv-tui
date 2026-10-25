@@ -16,6 +16,8 @@ Unreleased
   order and the score column used only the rating model, so keywords had no
   effect until you had rated papers (only ``--export-yaml`` used them). They
   now use the blended score, and saving keywords re-ranks the current view.
+  In the keyword editor (``K``) every letter is text — ``d``, ``j`` and
+  ``k`` used to delete or move the selection — and ``↑``/``↓`` select.
 
 - **Polite to arXiv** — every request identifies itself
   (``arxiv-tui/<version> (+https://github.com/jxi24/arxiv-tui)``), and the
