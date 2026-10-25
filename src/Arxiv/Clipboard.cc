@@ -4,11 +4,14 @@
 
 #include "Arxiv/Clipboard.hh"
 
+#include "Arxiv/Process.hh"
+
 #include <array>
-#include <csignal>
 #include <cstdlib>
-#include <cstring>
+#include <sstream>
 #include <string>
+#include <unistd.h>
+#include <vector>
 
 #include "spdlog/spdlog.h"
 
@@ -16,23 +19,40 @@ namespace Arxiv {
 
 namespace {
 
-// Probe whether a command is available on PATH without running it with input.
-bool command_available(const char* name) {
-    std::string check = std::string("command -v ") + name + " > /dev/null 2>&1";
-    return std::system(check.c_str()) == 0;
+// True if `name` is an executable file in a PATH directory. No shell.
+bool command_available(const std::string& name) {
+    const char* path = std::getenv("PATH");
+    if (!path)
+        return false;
+    std::stringstream dirs(path);
+    std::string dir;
+    while (std::getline(dirs, dir, ':')) {
+        if (dir.empty())
+            continue;
+        if (::access((dir + "/" + name).c_str(), X_OK) == 0)
+            return true;
+    }
+    return false;
 }
 
 // The ordered list of clipboard backends to probe.
 constexpr std::array<const char*, 4> kBackends = {"wl-copy", "xclip", "xsel", "pbcopy"};
 
-// Build the shell command that reads from stdin for the given backend.
-std::string pipe_command(const std::string& backend) {
+// The argument vector that makes `backend` read the clipboard text from
+// stdin. Known backends get their flags; anything else is a program name
+// optionally followed by arguments, split on whitespace — never a shell
+// command line.
+std::vector<std::string> backend_argv(const std::string& backend) {
     if (backend == "xclip")
-        return "xclip -selection clipboard";
+        return {"xclip", "-selection", "clipboard"};
     if (backend == "xsel")
-        return "xsel --clipboard --input";
-    // wl-copy and pbcopy read stdin directly.
-    return backend;
+        return {"xsel", "--clipboard", "--input"};
+    std::vector<std::string> argv;
+    std::istringstream words(backend);
+    std::string word;
+    while (words >> word)
+        argv.push_back(word);
+    return argv;
 }
 
 } // namespace
@@ -58,26 +78,13 @@ std::string Clipboard::DetectBackend(const std::string& config_backend) {
 
 bool Clipboard::Copy(const std::string& text, const std::string& backend) {
     std::string resolved = DetectBackend(backend);
-    if (resolved.empty()) {
+    auto argv = backend_argv(resolved);
+    if (argv.empty()) {
         spdlog::warn("[Clipboard]: No clipboard backend available");
         return false;
     }
 
-    std::string cmd = pipe_command(resolved) + " 2>/dev/null";
-    FILE* pipe = ::popen(cmd.c_str(), "w");
-    if (!pipe) {
-        spdlog::warn("[Clipboard]: Failed to open pipe to '{}'", resolved);
-        return false;
-    }
-
-    // Ignore SIGPIPE for the entire pipe lifetime: fwrite and the implicit
-    // fflush inside pclose can both write to the broken pipe if the backend
-    // command exits early. Restore the previous handler only after pclose.
-    auto old_sigpipe = std::signal(SIGPIPE, SIG_IGN);
-    std::fwrite(text.c_str(), 1, text.size(), pipe);
-    int ret = ::pclose(pipe);
-    if (old_sigpipe != SIG_ERR)
-        std::signal(SIGPIPE, old_sigpipe);
+    int ret = Process::RunWithInput(argv, text);
     if (ret != 0) {
         spdlog::warn("[Clipboard]: Backend '{}' exited with status {}", resolved, ret);
         return false;

@@ -7,6 +7,8 @@
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <thread>
 #include <unistd.h>
@@ -44,4 +46,26 @@ TEST_CASE("Process::SpawnDetached starts the program without waiting for it", "[
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     REQUIRE(fs::exists(marker));
     fs::remove(marker);
+}
+
+TEST_CASE("Process::RunWithInput feeds the text to the program's stdin", "[process]") {
+    auto out = fs::temp_directory_path() / ("arxiv_input_" + std::to_string(::getpid()));
+    fs::remove(out);
+
+    REQUIRE(Arxiv::Process::RunWithInput({"tee", out.string()}, "hello\nworld") == 0);
+
+    std::ifstream f(out);
+    std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    REQUIRE(content == "hello\nworld");
+    fs::remove(out);
+}
+
+TEST_CASE("Process::RunWithInput survives a program that exits without reading", "[process]") {
+    // Writing to a closed pipe raises SIGPIPE, which would kill the TUI.
+    const std::string big(1 << 20, 'x');
+    REQUIRE(Arxiv::Process::RunWithInput({"true"}, big) == 0);
+}
+
+TEST_CASE("Process::RunWithInput reports a missing program as failure", "[process]") {
+    REQUIRE(Arxiv::Process::RunWithInput({"arxiv-tui-no-such-program"}, "x") != 0);
 }

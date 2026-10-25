@@ -7,6 +7,11 @@ Changelog
 Unreleased
 ----------
 
+- **Security hardening** — a crash no longer hangs, restores the terminal
+  and leaves ``SIGTERM`` alone; the crash report holds the end of
+  ``replay.jsonl``. The clipboard backend is started without a shell
+  (``ARXIV_TUI_CLIPBOARD`` names a program, not a command line).
+
 - **Exports and downloads no longer freeze the TUI** — ``o`` (Obsidian),
   ``g`` (selected digest), ``G`` (digest archive) and ``d`` (download PDF)
   run in the background. A badge in the bottom-right corner shows progress

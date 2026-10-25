@@ -7,6 +7,11 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <string>
+#include <unistd.h>
 
 using namespace Arxiv;
 using namespace Catch::Matchers;
@@ -59,4 +64,60 @@ TEST_CASE("Clipboard::Copy graceful failure", "[clipboard]") {
             REQUIRE_FALSE(Clipboard::Copy("text", ""));
         }
     }
+}
+
+namespace {
+std::filesystem::path clip_dir() {
+    auto dir =
+        std::filesystem::temp_directory_path() / ("arxiv_clip_" + std::to_string(::getpid()));
+    std::filesystem::create_directories(dir);
+    return dir;
+}
+} // namespace
+
+TEST_CASE("Clipboard::Copy never hands the backend to a shell", "[clipboard][regression]") {
+    // The backend comes from config.yml or ARXIV_TUI_CLIPBOARD; it names a
+    // program, it is not a command line.
+    auto marker = clip_dir() / "shell_ran";
+    std::filesystem::remove(marker);
+
+    Clipboard::Copy("text", "true; touch " + marker.string());
+
+    REQUIRE_FALSE(std::filesystem::exists(marker));
+}
+
+TEST_CASE("Clipboard::Copy sends the text to a custom backend's stdin", "[clipboard]") {
+    auto dir = clip_dir();
+    auto script = dir / "fake-copy";
+    auto out = dir / "received";
+    std::filesystem::remove(out);
+    {
+        std::ofstream s(script);
+        s << "#!/bin/sh\ncat > \"$1\"\n";
+    }
+    std::filesystem::permissions(script, std::filesystem::perms::owner_all);
+
+    REQUIRE(Clipboard::Copy("@article{x}", script.string() + " " + out.string()));
+
+    std::ifstream f(out);
+    std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    REQUIRE(content == "@article{x}");
+}
+
+TEST_CASE("Clipboard::DetectBackend finds a backend on PATH", "[clipboard]") {
+    auto dir = clip_dir() / "bin";
+    std::filesystem::create_directories(dir);
+    {
+        std::ofstream s(dir / "xsel");
+        s << "#!/bin/sh\n";
+    }
+    std::filesystem::permissions(dir / "xsel", std::filesystem::perms::owner_all);
+    std::string old_path = std::getenv("PATH") ? std::getenv("PATH") : "";
+    ::unsetenv("ARXIV_TUI_CLIPBOARD");
+    ::setenv("PATH", dir.c_str(), 1);
+
+    auto found = Clipboard::DetectBackend("");
+
+    ::setenv("PATH", old_path.c_str(), 1);
+    REQUIRE(found == "xsel");
 }
