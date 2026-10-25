@@ -149,6 +149,8 @@ key_mappings:
 
 **`obsidian_vault`** is the Obsidian vault that `o` exports selected articles into (notes go to `<vault>/arxiv-tui/<date>/`; existing notes are never overwritten, and a second export the same day adds to that day's index). Empty or absent disables the export.
 
+**`export_dir`** is where exports started from the TUI go: project exports (`e`), the daily digest (`X`) and the BibTeX file written when no clipboard is available (`c`). Default: `~/.local/share/arxiv-tui/exports`; also set in the Settings dialog (`S` → Export → Export folder).
+
 **`obsidian_download_pdfs`** controls what each exported note points to. `false` (the default) adds a `[PDF on arXiv](https://arxiv.org/pdf/<id>)` link and downloads nothing, which keeps git-synced vaults small. `true` downloads the PDF next to the note and embeds it (`![[<id>.pdf]]`). It's also toggled in the Settings dialog (`S` → Export → Download PDFs). Default: `false`.
 
 **`article_columns`** controls which columns are shown in the article list and in what order. Available values:

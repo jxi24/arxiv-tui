@@ -242,6 +242,7 @@ precedence over the compiled-in values at runtime.
 | `$XDG_DATA_HOME/arxiv-tui/articles.db` | SQLite article database | `XDG_DATA_HOME` |
 | `$XDG_DATA_HOME/arxiv-tui/ranker.bin` | Trained ranking model | `XDG_DATA_HOME` |
 | `$XDG_DATA_HOME/arxiv-tui/downloads/` | Default PDF download dir | `XDG_DATA_HOME` |
+| `$XDG_DATA_HOME/arxiv-tui/exports/` | Default `export_dir` (TUI exports, via `AppCore::ExportPath`) | `XDG_DATA_HOME` |
 | `$XDG_STATE_HOME/arxiv-tui/arxiv_tui.log` | Rotating spdlog output | `XDG_STATE_HOME` |
 | `$XDG_STATE_HOME/arxiv-tui/replay.jsonl` | UI action replay log | `XDG_STATE_HOME` |
 | `$XDG_STATE_HOME/arxiv-tui/crash_*.txt` | Crash reports | `XDG_STATE_HOME` |
@@ -251,7 +252,10 @@ XDG defaults (when variables are unset): `~/.config`, `~/.local/share`,
 compiled-in data/state paths exactly with the XDG defaults.
 
 The `download_dir` config key overrides the default download path. If absent
-from the YAML, `main.cc` sets it to `<data_dir>/downloads/`.
+from the YAML, `main.cc` sets it to `<data_dir>/downloads/` (and `export_dir`
+to `<data_dir>/exports/`). Nothing is written to the working directory: the
+`Config` ranker file and the `Fetcher` download directory default to empty
+(no model file / absolute paths only).
 
 ## Configuration File
 

@@ -18,6 +18,11 @@ Unreleased
   now use the blended score, and saving keywords re-ranks the current view.
   In the keyword editor (``K``) every letter is text — ``d``, ``j`` and
   ``k`` used to delete or move the selection — and ``↑``/``↓`` select.
+- **Exports no longer land in the current directory** — project exports, the
+  daily digest and the BibTeX fallback file were written wherever arxiv-tui
+  was started. They now go to the new ``export_dir`` (default
+  ``~/.local/share/arxiv-tui/exports``, editable in Settings), and project
+  names containing ``/`` no longer break the file name.
 
 - **Polite to arXiv** — every request identifies itself
   (``arxiv-tui/<version> (+https://github.com/jxi24/arxiv-tui)``), and the

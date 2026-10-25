@@ -123,13 +123,14 @@ AppCore::AppCore(const Config& config,
            "count=" + std::to_string(m_current_articles.size()));
 
     // Try to restore a previously saved model; fall back to training if absent.
-    if (!m_ranker.Load(m_ranker_path)) {
+    if (m_ranker_path.empty() || !m_ranker.Load(m_ranker_path)) {
         auto all_articles = m_db->GetRecent(-1);
         auto rated = m_db->GetRatedArticles();
         if (!rated.empty()) {
             m_ranker.FitVocabulary(all_articles);
             m_ranker.Train(rated);
-            m_ranker.Save(m_ranker_path);
+            if (!m_ranker_path.empty())
+                m_ranker.Save(m_ranker_path);
         }
     }
     Record("appcore/ranker_loaded", std::string("trained=") + (m_ranker.IsTrained() ? "1" : "0"));
@@ -838,6 +839,28 @@ void AppCore::RateSelected(int rating) {
     }
 }
 
+std::string AppCore::ExportPath(const std::string& file_name, bool create) const {
+    namespace fs = std::filesystem;
+    fs::path dir = m_config.get_export_dir().empty() ? fs::path(m_config.get_download_dir())
+                                                     : fs::path(m_config.get_export_dir());
+    // One safe path component: project names may contain '/' (or be "..").
+    std::string name;
+    for (char c : file_name) {
+        const auto u = static_cast<unsigned char>(c);
+        name += (c == '/' || c == '\\' || u < 0x20 || u == 0x7f) ? '_' : c;
+    }
+    name.erase(0, name.find_first_not_of('.'));
+    if (name.empty())
+        name = "export";
+    std::error_code ec;
+    if (create)
+        fs::create_directories(dir, ec);
+    if (ec)
+        spdlog::error(
+            "[AppCore]: Cannot create export directory {}: {}", dir.string(), ec.message());
+    return (dir / name).string();
+}
+
 void AppCore::ForceRetrain() {
     spdlog::info("[AppCore]: Full retrain requested");
     m_ratings_since_train = 0;
@@ -875,7 +898,8 @@ void AppCore::SpawnTrainingThread(bool warm_start) {
         }
         // warm_start=true keeps the existing vocab; only SGD continues.
         seed_ranker.Train(rated, warm_start);
-        seed_ranker.Save(m_ranker_path);
+        if (!m_ranker_path.empty())
+            seed_ranker.Save(m_ranker_path);
 
         {
             std::lock_guard<std::mutex> lock(m_ranker_mutex);

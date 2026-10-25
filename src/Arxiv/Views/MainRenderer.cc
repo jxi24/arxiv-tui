@@ -390,7 +390,7 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
                 success_msg = "BibTeX copied to clipboard";
                 dialog_depth = Dialog::Success;
             } else {
-                std::string path = art.id() + ".bib";
+                std::string path = core.ExportPath(art.file_stem() + ".bib");
                 bool ok = core.ExportArticleBibTeX(art, path);
                 if (m_recorder)
                     m_recorder->RecordExportArticleBibTeX(art.link, path);
@@ -503,15 +503,16 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
         localtime_r(&t, &tm_val);
         char buf[32];
         std::strftime(buf, sizeof(buf), "digest-%Y-%m-%d.md", &tm_val);
-        if (core.ExportDailyDigest(buf)) {
+        const std::string path = core.ExportPath(buf);
+        if (core.ExportDailyDigest(path)) {
             if (m_recorder)
-                m_recorder->RecordExportDailyDigest(buf);
-            spdlog::info("export_daily_digest path={}", buf);
-            success_msg = std::string("Digest exported to ") + buf;
+                m_recorder->RecordExportDailyDigest(path);
+            spdlog::info("export_daily_digest path={}", path);
+            success_msg = "Digest exported to " + path;
             dialog_depth = Dialog::Success;
         } else {
-            spdlog::warn("export_daily_digest failed path={}", buf);
-            err_msg = std::string("Digest export failed: ") + buf;
+            spdlog::warn("export_daily_digest failed path={}", path);
+            err_msg = "Digest export failed: " + path;
             dialog_depth = Dialog::Error;
         }
         return true;

@@ -100,6 +100,12 @@ Reference
     same day adds to that day's ``digest-<date>.md`` index. Empty or absent
     disables the export. Also editable in the Settings dialog (``S`` → Export).
 
+``export_dir``
+    Folder for exports started from the TUI: project exports (``e``), the
+    daily digest (``X``) and the BibTeX file written when no clipboard is
+    available (``c``). Default: ``~/.local/share/arxiv-tui/exports``. Also
+    editable in the Settings dialog (``S`` → Export → Export folder).
+
 ``obsidian_download_pdfs``
     What each exported note points to. ``false`` (the default) adds a
     ``[PDF on arXiv](https://arxiv.org/pdf/<id>)`` link and downloads

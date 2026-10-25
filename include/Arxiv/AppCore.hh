@@ -105,6 +105,12 @@ class AppCore {
     // Force a full cold-start retrain (new vocabulary, reset weights) regardless
     // of the pending-ratings counter.
     void ForceRetrain();
+
+    /// Full path for an export file named `file_name` in the configured
+    /// export directory (download_dir when export_dir is not set), which is
+    /// created if needed (pass create = false to only compute the path, e.g.
+    /// for display). The name is reduced to a single safe path component.
+    std::string ExportPath(const std::string& file_name, bool create = true) const;
     void SetRecommendThreshold(float threshold);
     float GetRecommendThreshold() const { return m_recommend_threshold; }
 
@@ -352,7 +358,7 @@ class AppCore {
     int m_ratings_since_train{0};
     int m_retrain_interval{5};
     float m_recommend_threshold{3.5f};
-    std::string m_ranker_path{"ranker.bin"};
+    std::string m_ranker_path; // empty: the model is not persisted
 
     // Snapshot training data and spawn a background thread.
     // warm_start=true: keep existing vocab and weights as starting point.

@@ -91,6 +91,8 @@ int main(int argc, char* argv[]) {
         config.set_download_dir((paths.data_dir / "downloads").string());
     config.set_db_file((paths.data_dir / "articles.db").string());
     config.set_ranker_file((paths.data_dir / "ranker.bin").string());
+    if (config.get_export_dir().empty())
+        config.set_export_dir((paths.data_dir / "exports").string());
     if (config.get_keywords_file().empty())
         config.set_keywords_file((paths.data_dir / "keywords.txt").string());
 

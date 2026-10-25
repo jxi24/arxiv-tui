@@ -405,3 +405,17 @@ TEST_CASE("Config: an unparseable file loads the defaults with a warning", "[con
     REQUIRE(loaded->get_warnings().size() == 1);
     REQUIRE_THAT(loaded->get_warnings()[0], Catch::Matchers::ContainsSubstring("defaults"));
 }
+
+TEST_CASE("Config: export_dir", "[config]") {
+    TempConfig tmp;
+
+    SECTION("defaults to empty") { REQUIRE(Config{}.get_export_dir().empty()); }
+    SECTION("round-trips through save/load") {
+        Config cfg;
+        cfg.set_topics({"hep-ph"});
+        cfg.set_download_dir("/tmp");
+        cfg.set_export_dir("/tmp/arxiv-exports");
+        cfg.save_to_file(tmp.path);
+        REQUIRE(Config(tmp.path).get_export_dir() == "/tmp/arxiv-exports");
+    }
+}

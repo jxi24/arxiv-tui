@@ -680,3 +680,44 @@ TEST_CASE("Keyword editor takes every letter as text", "[tui][keywords][regressi
     }
     std::filesystem::remove(file);
 }
+
+TEST_CASE("TUI exports go to export_dir, not the working directory", "[tui][export][regression]") {
+    auto dir = std::filesystem::temp_directory_path() /
+               ("arxiv_tui_exports_" + std::to_string(::getpid()));
+    std::filesystem::remove_all(dir);
+    Config cfg = make_test_config();
+    cfg.set_export_dir(dir.string());
+    cfg.set_clipboard_backend("arxiv-tui-no-such-clipboard"); // force the file fallback
+    auto db = std::make_unique<DatabaseManagerMock>();
+    auto* db_ptr = db.get();
+    db_ptr->setArticles(arxiv_tui::test::fixtures::sample_articles);
+    db_ptr->setBookmarkedArticles({});
+    db_ptr->setProjects({});
+    db_ptr->setUnreadArticles(arxiv_tui::test::fixtures::sample_articles);
+    auto fetcher = std::make_unique<FetcherMock>();
+    ALLOW_CALL(*fetcher, FetchBibTeX(ANY(std::string))).RETURN(std::string{});
+    KeyBindings kb{std::vector<Config::KeyMapping>{}};
+    ArxivApp app(std::move(cfg), std::move(db), std::move(fetcher), std::move(kb));
+    auto handler = app.GetEventHandler();
+    const auto cwd_before = std::distance(std::filesystem::directory_iterator("."),
+                                          std::filesystem::directory_iterator());
+
+    SECTION("BibTeX fallback file") {
+        ALLOW_CALL(*db_ptr, GetRating(ANY(std::string))).RETURN(0);
+        handler->OnEvent(Event::Character("l")); // focus the article list
+        handler->OnEvent(Event::Character("c"));
+        REQUIRE(std::filesystem::exists(
+            dir / (arxiv_tui::test::fixtures::sample_articles[0].id() + ".bib")));
+    }
+    SECTION("daily digest") {
+        handler->OnEvent(Event::Character("X"));
+        bool found = false;
+        if (std::filesystem::exists(dir))
+            for (const auto& e : std::filesystem::directory_iterator(dir))
+                found = found || e.path().filename().string().rfind("digest-", 0) == 0;
+        REQUIRE(found);
+    }
+    REQUIRE(std::distance(std::filesystem::directory_iterator("."),
+                          std::filesystem::directory_iterator()) == cwd_before);
+    std::filesystem::remove_all(dir);
+}

@@ -105,6 +105,7 @@ void ArxivApp::SetupSettingsDialog() {
                                      m_config.get_obsidian_download_pdfs()
                                          ? "yes (saved into the vault)"
                                          : "no (link to arXiv)"));
+            rows.push_back(field_row(2, "Export folder ", m_config.get_export_dir()));
 
         } else if (settings_section == 4) {
             auto bindings = key_bindings.get_all_bindings();
@@ -156,7 +157,7 @@ bool ArxivApp::HandleSettingsEvent(ftxui::Event event) {
         if (settings_section == 2)
             return 2;
         if (settings_section == 3)
-            return 2;
+            return 3;
         if (settings_section == 4)
             return static_cast<int>(key_bindings.get_all_bindings().size());
         return 0;
@@ -192,6 +193,8 @@ bool ArxivApp::HandleSettingsEvent(ftxui::Event event) {
         } else if (settings_section == 3) {
             if (settings_field_index == 0)
                 m_config.set_obsidian_vault(settings_edit_buffer);
+            else if (settings_field_index == 2 && !settings_edit_buffer.empty())
+                m_config.set_export_dir(settings_edit_buffer);
         } else if (settings_section == 4) {
             auto bindings = key_bindings.get_all_bindings();
             if (!settings_edit_buffer.empty() &&
@@ -314,7 +317,8 @@ bool ArxivApp::HandleSettingsEvent(ftxui::Event event) {
                                            ? std::to_string(m_config.get_recommend_threshold())
                                            : std::to_string(m_config.get_retrain_interval());
             } else if (settings_section == 3) {
-                settings_edit_buffer = m_config.get_obsidian_vault();
+                settings_edit_buffer = settings_field_index == 2 ? m_config.get_export_dir()
+                                                                 : m_config.get_obsidian_vault();
             } else if (settings_section == 4) {
                 auto bindings = key_bindings.get_all_bindings();
                 if (settings_field_index < static_cast<int>(bindings.size()))

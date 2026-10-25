@@ -92,6 +92,7 @@ void Config::load_from_file(const std::string& config_file) {
     read(config, "retrain_interval", retrain_interval_, positive);
     read(config, "auto_refresh_minutes", auto_refresh_minutes_, non_negative);
     read(config, "obsidian_vault", obsidian_vault_, any);
+    read(config, "export_dir", export_dir_, any);
     read(config, "keywords_file", keywords_file_, any);
     read(config, "obsidian_download_pdfs", obsidian_download_pdfs_, any);
     read(config, "scroll_margin", scroll_margin_, non_negative);
@@ -156,6 +157,8 @@ bool Config::save_to_file(const std::string& config_file) const {
     if (!obsidian_vault_.empty()) {
         config["obsidian_vault"] = obsidian_vault_;
     }
+    if (!export_dir_.empty())
+        config["export_dir"] = export_dir_;
     config["obsidian_download_pdfs"] = obsidian_download_pdfs_;
     if (!keywords_file_.empty()) {
         config["keywords_file"] = keywords_file_;

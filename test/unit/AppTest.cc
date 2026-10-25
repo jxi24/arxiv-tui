@@ -2058,3 +2058,75 @@ TEST_CASE("Keyword boosts rank the TUI views before any ratings", "[app][keyword
         REQUIRE(t.core->GetPredictedScore(t.match) > t.core->GetPredictedScore(t.other));
     }
 }
+
+// ---------------------------------------------------------------------------
+// Nothing is written to the working directory: exports started from the TUI
+// go to export_dir, and the ranker / fetcher have no relative defaults.
+// ---------------------------------------------------------------------------
+
+namespace {
+// Runs the test body with the working directory set to a fresh temp dir.
+struct InTempCwd {
+    std::filesystem::path old = std::filesystem::current_path();
+    std::filesystem::path dir =
+        std::filesystem::temp_directory_path() / ("arxiv_cwd_" + std::to_string(::getpid()));
+    InTempCwd() {
+        std::filesystem::remove_all(dir);
+        std::filesystem::create_directories(dir);
+        std::filesystem::current_path(dir);
+    }
+    ~InTempCwd() {
+        std::filesystem::current_path(old);
+        std::filesystem::remove_all(dir);
+    }
+    bool Empty() const { return std::filesystem::is_empty(dir); }
+};
+} // namespace
+
+TEST_CASE("AppCore::ExportPath", "[app][export]") {
+    auto dir =
+        std::filesystem::temp_directory_path() / ("arxiv_export_dir_" + std::to_string(::getpid()));
+    std::filesystem::remove_all(dir);
+    Config cfg = regression_config();
+    cfg.set_export_dir(dir.string());
+    auto core = make_memory_core({}, cfg);
+
+    SECTION("puts the file in export_dir and creates it") {
+        auto path = core->ExportPath("digest.md");
+        REQUIRE(std::filesystem::path(path) == dir / "digest.md");
+        REQUIRE(std::filesystem::is_directory(dir));
+    }
+    SECTION("a project name cannot leave export_dir") {
+        auto path = std::filesystem::path(core->ExportPath("../Sub/Project.md"));
+        REQUIRE(path.parent_path() == dir);
+        REQUIRE(path.filename().string().find('/') == std::string::npos);
+    }
+    SECTION("falls back to download_dir when export_dir is not set") {
+        Config plain = regression_config();
+        plain.set_download_dir(dir.string());
+        auto other = make_memory_core({}, plain);
+        REQUIRE(std::filesystem::path(other->ExportPath("x.bib")).parent_path() == dir);
+    }
+    std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("Nothing is written to the working directory by default", "[app][regression]") {
+    InTempCwd cwd;
+
+    SECTION("a Fetcher without a download directory creates none") {
+        Arxiv::Fetcher fetcher({"hep-ph"});
+        REQUIRE(cwd.Empty());
+    }
+    SECTION("an AppCore without a ranker file saves no ranker") {
+        Config cfg;
+        cfg.set_topics({"hep-ph"});
+        {
+            AppCore core(cfg,
+                         std::make_unique<Arxiv::DatabaseManager>(":memory:"),
+                         std::make_unique<FetcherMock>(),
+                         AppCore::FetchMode::Offline);
+            core.ForceRetrain();
+        } // joins the training thread
+        REQUIRE(cwd.Empty());
+    }
+}

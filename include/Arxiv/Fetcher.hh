@@ -90,8 +90,7 @@ class RequestPacer {
 
 class Fetcher {
   public:
-    explicit Fetcher(const std::vector<std::string>& topics,
-                     const std::string& base_path = "downloads");
+    explicit Fetcher(const std::vector<std::string>& topics, const std::string& base_path = "");
     virtual ~Fetcher() = default;
     /// Today's RSS announcement. Throws FetchError if the feed is unreachable.
     virtual std::vector<Article> Fetch();
