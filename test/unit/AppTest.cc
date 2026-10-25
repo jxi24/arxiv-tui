@@ -2014,3 +2014,47 @@ TEST_CASE("Exports show an article's arXiv day in any time zone", "[app][export]
 
     REQUIRE_THAT(content.str(), ContainsSubstring("2026-07-04"));
 }
+
+// ---------------------------------------------------------------------------
+// Keyword boosts are the cold-start signal: before any star ratings they are
+// all the ranker has, so the TUI's ranked views must use them.
+// ---------------------------------------------------------------------------
+
+namespace {
+struct KeywordCore {
+    Article match = make_article("2607.00010", "A. Author", "hep-ph");
+    Article other = make_article("2607.00011", "B. Author", "hep-ph");
+    std::unique_ptr<AppCore> core;
+
+    KeywordCore() {
+        match.title = "Sterile neutrino oscillations at short baselines";
+        other.title = "Lattice study of glueballs";
+        Config cfg = regression_config();
+        cfg.set_keywords_file((std::filesystem::temp_directory_path() /
+                               ("arxiv_kw_view_" + std::to_string(::getpid()) + ".txt"))
+                                  .string());
+        core = make_memory_core({other, match}, cfg);
+        REQUIRE(core->SaveKeywords({"neutrino"}));
+    }
+};
+} // namespace
+
+TEST_CASE("Keyword boosts rank the TUI views before any ratings", "[app][keywords][regression]") {
+    KeywordCore t;
+
+    SECTION("Recommended shows the matching paper") {
+        t.core->SetFilterIndex(AppCore::FilterView::Recommended);
+        auto shown = t.core->GetCurrentArticles();
+        REQUIRE(shown.size() == 1);
+        REQUIRE(shown[0].link == t.match.link);
+    }
+    SECTION("New Articles puts the matching paper first") {
+        t.core->SetFilterIndex(AppCore::FilterView::NewArticles);
+        auto shown = t.core->GetCurrentArticles();
+        REQUIRE(shown.size() == 2);
+        REQUIRE(shown[0].link == t.match.link);
+    }
+    SECTION("the score column shows the keyword score") {
+        REQUIRE(t.core->GetPredictedScore(t.match) > t.core->GetPredictedScore(t.other));
+    }
+}

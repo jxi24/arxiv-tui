@@ -12,6 +12,10 @@ Unreleased
   3 July; the date-range filter (``r``) used local midnights with DST off,
   missing papers on the first day and including some from the day after the
   range. Dates are now shown and filtered as UTC days.
+- **Keyword boosts work in the TUI** — *Recommended*, the *New Articles*
+  order and the score column used only the rating model, so keywords had no
+  effect until you had rated papers (only ``--export-yaml`` used them). They
+  now use the blended score, and saving keywords re-ranks the current view.
 
 - **Polite to arXiv** — every request identifies itself
   (``arxiv-tui/<version> (+https://github.com/jxi24/arxiv-tui)``), and the

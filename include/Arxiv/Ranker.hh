@@ -42,6 +42,8 @@ class Ranker {
     float Predict(const Article& article) const;
 
     bool IsTrained() const { return m_trained; }
+    /// True once there is anything to rank by: ratings or keywords.
+    bool CanRank() const { return m_trained || m_fit_keywords; }
 
     // Keyword cold-start: store interest keywords for scoring before ML training.
     void FitKeywords(const std::vector<std::string>& keywords);

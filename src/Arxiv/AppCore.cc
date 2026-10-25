@@ -333,11 +333,12 @@ void AppCore::FetchArticles() {
                              today_articles.end());
         // The training thread swaps in a new model under m_ranker_mutex.
         std::unique_lock<std::mutex> ranker_lock(m_ranker_mutex);
-        if (m_ranker.IsTrained()) {
+        // Keywords rank before any ratings exist (PredictBlended).
+        if (m_ranker.CanRank()) {
             std::vector<std::pair<float, Article>> scored;
             scored.reserve(today_articles.size());
             for (const auto& a : today_articles) {
-                float score = m_ranker.Predict(a);
+                float score = m_ranker.PredictBlended(a);
                 if (score >= m_recommend_threshold)
                     scored.emplace_back(score, a);
             }
@@ -381,17 +382,17 @@ void AppCore::FetchArticles() {
                                                 m_current_articles.end(),
                                                 [](const Article& a) { return a.is_replacement; }),
                                  m_current_articles.end());
-        // If a trained ranker is available, surface the most relevant new
+        // If the ranker has ratings or keywords, surface the most relevant new
         // articles first. No threshold is applied — the user wants to see
-        // *every* new paper, just in priority order. Predict is called
-        // exactly once per article (cached side-vector) to keep the sort
-        // O(N log N) on the comparisons.
+        // *every* new paper, just in priority order. Each article is scored
+        // exactly once (cached side-vector) to keep the sort O(N log N) on
+        // the comparisons.
         std::unique_lock<std::mutex> ranker_lock(m_ranker_mutex);
-        if (m_ranker.IsTrained() && m_current_articles.size() > 1) {
+        if (m_ranker.CanRank() && m_current_articles.size() > 1) {
             std::vector<std::pair<float, Article>> scored;
             scored.reserve(m_current_articles.size());
             for (auto& a : m_current_articles)
-                scored.emplace_back(m_ranker.Predict(a), std::move(a));
+                scored.emplace_back(m_ranker.PredictBlended(a), std::move(a));
             ranker_lock.unlock();
             std::sort(scored.begin(), scored.end(), [](const auto& l, const auto& r) {
                 return l.first > r.first;
@@ -932,7 +933,7 @@ int AppCore::GetArticleRating(const std::string& article_link) const {
 
 float AppCore::GetPredictedScore(const Article& article) const {
     std::lock_guard<std::mutex> lock(m_ranker_mutex);
-    return m_ranker.Predict(article);
+    return m_ranker.PredictBlended(article);
 }
 
 void AppCore::SetRecommendThreshold(float threshold) {
@@ -1528,6 +1529,7 @@ bool AppCore::SaveKeywords(const std::vector<std::string>& keywords) {
         std::lock_guard<std::mutex> lock(m_ranker_mutex);
         m_ranker.FitKeywords(keywords);
     }
+    FetchArticles(); // re-rank the view on screen with the new keywords
     spdlog::info("[AppCore]: Saved {} keyword(s) to '{}'", keywords.size(), path);
     return true;
 }
