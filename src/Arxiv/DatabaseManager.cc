@@ -907,8 +907,12 @@ std::vector<Arxiv::Article> DatabaseManager::GetArticlesForDateRange(const std::
         return articles;
     }
 
-    time_t start_time = mktime(&start_tm);
-    time_t end_time = mktime(&end_tm) + 24 * 60 * 60;
+    // Article dates are arXiv days stored as UTC instants: the range is
+    // [start 00:00 UTC, the day after end 00:00 UTC), whatever the local
+    // time zone (mktime here shifted it by the UTC offset and by DST).
+    end_tm.tm_mday += 1;
+    time_t start_time = timegm(&start_tm);
+    time_t end_time = timegm(&end_tm);
 
     spdlog::debug("[Database]: Fetching articles between {} and {}", start_date, end_date);
 

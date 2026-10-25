@@ -223,7 +223,7 @@ void ArxivApp::SetupArticlePane() {
         auto fmt_date = [](const Article& a) -> std::string {
             auto t = std::chrono::system_clock::to_time_t(a.date);
             std::tm tm_val{};
-            localtime_r(&t, &tm_val);
+            gmtime_r(&t, &tm_val); // the arXiv day, not the local one
             char buf[16];
             std::strftime(buf, sizeof(buf), "%Y-%m-%d", &tm_val);
             return buf;

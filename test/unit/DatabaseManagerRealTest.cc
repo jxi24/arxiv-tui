@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <ctime>
 #include <filesystem>
+#include <fixtures/TimeZone.hh>
 #include <fixtures/test_data.hh>
 #include <future>
 #include <sqlite3.h>
@@ -1213,4 +1214,30 @@ TEST_CASE("DatabaseManager::InMemoryCopyOf", "[database][real][replay]") {
     std::filesystem::remove(path);
     std::filesystem::remove(path + "-wal");
     std::filesystem::remove(path + "-shm");
+}
+
+// ---------------------------------------------------------------------------
+// Article dates are arXiv calendar days, stored as UTC instants (the RSS
+// announcement is midnight US Eastern = 04:00 UTC). A date range is a range
+// of those days, whatever the user's time zone or DST.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Date range covers whole UTC days in any time zone", "[database][real][regression]") {
+    arxiv_tui::test::ScopedTimeZone tz("America/Los_Angeles"); // UTC-7 in July (DST)
+    DatabaseManager db(":memory:");
+    Article on_day = sample_articles[0];
+    on_day.date = arxiv_tui::test::utc_time(2026, 7, 4, 4);
+    Article next_day = sample_articles[1];
+    next_day.date = arxiv_tui::test::utc_time(2026, 7, 5, 4);
+    db.AddArticle(on_day);
+    db.AddArticle(next_day);
+
+    auto got = db.GetArticlesForDateRange("2026-07-04", "2026-07-04");
+    auto has = [&](const Article& a) {
+        return std::any_of(
+            got.begin(), got.end(), [&](const Article& g) { return g.link == a.link; });
+    };
+
+    SECTION("includes the day's paper") { REQUIRE(has(on_day)); }
+    SECTION("excludes the next day's paper") { REQUIRE_FALSE(has(next_day)); }
 }

@@ -7,6 +7,12 @@ Changelog
 Unreleased
 ----------
 
+- **Dates are arXiv days everywhere** — the article list and exports showed
+  dates in local time, so west of UTC a paper announced on 4 July showed as
+  3 July; the date-range filter (``r``) used local midnights with DST off,
+  missing papers on the first day and including some from the day after the
+  range. Dates are now shown and filtered as UTC days.
+
 - **Polite to arXiv** — every request identifies itself
   (``arxiv-tui/<version> (+https://github.com/jxi24/arxiv-tui)``), and the
   backfill after missed days waits 3 s between arXiv API pages, as the API

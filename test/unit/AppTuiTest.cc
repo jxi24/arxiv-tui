@@ -23,6 +23,7 @@
 #include <fstream>
 #include <unistd.h>
 
+#include "fixtures/TimeZone.hh"
 #include "fixtures/test_data.hh"
 #include "mocks/DatabaseManagerMock.hh"
 #include "mocks/FetcherMock.hh"
@@ -624,4 +625,24 @@ TEST_CASE("d removes a followed author from the list", "[tui][follow]") {
     handler->OnEvent(Event::Character("d"));
 
     REQUIRE(app->GetCore().GetFollowedAuthors().empty());
+}
+
+TEST_CASE("TUI shows an article's arXiv day in any time zone", "[tui][regression]") {
+    // Stored as 04:00 UTC (midnight US Eastern, the RSS announcement); in Los
+    // Angeles that is the evening before.
+    arxiv_tui::test::ScopedTimeZone tz("America/Los_Angeles");
+    auto article = arxiv_tui::test::fixtures::sample_articles[0];
+    article.date = arxiv_tui::test::utc_time(2026, 7, 4, 4);
+    auto db = std::make_unique<DatabaseManagerMock>();
+    db->setArticles({article});
+    db->setBookmarkedArticles({});
+    db->setProjects({});
+    db->setUnreadArticles({article});
+    KeyBindings kb{std::vector<Config::KeyMapping>{}};
+    ArxivApp app(make_test_config(), std::move(db), std::make_unique<FetcherMock>(), std::move(kb));
+
+    auto screen = render(app);
+
+    REQUIRE_THAT(screen, Catch::Matchers::ContainsSubstring("2026-07-04"));
+    REQUIRE_THAT(screen, !Catch::Matchers::ContainsSubstring("2026-07-03"));
 }

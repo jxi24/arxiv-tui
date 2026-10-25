@@ -11,6 +11,7 @@
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <cstdio>
 #include <filesystem>
+#include <fixtures/TimeZone.hh>
 #include <fixtures/test_data.hh>
 #include <fstream>
 #include <mocks/DatabaseManagerMock.hh>
@@ -1993,4 +1994,23 @@ TEST_CASE("AppCore: following an author updates the Followed Authors view at onc
         core->UnfollowAuthor("W. Li");
         REQUIRE(core->GetCurrentArticles().empty());
     }
+}
+
+TEST_CASE("Exports show an article's arXiv day in any time zone", "[app][export][regression]") {
+    arxiv_tui::test::ScopedTimeZone tz("America/Los_Angeles");
+    auto article = make_article("2607.00001", "J. Doe", "hep-ph");
+    article.date = arxiv_tui::test::utc_time(2026, 7, 4, 4); // announced 4 July
+    auto core = make_memory_core({article});
+    core->AddProject("p");
+    core->LinkArticleToProject(article.link, "p");
+    auto path = std::filesystem::temp_directory_path() /
+                ("arxiv_export_tz_" + std::to_string(::getpid()) + ".md");
+
+    REQUIRE(core->ExportProjectMarkdown("p", path.string()));
+    std::ifstream f(path);
+    std::stringstream content;
+    content << f.rdbuf();
+    std::filesystem::remove(path);
+
+    REQUIRE_THAT(content.str(), ContainsSubstring("2026-07-04"));
 }
