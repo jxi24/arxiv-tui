@@ -120,6 +120,22 @@ In addition to category feeds, you can follow specific authors. Use the
 settings dialog (``S``) to add or remove author subscriptions. Articles by
 subscribed authors are ingested regardless of category.
 
+Names are matched whole, using initials to tell apart authors who share a
+common last name:
+
+- the last names must be identical (``Li`` does not match ``Lin``; particles
+  such as ``van der`` are part of the last name);
+- the first initials must agree, and the first names too when both are spelled
+  out — following ``W. Li`` matches *Wei Li* but not *Xiao Li*, and
+  ``Wei Li`` does not match *Wen Li*;
+- a middle initial only counts when both names have one — ``J. A. Smith``
+  matches *John Smith* and *J. A. Smith* but not *J. B. Smith*;
+- following a last name alone (``Li``) matches every author with that last
+  name.
+
+Matching is case-insensitive and accepts initials with or without dots
+(``J.A. Smith``, ``J A Smith``).
+
 BibTeX export
 -------------
 

@@ -152,6 +152,9 @@ File formats for every export (project Markdown/text/JSON, daily digest Markdown
 **`BibTeX`** (`BibTeX.hh/cc`)
 The single fallback BibTeX builder (`BibTeX::Build`) used by the clipboard and file exports when InspireHEP has no record: escapes `% & #`, balances braces, ASCII cite key, UTC year.
 
+**`AuthorMatches`** (`AuthorMatch.hh/cc`)
+Followed-author matching: whole last names (particles included), first initial (and first name when both spelled out), middle initials only when both give one; last name alone matches that last name.
+
 **`Process`** (`Process.hh/cc`)
 Starts external programs (`xdg-open`, `tar`) via `posix_spawnp` with an argument vector and stdio on `/dev/null`. Never build shell command strings from article data.
 

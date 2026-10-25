@@ -1832,3 +1832,15 @@ TEST_CASE("AppCore: ImportProjectJSON accepts /pdf/ links", "[app][import][links
     REQUIRE(imported[0].link == "https://arxiv.org/abs/2401.00009");
     std::filesystem::remove(path);
 }
+
+TEST_CASE("AppCore: following an author by initial picks out that author", "[app][author]") {
+    auto wei = make_article("2401.00080", "Wei Li, A. Other", "hep-ph");
+    auto xiao = make_article("2401.00081", "Xiao Li, B. Other", "hep-ph");
+    auto core = make_memory_core({wei, xiao});
+
+    core->FollowAuthor("W. Li");
+    auto followed = core->GetArticlesForFollowedAuthors();
+
+    REQUIRE(followed.size() == 1);
+    REQUIRE(followed[0].link == wei.link);
+}

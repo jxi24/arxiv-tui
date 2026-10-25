@@ -4,6 +4,7 @@
 
 #include "Arxiv/AppCore.hh"
 
+#include "Arxiv/AuthorMatch.hh"
 #include "Arxiv/BibTeX.hh"
 #include "Arxiv/Export.hh"
 #include "Arxiv/FuzzyMatch.hh"
@@ -267,13 +268,6 @@ std::vector<std::string> split_list(const std::string& csv) {
         start = comma + 1;
     }
     return parts;
-}
-
-bool iequals(const std::string& a, const std::string& b) {
-    return a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin(), [](char x, char y) {
-               return std::tolower(static_cast<unsigned char>(x)) ==
-                      std::tolower(static_cast<unsigned char>(y));
-           });
 }
 
 } // namespace
@@ -1159,13 +1153,13 @@ std::vector<Article> AppCore::GetArticlesForFollowedAuthors() const {
 
     auto all = m_db->GetRecent(-1);
     std::vector<Article> result;
-    // Match whole author names (case-insensitive): following "Wei Li" must
-    // not pull in "Wei Lin".
+    // Whole names with initials (see AuthorMatches): "W. Li" picks out Wei Li
+    // but not Xiao Li or Wei Lin.
     for (const auto& a : all) {
         const auto names = split_list(a.authors);
         bool match = std::any_of(names.begin(), names.end(), [&](const std::string& name) {
             return std::any_of(followed.begin(), followed.end(), [&](const std::string& f) {
-                return iequals(name, trim(f));
+                return AuthorMatches(f, name);
             });
         });
         if (match)

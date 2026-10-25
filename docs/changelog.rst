@@ -38,8 +38,9 @@ Unreleased
 - **Fixes** — the YAML digest is valid even when titles contain LaTeX;
   sub-projects at any depth (and projects whose parent was removed) show in
   the filter pane; the category filter and followed authors match whole
-  names (``math`` no longer matches ``math-ph``, ``Wei Li`` no longer
-  matches ``Wei Lin``); re-importing a project keeps it nested; deleting an
+  names (``math`` no longer matches ``math-ph``); followed authors match
+  whole names with first and optional middle initials (``W. Li`` matches
+  *Wei Li* but not *Xiao Li* or *Wei Lin*); re-importing a project keeps it nested; deleting an
   article removes its tags and pruning keeps tagged articles; undo restores
   selected articles outside the current view and keeps the read state;
   old-style IDs such as ``hep-ph/0101001`` work for PDFs, BibTeX and
