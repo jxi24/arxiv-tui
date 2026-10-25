@@ -13,9 +13,11 @@
 #include <chrono>
 #include <cstring>
 #include <ctime>
+#include <filesystem>
 #include <iostream>
 #include <string>
 #include <unistd.h>
+#include <utility>
 
 #include "spdlog/sinks/rotating_file_sink.h"
 #include "spdlog/spdlog.h"
@@ -145,13 +147,33 @@ int main(int argc, char* argv[]) {
 
     if (!replay_file.empty()) {
         spdlog::info("Replay mode: replaying from {}", replay_file);
-        auto core = std::make_unique<Arxiv::AppCore>(
-            config,
-            std::make_unique<Arxiv::DatabaseManager>(config.get_db_file()),
-            std::make_unique<Arxiv::Fetcher>(config.get_topics(), config.get_download_dir()),
-            Arxiv::AppCore::FetchMode::Offline);
+        // A replay never changes the user's data: it runs on an in-memory
+        // copy of the database, with the ranker and keywords copied to a
+        // scratch directory, and skips actions that write files or download.
+        namespace fs = std::filesystem;
+        const fs::path scratch =
+            fs::temp_directory_path() / ("arxiv-tui-replay-" + std::to_string(::getpid()));
+        fs::create_directories(scratch);
+        std::error_code ignore;
+        for (auto [from, to] : {std::pair{config.get_ranker_file(), scratch / "ranker.bin"},
+                                std::pair{config.get_keywords_file(), scratch / "keywords.txt"}})
+            fs::copy_file(from, to, fs::copy_options::overwrite_existing, ignore);
+        config.set_ranker_file((scratch / "ranker.bin").string());
+        config.set_keywords_file((scratch / "keywords.txt").string());
+        config.set_download_dir((scratch / "downloads").string());
 
-        auto result = Arxiv::ReplayPlayer::FromFile(replay_file, *core);
+        Arxiv::ReplayPlayer::Result result;
+        try {
+            Arxiv::AppCore core(
+                config,
+                Arxiv::DatabaseManager::InMemoryCopyOf(config.get_db_file()),
+                std::make_unique<Arxiv::Fetcher>(config.get_topics(), config.get_download_dir()),
+                Arxiv::AppCore::FetchMode::Offline);
+            result = Arxiv::ReplayPlayer::FromFile(replay_file, core);
+        } catch (const std::exception& e) {
+            result.error = e.what();
+        }
+        fs::remove_all(scratch, ignore);
         std::cout << "Replay complete: " << result.replayed << "/" << result.total
                   << " actions replayed, " << result.skipped << " skipped.\n";
         if (!result.error.empty()) {

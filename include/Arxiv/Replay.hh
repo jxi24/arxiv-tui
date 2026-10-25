@@ -110,6 +110,13 @@ class ReplayRecorder {
 // ---------------------------------------------------------------------------
 class ReplayPlayer {
   public:
+    struct Options {
+        /// Run actions that read or write files, download or touch the
+        /// keyword/ranker files (exports, import, downloads, save_keywords).
+        /// Off by default: a replay file may come from someone else.
+        bool file_actions = false;
+    };
+
     struct Result {
         int total = 0;
         int replayed = 0;
@@ -119,12 +126,17 @@ class ReplayPlayer {
 
     /// Replay from a JSONL string.
     static Result FromString(const std::string& jsonl, AppCore& core);
+    static Result FromString(const std::string& jsonl, AppCore& core, const Options& options);
 
     /// Replay from a JSONL file.
     static Result FromFile(const std::string& path, AppCore& core);
+    static Result FromFile(const std::string& path, AppCore& core, const Options& options);
 
   private:
-    static bool DispatchAction(const std::string& json_line, AppCore& core, std::string& error_out);
+    static bool DispatchAction(const std::string& json_line,
+                               AppCore& core,
+                               const Options& options,
+                               std::string& error_out);
 };
 
 } // namespace Arxiv

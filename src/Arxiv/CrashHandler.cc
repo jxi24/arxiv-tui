@@ -162,14 +162,12 @@ int write_report(int signum, const char* dir, const char* replay_path, char (&pa
         append_number(path, kPathMax, pos, ::getpid(), 1);
         append(path, kPathMax, pos, ".txt");
     };
+    // No fallback to the working directory: a report there litters wherever
+    // the user happened to start the program.
     build_path(dir);
     int fd = ::open(path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
-    if (fd < 0) {
-        build_path(".");
-        fd = ::open(path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
-        if (fd < 0)
-            return -1;
-    }
+    if (fd < 0)
+        return -1;
 
     put(fd, "=== arxiv-tui Crash Report ===\nTimestamp : ");
     put(fd, stamp);

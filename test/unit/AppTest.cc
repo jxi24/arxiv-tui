@@ -495,6 +495,20 @@ TEST_CASE("AppCore project import", "[app][projects]") {
         REQUIRE_FALSE(ok);
     }
 
+    SECTION("ImportProjectJSON refuses a file over the size limit") {
+        // Valid JSON padded with whitespace: only the size check can stop it
+        // being read whole into memory.
+        const std::string big_path = "/tmp/test_import_too_big.json";
+        {
+            std::ofstream f(big_path);
+            f << R"({"name":"Huge","articles":[]})";
+            f << std::string(Arxiv::AppCore::kMaxImportBytes, ' ');
+        }
+        bool ok = core_import.ImportProjectJSON(big_path);
+        std::filesystem::remove(big_path);
+        REQUIRE_FALSE(ok);
+    }
+
     SECTION("ImportProjectJSON returns false for invalid JSON") {
         const std::string bad_path = "/tmp/test_bad.json";
         std::ofstream f(bad_path);

@@ -6,6 +6,7 @@
 #define ARXIV_DATABASE_MANAGER
 
 #include <cstdint>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <sqlite3.h>
@@ -21,6 +22,9 @@ class DatabaseManager {
     // Type alias to avoid comma issues when used in trompeloeil MAKE_MOCK macros
     using RatedArticleList = std::vector<std::pair<Article, int>>;
     explicit DatabaseManager(const std::string& path);
+    /// An in-memory database holding a copy of the file at `path` (opened
+    /// read-only). Throws if the file cannot be opened or copied.
+    static std::unique_ptr<DatabaseManager> InMemoryCopyOf(const std::string& path);
     virtual ~DatabaseManager();
 
     // Article management

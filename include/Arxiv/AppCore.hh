@@ -32,6 +32,9 @@ class ReplayRecorder; // forward decl — included only by users that pass one
 
 class AppCore {
   public:
+    /// Project import files larger than this are refused unread.
+    static constexpr std::uintmax_t kMaxImportBytes = std::uintmax_t{64} << 20;
+
     // Whether the initial network fetch runs on the constructor thread (Sync,
     // the default — chosen so existing tests with mocked fetchers see the
     // fetched data immediately) or on a background thread (Async — used by

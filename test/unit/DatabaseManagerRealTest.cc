@@ -1171,3 +1171,40 @@ TEST_CASE("Real DB regression: search input never throws", "[database][real][reg
         REQUIRE(found.size() == 1);
     }
 }
+
+// ---------------------------------------------------------------------------
+// InMemoryCopyOf: --replay works on a copy so a replay never changes the
+// user's database.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("DatabaseManager::InMemoryCopyOf", "[database][real][replay]") {
+    auto path = (std::filesystem::temp_directory_path() /
+                 ("arxiv_copy_" + std::to_string(::getpid()) + ".db"))
+                    .string();
+    std::filesystem::remove(path);
+    {
+        DatabaseManager file_db(path);
+        file_db.AddArticle(sample_articles[0]);
+    }
+
+    SECTION("holds the file's articles") {
+        auto copy = DatabaseManager::InMemoryCopyOf(path);
+        REQUIRE(copy->GetArticle(sample_articles[0].link).has_value());
+    }
+    SECTION("writes stay in the copy") {
+        {
+            auto copy = DatabaseManager::InMemoryCopyOf(path);
+            copy->ToggleBookmark(sample_articles[0].link, true);
+            copy->AddArticle(sample_articles[1]);
+        }
+        DatabaseManager file_db(path);
+        REQUIRE_FALSE(file_db.GetArticle(sample_articles[0].link)->bookmarked);
+        REQUIRE_FALSE(file_db.GetArticle(sample_articles[1].link).has_value());
+    }
+    SECTION("a missing file is an error, not an empty database") {
+        REQUIRE_THROWS(DatabaseManager::InMemoryCopyOf(path + ".missing"));
+    }
+    std::filesystem::remove(path);
+    std::filesystem::remove(path + "-wal");
+    std::filesystem::remove(path + "-shm");
+}

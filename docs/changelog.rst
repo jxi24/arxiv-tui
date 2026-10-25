@@ -15,7 +15,9 @@ Unreleased
   back to ``https://inspirehep.net/``. PDF downloads are streamed to a
   temporary file, must start with ``%PDF-`` and stay under 256 MiB, and
   replace the target only when complete — an HTML error page or a dropped
-  connection no longer leaves a broken ``.pdf`` behind.
+  connection no longer leaves a broken ``.pdf`` behind. ``--replay`` runs on
+  an in-memory copy of the database and skips exports, imports, downloads
+  and keyword saves. Project import files over 64 MiB are refused.
 
 - **Exports and downloads no longer freeze the TUI** — ``o`` (Obsidian),
   ``g`` (selected digest), ``G`` (digest archive) and ``d`` (download PDF)
