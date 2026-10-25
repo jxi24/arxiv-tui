@@ -1791,7 +1791,7 @@ TEST_CASE("AppCore: re-linking an article does not duplicate it in the project's
 TEST_CASE("AppCore: an export whose writes fail reports failure", "[app][export]") {
     // /dev/full opens fine and then fails every write (like a full disk);
     // the export used to report success regardless.
-    if (!std::filesystem::exists("/dev/full"))
+    if (!std::filesystem::is_character_file("/dev/full"))
         SKIP("/dev/full not available");
     auto article = make_article("2401.00060", "J. Doe", "hep-ph");
     auto core = make_memory_core({article});

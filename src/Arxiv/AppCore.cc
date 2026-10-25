@@ -4,6 +4,7 @@
 
 #include "Arxiv/AppCore.hh"
 
+#include "Arxiv/AtomicFile.hh"
 #include "Arxiv/AuthorMatch.hh"
 #include "Arxiv/BibTeX.hh"
 #include "Arxiv/Export.hh"
@@ -544,11 +545,8 @@ void AppCore::LinkArticleToProject(const std::string& article_link,
             const bool present = content.find("{" + article->id() + "}") != std::string::npos ||
                                  content.find("\"" + article->id() + "\"") != std::string::npos;
             if (!present) {
-                std::ofstream f(bib_path, std::ios::app);
-                if (f.is_open()) {
-                    f << "\n" << GetBibtex(*article);
+                if (WriteFileAtomically(bib_path, content + "\n" + GetBibtex(*article)))
                     spdlog::info("[AppCore]: Appended BibTeX for {} to {}", article_link, bib_path);
-                }
             }
         }
     }
@@ -1513,13 +1511,13 @@ bool AppCore::SaveKeywords(const std::vector<std::string>& keywords) {
     if (path.empty())
         return false;
 
-    std::ofstream f(path);
-    if (!f.is_open()) {
+    std::string content;
+    for (const auto& kw : keywords)
+        content += kw + "\n";
+    if (!WriteFileAtomically(path, content)) {
         spdlog::error("[AppCore]: Cannot write keywords file '{}'", path);
         return false;
     }
-    for (const auto& kw : keywords)
-        f << kw << "\n";
 
     m_keywords = keywords;
     {

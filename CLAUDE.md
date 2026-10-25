@@ -149,6 +149,9 @@ Obsidian export, selected digest (and archive) and PDF download run on one worke
 **`Export`** (`Export.hh/cc`)
 File formats for every export (project Markdown/text/JSON, daily digest Markdown/YAML, selected digest, Obsidian notes, BibTeX file, tar archive). Pure functions over articles passed in — no DB, selection or UI state; `AppCore` gathers the data and delegates. Writes are checked after the fact (a full disk reports failure).
 
+**`WriteFileAtomically`** (`AtomicFile.hh/cc`)
+Every file the app owns or exports (config, `ranker.bin`, keywords, exports, Obsidian notes, project `.bib`) is written through it: temp file beside the target, fsync, rename. Follows symlinks; writes devices/FIFOs in place. Never write those files with a truncating `std::ofstream`.
+
 **`BibTeX`** (`BibTeX.hh/cc`)
 The single fallback BibTeX builder (`BibTeX::Build`) used by the clipboard and file exports when InspireHEP has no record: escapes `% & #`, balances braces, ASCII cite key, UTC year.
 
@@ -299,6 +302,7 @@ object programmatically.
 | `test/unit/BackgroundTaskTest.cc` | Non-blocking exports/downloads: `AppCore` background task API and TUI progress |
 | `test/unit/ProcessTest.cc` | `Process::RunAndWait` / `SpawnDetached` (no-shell process launching) |
 | `test/unit/PathsTest.cc` | `Paths::Resolve` fallback when the install prefix is not writable |
+| `test/unit/AtomicFileTest.cc` | Atomic writes: a write failing half way (RLIMIT_FSIZE in a forked child) keeps the old config / ranker / keywords |
 | `test/unit/CrashHandlerTest.cc` | Crash handler in forked children: report, no hang on a busy recorder, terminal restored, SIGTERM untouched |
 
 Tests tagged `[regression]` reproduce bugs found in code review (now fixed); the `[threads]` ones are only meaningful under ThreadSanitizer (the Sanitizers CI workflow). `[background]` covers the background-task API.

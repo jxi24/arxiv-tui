@@ -7,6 +7,12 @@ Changelog
 Unreleased
 ----------
 
+- **No more half-written files** — ``config.yml``, ``ranker.bin``, the
+  keywords file, exports, Obsidian notes and project ``.bib`` files are
+  written to a temporary file and renamed into place, so a full disk or a
+  crash mid-write leaves the previous version instead of a truncated file.
+  A symlinked ``config.yml`` stays a symlink.
+
 - **Security hardening** — a crash no longer hangs, restores the terminal
   and leaves ``SIGTERM`` alone; the crash report holds the end of
   ``replay.jsonl``. The clipboard backend is started without a shell

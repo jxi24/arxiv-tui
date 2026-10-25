@@ -53,6 +53,7 @@ add_executable(unit_tests
     unit/ThemeTest.cc
     unit/AuthorMatchTest.cc
     unit/CrashHandlerTest.cc
+    unit/AtomicFileTest.cc
 )
 
 # Link against Catch2 and our library

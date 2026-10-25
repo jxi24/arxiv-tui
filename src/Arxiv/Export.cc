@@ -4,6 +4,7 @@
 
 #include "Arxiv/Export.hh"
 
+#include "Arxiv/AtomicFile.hh"
 #include "Arxiv/Config.hh" // yaml-cpp: included via a project header, see CLAUDE.md
 #include "Arxiv/Fetcher.hh"
 #include "Arxiv/Process.hh"
@@ -11,11 +12,15 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cerrno>
 #include <chrono>
+#include <cstring>
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <string_view>
+#include <unistd.h>
 
 #include "fmt/format.h"
 #include "spdlog/spdlog.h"
@@ -37,13 +42,22 @@ std::string format_date(const std::chrono::system_clock::time_point& tp) {
 // success because only the open was checked.
 bool write_file(const std::string& path,
                 std::string_view log_subject,
-                const std::function<void(std::ofstream&)>& writer) {
-    std::ofstream file(path);
-    if (!file.is_open())
+                const std::function<void(std::ostream&)>& writer) {
+    // Fail before building the content: a BibTeX writer looks every paper up
+    // on InspireHEP, which is wasted on a path that cannot be written.
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const fs::path target(path);
+    const bool special = fs::exists(target, ec) && !fs::is_regular_file(target, ec);
+    const fs::path dir = target.has_parent_path() ? target.parent_path() : fs::path(".");
+    if (!special && ::access(dir.c_str(), W_OK) != 0) {
+        spdlog::error(
+            "[Export]: Cannot write {} to {}: {}", log_subject, path, std::strerror(errno));
         return false;
+    }
+    std::ostringstream file;
     writer(file);
-    file.flush();
-    if (!file) {
+    if (!WriteFileAtomically(path, file.str())) {
         spdlog::error("[Export]: Writing {} to {} failed", log_subject, path);
         return false;
     }
@@ -121,7 +135,7 @@ bool ProjectMarkdown(const std::string& path,
                      const std::string& project,
                      const std::vector<Article>& articles,
                      const NoteLookup& note_for) {
-    return write_file(path, "project '" + project + "' Markdown", [&](std::ofstream& file) {
+    return write_file(path, "project '" + project + "' Markdown", [&](std::ostream& file) {
         file << "# " << project << "\n\n";
         file << articles.size() << " article(s)\n\n---\n\n";
         for (const auto& article : articles) {
@@ -143,7 +157,7 @@ bool ProjectText(const std::string& path,
                  const std::string& project,
                  const std::vector<Article>& articles,
                  const NoteLookup& note_for) {
-    return write_file(path, "project '" + project + "' plain text", [&](std::ofstream& file) {
+    return write_file(path, "project '" + project + "' plain text", [&](std::ostream& file) {
         file << project << "\n" << std::string(project.size(), '=') << "\n\n";
         file << articles.size() << " article(s)\n\n";
         for (size_t i = 0; i < articles.size(); ++i) {
@@ -164,7 +178,7 @@ bool ProjectJSON(const std::string& path,
                  const std::string& project,
                  const std::vector<Article>& articles,
                  const NoteLookup& note_for) {
-    return write_file(path, "project '" + project + "' JSON", [&](std::ofstream& file) {
+    return write_file(path, "project '" + project + "' JSON", [&](std::ostream& file) {
         nlohmann::json j;
         j["name"] = project;
         j["articles"] = nlohmann::json::array();
@@ -187,7 +201,7 @@ bool ProjectJSON(const std::string& path,
 bool DailyDigestMarkdown(const std::string& path, const std::vector<Article>& articles) {
     return write_file(path,
                       "daily digest (" + std::to_string(articles.size()) + " articles)",
-                      [&](std::ofstream& f) {
+                      [&](std::ostream& f) {
                           f << "# arXiv Daily Digest — " << Today() << "\n\n";
                           if (articles.empty()) {
                               f << "_No articles fetched today._\n";
@@ -230,14 +244,14 @@ bool DailyDigestYAML(const std::string& path,
 
     return write_file(path,
                       "daily digest YAML (" + std::to_string(scored.size()) + " articles)",
-                      [&](std::ofstream& f) { f << out.c_str() << "\n"; });
+                      [&](std::ostream& f) { f << out.c_str() << "\n"; });
 }
 
 bool BibTeXFile(const std::string& path,
                 const std::vector<Article>& articles,
                 const std::function<std::string(const Article&)>& entry_for) {
     return write_file(
-        path, std::to_string(articles.size()) + " article(s) BibTeX", [&](std::ofstream& file) {
+        path, std::to_string(articles.size()) + " article(s) BibTeX", [&](std::ostream& file) {
             for (const auto& a : articles)
                 file << entry_for(a) << "\n";
         });
@@ -260,11 +274,7 @@ std::string SelectedDigest(Fetcher& fetcher,
 
     // Write the markdown digest.
     fs::path md_path = digest_dir / "digest.md";
-    std::ofstream f(md_path);
-    if (!f.is_open()) {
-        spdlog::error("[Export]: Cannot open digest file {}", md_path.string());
-        return "";
-    }
+    std::ostringstream f;
     f << "# arXiv Selected Digest — " << date_dir << "\n\n";
     f << articles.size() << " selected article(s)\n\n---\n\n";
     for (const auto& a : articles) {
@@ -278,7 +288,10 @@ std::string SelectedDigest(Fetcher& fetcher,
             f << "\n" << a.abstract << "\n";
         f << "\n---\n\n";
     }
-    f.close();
+    if (!WriteFileAtomically(md_path, f.str())) {
+        spdlog::error("[Export]: Cannot write digest file {}", md_path.string());
+        return "";
+    }
 
     // Download each PDF next to the digest.
     int ok = 0;
@@ -339,13 +352,7 @@ std::string ObsidianNotes(Fetcher& fetcher,
         const std::string stem = a.file_stem();
         fs::path note_path = note_dir / (stem + ".md");
 
-        std::ofstream nf(note_path);
-        if (!nf.is_open()) {
-            spdlog::error("[Export]: Cannot write note {}", note_path.string());
-            if (progress)
-                progress();
-            continue;
-        }
+        std::ostringstream nf;
         nf << "---\n";
         nf << "title: " << yaml_quote(a.title) << "\n";
         nf << "authors: " << yaml_quote(a.authors) << "\n";
@@ -374,6 +381,12 @@ std::string ObsidianNotes(Fetcher& fetcher,
            << "**Relevance:**\n\n"
            << "**Key ideas:**\n\n"
            << "**Open questions:**\n";
+        if (!WriteFileAtomically(note_path, nf.str())) {
+            spdlog::error("[Export]: Cannot write note {}", note_path.string());
+            if (progress)
+                progress();
+            continue;
+        }
 
         // Download the PDF next to the note. Fetcher writes relative to
         // its own base_path (the configured download_dir), which is *not*
@@ -390,11 +403,7 @@ std::string ObsidianNotes(Fetcher& fetcher,
 
     // Index note that links to every paper imported today.
     fs::path index_path = note_dir / ("digest-" + date_str + ".md");
-    std::ofstream idx(index_path);
-    if (!idx.is_open()) {
-        spdlog::error("[Export]: Cannot write index note {}", index_path.string());
-        return "";
-    }
+    std::ostringstream idx;
     idx << "---\n";
     idx << "title: " << yaml_quote("arXiv digest " + date_str) << "\n";
     idx << "tags: [arxiv-digest]\n";
@@ -411,7 +420,10 @@ std::string ObsidianNotes(Fetcher& fetcher,
             alias.replace(pos, 2, "] ]");
         idx << "- [[" << a.file_stem() << "|" << alias << "]]\n";
     }
-    idx.close();
+    if (!WriteFileAtomically(index_path, idx.str())) {
+        spdlog::error("[Export]: Cannot write index note {}", index_path.string());
+        return "";
+    }
 
     if (download_pdfs)
         spdlog::info("[Export]: Obsidian digest written to {} ({}/{} PDFs)",

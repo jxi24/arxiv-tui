@@ -76,7 +76,9 @@ class Config {
     void set_article_columns(const std::vector<std::string>& cols) { article_columns_ = cols; }
 
     // Save/Load configuration
-    void save_to_file(const std::string& config_file) const;
+    /// Write the config atomically (see WriteFileAtomically). False if it
+    /// could not be written; the previous file is then unchanged.
+    bool save_to_file(const std::string& config_file) const;
     void load_from_file(const std::string& config_file);
 
   private:

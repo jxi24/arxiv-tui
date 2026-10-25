@@ -11,6 +11,7 @@ add_library(libarxiv-tui
     Export.cc
     Clipboard.cc
     Process.cc
+    AtomicFile.cc
     Fetcher.cc
     DatabaseManager.cc
     Config.cc
