@@ -198,6 +198,9 @@ class ArxivApp {
     void SetupCategoryFilterDialog();
     void SetupSettingsDialog();
     void SetupMainRenderer();
+    // Shows why a background task did not start (busy, nothing selected);
+    // returns `started`.
+    bool StartTaskOrExplain(bool started, bool needs_selection);
     void SetupEventHandler();
 
     // Event handlers (called from SetupEventHandler dispatch or HandleGlobalEvent)

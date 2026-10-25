@@ -14,6 +14,7 @@
 #include <cstring>
 #include <ctime>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <unistd.h>
 
@@ -74,7 +75,17 @@ int main(int argc, char* argv[]) {
 
     CreateLogger(trace_mode, paths.state_dir / "arxiv_tui.log");
 
-    Arxiv::Config config(paths.config_file.string());
+    // Bad values fall back to defaults inside Config; only an unparseable
+    // file ends up here.
+    std::optional<Arxiv::Config> loaded;
+    try {
+        loaded.emplace(paths.config_file.string());
+    } catch (const std::exception& e) {
+        std::cerr << "Cannot read " << paths.config_file.string() << ": " << e.what() << "\n";
+        spdlog::error("Cannot read config {}: {}", paths.config_file.string(), e.what());
+        return 1;
+    }
+    Arxiv::Config& config = *loaded;
 
     // Apply resolved defaults for any path that was not explicitly set in the
     // config file (empty string is the sentinel for "not configured").
@@ -87,14 +98,25 @@ int main(int argc, char* argv[]) {
 
     // Headless feed fetch: update the DB and exit without opening the TUI.
     // Suitable for use in a cron job to keep the database current.
+    // Same fetch logic as the TUI (backfill of missed days, fetch
+    // bookkeeping, pruning), so a cron job keeps the database exactly as an
+    // interactive session would.
     if (fetch_only) {
         spdlog::info("Fetch-only mode: fetching articles");
-        Arxiv::Fetcher fetcher(config.get_topics(), config.get_download_dir());
-        Arxiv::DatabaseManager db(config.get_db_file());
-        auto articles = fetcher.Fetch();
-        db.AddArticles(articles);
-        std::cout << "Fetched " << articles.size() << " article(s).\n";
-        spdlog::info("Fetch-only mode: done ({} articles)", articles.size());
+        try {
+            Arxiv::AppCore core(
+                config,
+                std::make_unique<Arxiv::DatabaseManager>(config.get_db_file()),
+                std::make_unique<Arxiv::Fetcher>(config.get_topics(), config.get_download_dir()));
+            if (!core.LastFetchSucceeded()) {
+                std::cerr << "Fetch failed; see the log for details.\n";
+                return 1;
+            }
+            std::cout << "Fetch complete.\n";
+        } catch (const std::exception& e) {
+            std::cerr << "Fetch failed: " << e.what() << "\n";
+            return 1;
+        }
         return 0;
     }
 
@@ -103,8 +125,9 @@ int main(int argc, char* argv[]) {
         auto core = std::make_unique<Arxiv::AppCore>(
             config,
             std::make_unique<Arxiv::DatabaseManager>(config.get_db_file()),
-            std::make_unique<Arxiv::Fetcher>(config.get_topics(), config.get_download_dir()));
-        core->ReloadKeywords(); // interest keywords feed the YAML digest's ranking
+            std::make_unique<Arxiv::Fetcher>(config.get_topics(), config.get_download_dir()),
+            Arxiv::AppCore::FetchMode::Offline); // read-only: no fetch, no anchor change
+        core->ReloadKeywords();                  // interest keywords feed the YAML digest's ranking
 
         if (!export_today_path.empty()) {
             bool ok = core->ExportDailyDigest(export_today_path);
@@ -129,7 +152,8 @@ int main(int argc, char* argv[]) {
         auto core = std::make_unique<Arxiv::AppCore>(
             config,
             std::make_unique<Arxiv::DatabaseManager>(config.get_db_file()),
-            std::make_unique<Arxiv::Fetcher>(config.get_topics(), config.get_download_dir()));
+            std::make_unique<Arxiv::Fetcher>(config.get_topics(), config.get_download_dir()),
+            Arxiv::AppCore::FetchMode::Offline);
 
         auto result = Arxiv::ReplayPlayer::FromFile(replay_file, *core);
         std::cout << "Replay complete: " << result.replayed << "/" << result.total

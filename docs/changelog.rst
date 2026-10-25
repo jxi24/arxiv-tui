@@ -7,6 +7,42 @@ Changelog
 Unreleased
 ----------
 
+- **Exports and downloads no longer freeze the TUI** — ``o`` (Obsidian),
+  ``g`` (selected digest), ``G`` (digest archive) and ``d`` (download PDF)
+  run in the background. A badge in the bottom-right corner shows progress
+  (``Exporting to Obsidian 1/3…``) and then the outcome; you can keep
+  browsing meanwhile. One export runs at a time.
+- **Settings apply immediately** — saving the Settings dialog now applies
+  the new values (and key bindings) to the running session, and reopening it
+  shows what you saved. Topics still take effect on the next start. Letters
+  such as ``j``/``k`` can now be typed into settings fields.
+- **Auto-refresh works** — ``auto_refresh_minutes`` now periodically fetches
+  new articles; the list is refreshed without losing your place.
+- **Safer fetching** — the RSS feed is fetched over HTTPS; network requests
+  time out; links that are not ``https://arxiv.org/abs/<id>`` are rejected
+  from feeds and imports; arXiv API error responses are no longer stored as
+  articles; ``xdg-open`` and ``tar`` are started without a shell.
+- **No more lost days** — a failed fetch no longer marks the missed days as
+  fetched, so the next start retries the backfill. ``--fetch`` now uses the
+  same backfill logic as the TUI, and ``--export-today``/``--export-yaml``/
+  ``--replay`` no longer fetch or move the *New Articles* window.
+- **Robust config** — a wrongly typed or out-of-range value in
+  ``config.yml`` falls back to its default with a warning instead of
+  crashing; an unparseable file is reported clearly.
+- **Data directories** — when the compiled-in install prefix is not
+  writable (e.g. ``/usr/local``), data and state fall back to
+  ``~/.local/share`` / ``~/.local/state`` instead of failing at startup.
+- **Fixes** — the YAML digest is valid even when titles contain LaTeX;
+  sub-projects at any depth (and projects whose parent was removed) show in
+  the filter pane; the category filter and followed authors match whole
+  names (``math`` no longer matches ``math-ph``, ``Wei Li`` no longer
+  matches ``Wei Lin``); re-importing a project keeps it nested; deleting an
+  article removes its tags and pruning keeps tagged articles; undo restores
+  selected articles outside the current view and keeps the read state;
+  old-style IDs such as ``hep-ph/0101001`` work for PDFs, BibTeX and
+  Obsidian notes; a corrupt ``ranker.bin`` is rejected instead of crashing;
+  malformed import or replay files are reported instead of aborting.
+
 - **Obsidian export without PDFs** — ``o`` no longer downloads each PDF into
   the vault. Notes link to the PDF on arXiv instead
   (``[PDF on arXiv](https://arxiv.org/pdf/<id>)``), keeping git-synced vaults

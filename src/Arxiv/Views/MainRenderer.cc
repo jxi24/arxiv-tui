@@ -206,6 +206,30 @@ void ArxivApp::SetupMainRenderer() {
             document = dbox({document, help_dialog->Render()});
         }
 
+        auto task = core.GetBackgroundTaskStatus();
+        const bool show_task_result =
+            !task.running && !task.label.empty() &&
+            std::chrono::steady_clock::now() - task.finished_at < std::chrono::seconds(8);
+        if (task.running || show_task_result) {
+            Element badge;
+            if (task.running) {
+                std::string progress = task.label;
+                if (task.total > 1)
+                    progress += " " + std::to_string(task.done) + "/" + std::to_string(task.total);
+                badge = text(" " + progress + "… ") | bold | color(TextColors::primary());
+            } else if (!task.error.empty()) {
+                badge = text(" ✗ " + task.error + " ") | bold | color(TextColors::error());
+            } else {
+                badge = text(" ✓ " + task.message + " ") | color(TextColors::primary());
+            }
+            auto overlay = vbox({
+                filler(),
+                hbox({filler(), badge | bgcolor(TextColors::surface())}),
+                text(""), // stay clear of the fetching badge row
+            });
+            document = dbox({document, overlay});
+        }
+
         if (core.IsFetching()) {
             auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                           std::chrono::steady_clock::now().time_since_epoch())
@@ -370,7 +394,8 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
         settings_field_index = 0;
         settings_editing = false;
         settings_edit_buffer.clear();
-        m_config = core.GetConfig();
+        // m_config already holds the last saved settings; resetting it from
+        // the core's startup copy used to discard them.
         dialog_depth = Dialog::Settings;
         return true;
     }
@@ -392,56 +417,37 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
     }
 
     // Export selected articles as markdown digest + PDF bundle
+    // Exports that download PDFs run in the background; the status badge
+    // shows their progress and outcome.
     if (key_bindings.matches(event, KeyBindings::Action::ExportSelectedDigest)) {
-        std::string dir = core.ExportSelectedDigest();
-        if (dir.empty()) {
-            err_msg = core.GetSelectionCount() == 0 ? "No articles selected (Space to select)"
-                                                    : "Failed to export digest";
-            spdlog::warn("export_selected_digest failed: {}", err_msg);
-            dialog_depth = Dialog::Error;
-        } else {
-            if (m_recorder)
-                m_recorder->RecordExportSelectedDigest(dir);
-            spdlog::info("export_selected_digest path={}", dir);
-            success_msg = "Digest exported to " + dir;
-            dialog_depth = Dialog::Success;
-        }
+        if (!StartTaskOrExplain(core.StartExportSelectedDigest(), true))
+            return true;
+        if (m_recorder)
+            m_recorder->RecordExportSelectedDigest("");
+        spdlog::info("export_selected_digest started");
         return true;
     }
 
     // Export selected articles as a .tar.gz archive (digest + PDFs)
     if (key_bindings.matches(event, KeyBindings::Action::ExportDigestArchive)) {
-        std::string archive = core.ExportSelectedDigestArchive();
-        if (archive.empty()) {
-            err_msg = core.GetSelectionCount() == 0 ? "No articles selected (Space to select)"
-                                                    : "Failed to create digest archive";
-            spdlog::warn("export_digest_archive failed: {}", err_msg);
-            dialog_depth = Dialog::Error;
-        } else {
-            spdlog::info("export_digest_archive path={}", archive);
-            success_msg = "Archive exported to " + archive;
-            dialog_depth = Dialog::Success;
-        }
+        if (StartTaskOrExplain(core.StartExportSelectedDigestArchive(), true))
+            spdlog::info("export_digest_archive started");
         return true;
     }
 
     // Export selected articles into the configured Obsidian vault
     if (key_bindings.matches(event, KeyBindings::Action::ExportToObsidian)) {
-        std::string path = core.ExportSelectedToObsidian();
-        if (path.empty()) {
-            if (core.GetSelectionCount() == 0)
-                err_msg = "No articles selected (Space to select)";
-            else
-                err_msg = "Obsidian export failed — set 'obsidian_vault' in .arxiv-tui.yml";
-            spdlog::warn("export_to_obsidian failed: {}", err_msg);
+        if (m_config.get_obsidian_vault().empty() && core.GetSelectionCount() > 0 &&
+            !core.IsBackgroundTaskRunning()) {
+            err_msg = "No Obsidian vault set — add one in Settings (S), Export section";
             dialog_depth = Dialog::Error;
-        } else {
-            if (m_recorder)
-                m_recorder->RecordExportToObsidian(path);
-            spdlog::info("export_to_obsidian path={}", path);
-            success_msg = "Exported to Obsidian vault: " + path;
-            dialog_depth = Dialog::Success;
+            return true;
         }
+        if (!StartTaskOrExplain(core.StartExportSelectedToObsidian(), true))
+            return true;
+        if (m_recorder)
+            m_recorder->RecordExportToObsidian("");
+        spdlog::info("export_to_obsidian started");
         return true;
     }
 
@@ -581,5 +587,18 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
         return HandleAssignProjectEvent(event);
     }
 
+    return false;
+}
+
+bool ArxivApp::StartTaskOrExplain(bool started, bool needs_selection) {
+    if (started)
+        return true;
+    if (core.IsBackgroundTaskRunning())
+        err_msg = "Still working on: " + core.GetBackgroundTaskStatus().label;
+    else if (needs_selection && core.GetSelectionCount() == 0)
+        err_msg = "No articles selected (Space to select)";
+    else
+        err_msg = "Could not start the export";
+    dialog_depth = Dialog::Error;
     return false;
 }

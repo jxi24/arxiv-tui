@@ -979,3 +979,43 @@ TEST_CASE("Real DB regression: a write from another thread is not lost when a bu
     }));
     std::filesystem::remove(path);
 }
+
+TEST_CASE("Real DB regression: NULL values in name columns are skipped, not dereferenced",
+          "[database][real][regression]") {
+    // TEXT PRIMARY KEY columns accept NULL in SQLite; building a std::string
+    // from the NULL pointer sqlite3_column_text returns is undefined.
+    auto path = (std::filesystem::temp_directory_path() /
+                 ("arxiv_nulls_" + std::to_string(::getpid()) + ".db"))
+                    .string();
+    std::filesystem::remove(path);
+    { DatabaseManager create(path); }
+    sqlite3* raw = nullptr;
+    REQUIRE(sqlite3_open(path.c_str(), &raw) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(raw,
+                         "INSERT INTO projects (name) VALUES (NULL);"
+                         "INSERT INTO followed_authors (author_name) VALUES (NULL);"
+                         "INSERT INTO project_articles (project_name, article_link) "
+                         "VALUES (NULL, 'https://arxiv.org/abs/1');",
+                         nullptr,
+                         nullptr,
+                         nullptr) == SQLITE_OK);
+    sqlite3_close(raw);
+
+    DatabaseManager db(path);
+    SECTION("projects") {
+        std::vector<std::string> projects;
+        REQUIRE_NOTHROW(projects = db.GetProjects());
+        REQUIRE(projects.empty());
+    }
+    SECTION("followed authors") {
+        std::vector<std::string> authors;
+        REQUIRE_NOTHROW(authors = db.GetFollowedAuthors());
+        REQUIRE(authors.empty());
+    }
+    SECTION("projects for an article") {
+        std::vector<std::string> projects;
+        REQUIRE_NOTHROW(projects = db.GetProjectsForArticle("https://arxiv.org/abs/1"));
+        REQUIRE(projects.empty());
+    }
+    std::filesystem::remove(path);
+}

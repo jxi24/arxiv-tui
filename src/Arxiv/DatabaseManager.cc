@@ -219,7 +219,10 @@ void DatabaseManager::MigrateNormalizeLinks() {
     {
         Stmt sel(db, "SELECT link FROM articles", "MigrateNormalizeLinks/select");
         sel.for_each([&](sqlite3_stmt* s) {
-            std::string link = reinterpret_cast<const char*>(sqlite3_column_text(s, 0));
+            const auto* text = sqlite3_column_text(s, 0);
+            if (!text)
+                return;
+            std::string link = reinterpret_cast<const char*>(text);
             std::string canonical = link;
 
             if (canonical.substr(0, 7) == "http://")
@@ -352,9 +355,9 @@ void DatabaseManager::SetupTracing() {
 }
 
 void DatabaseManager::ExecuteSQL(const std::string& sql) {
-    char* errmsg;
+    char* errmsg = nullptr;
     if (sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &errmsg) != SQLITE_OK) {
-        std::string error_msg = errmsg;
+        std::string error_msg = errmsg ? errmsg : sqlite3_errmsg(db);
         sqlite3_free(errmsg);
         throw std::runtime_error(error_msg);
     }
@@ -439,6 +442,16 @@ std::vector<Arxiv::Article> DatabaseManager::GetRecent(int days) {
     return articles;
 }
 
+std::optional<Arxiv::Article> DatabaseManager::GetArticle(const std::string& link) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    std::string sql = std::string("SELECT ") + ARTICLE_COLUMNS + " FROM articles WHERE link = ?";
+    Stmt stmt(db, sql.c_str(), "GetArticle");
+    stmt.bind(1, link);
+    if (stmt.step() == SQLITE_ROW)
+        return RowToArticle(stmt.raw());
+    return std::nullopt;
+}
+
 std::vector<Arxiv::Article> DatabaseManager::ListBookmarked() {
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
     spdlog::debug("[Database]: Collecting all bookmarked articles");
@@ -466,6 +479,8 @@ void DatabaseManager::DeleteArticle(const std::string& link) {
     pa.bind(1, link).step_done();
     Stmt ar(db, "DELETE FROM article_ratings WHERE article_link = ?", "DeleteArticle/ratings");
     ar.bind(1, link).step_done();
+    Stmt at(db, "DELETE FROM article_tags WHERE article_link = ?", "DeleteArticle/tags");
+    at.bind(1, link).step_done();
     Stmt a(db, "DELETE FROM articles WHERE link = ?", "DeleteArticle");
     a.bind(1, link).step_done();
 }
@@ -690,7 +705,8 @@ void DatabaseManager::PruneArticles(int max_age_days) {
               "WHERE date < strftime('%s', 'now') - ? * 86400 "
               "AND bookmarked = 0 "
               "AND link NOT IN (SELECT article_link FROM article_ratings) "
-              "AND link NOT IN (SELECT article_link FROM project_articles)",
+              "AND link NOT IN (SELECT article_link FROM project_articles) "
+              "AND link NOT IN (SELECT article_link FROM article_tags)",
               "PruneArticles");
     stmt.bind(1, max_age_days).step_done();
 }
@@ -729,7 +745,8 @@ std::vector<std::string> DatabaseManager::GetProjects() {
     std::vector<std::string> projects;
     Stmt stmt(db, "SELECT name FROM projects", "GetProjects");
     stmt.for_each([&](sqlite3_stmt* s) {
-        projects.push_back(reinterpret_cast<const char*>(sqlite3_column_text(s, 0)));
+        if (const auto* v = sqlite3_column_text(s, 0)) // NULL names are skipped
+            projects.emplace_back(reinterpret_cast<const char*>(v));
     });
     return projects;
 }
@@ -823,7 +840,8 @@ std::vector<std::string> DatabaseManager::GetProjectsForArticle(const std::strin
               "GetProjectsForArticle");
     stmt.bind(1, article_link);
     stmt.for_each([&](sqlite3_stmt* s) {
-        projects.push_back(reinterpret_cast<const char*>(sqlite3_column_text(s, 0)));
+        if (const auto* v = sqlite3_column_text(s, 0)) // NULL names are skipped
+            projects.emplace_back(reinterpret_cast<const char*>(v));
     });
     return projects;
 }
@@ -1053,7 +1071,8 @@ std::vector<std::string> DatabaseManager::GetFollowedAuthors() {
     std::vector<std::string> authors;
     Stmt stmt(db, "SELECT author_name FROM followed_authors", "GetFollowedAuthors");
     stmt.for_each([&](sqlite3_stmt* s) {
-        authors.push_back(reinterpret_cast<const char*>(sqlite3_column_text(s, 0)));
+        if (const auto* v = sqlite3_column_text(s, 0)) // NULL names are skipped
+            authors.emplace_back(reinterpret_cast<const char*>(v));
     });
     return authors;
 }

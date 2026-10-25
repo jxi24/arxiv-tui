@@ -83,11 +83,10 @@ Fetcher::Fetcher(const std::vector<std::string>& topics, const std::string& _bas
 }
 
 std::vector<Article> Fetcher::Fetch() {
-    std::vector<Article> all_articles;
     auto response = FetchFeeds();
-    if (response) {
-        all_articles = ParseFeed(response.value());
-    }
+    if (!response)
+        throw FetchError("arXiv RSS feed could not be fetched");
+    std::vector<Article> all_articles = ParseFeed(response.value());
 
     spdlog::info("[Fetcher]: Fetched {} articles", all_articles.size());
     return all_articles;
@@ -680,13 +679,13 @@ std::vector<Article> Fetcher::FetchSince(const std::string& utc_date) {
     // This is NOT the peer-reviewed journal publication date (that is the
     // separate <arxiv:journal_ref> element).  We start the query window at
     // utc_date itself so that papers whose submission date equals utc_date are
-    // not silently dropped.  Duplicates already in the DB are handled by
-    // INSERT OR IGNORE in AddArticle.
+    // not silently dropped.  Papers already in the DB are upserted by
+    // AddArticle, which never rewrites their date.
     // arXiv submittedDate query format: YYYYMMDDHHMI (e.g. 202605020000).
     // Start the window announce_lag_days before utc_date: papers are announced
     // (and thus first visible) a day or more after their submission date, so a
     // window anchored exactly at the last fetch would miss papers submitted just
-    // before it but announced after. AddArticle de-dupes the overlap.
+    // before it but announced after. AddArticle's upsert absorbs the overlap.
     const std::string window_start = FetchSinceWindowStart(utc_date);
     std::tm from_tm{};
     parse_ymd_prefix(window_start, from_tm);
@@ -740,18 +739,16 @@ std::vector<Article> Fetcher::FetchSince(const std::string& utc_date) {
                                max_results);
 
         spdlog::info("[Fetcher]: FetchSince GET {}", url);
+        // A failure part-way through paging must not look like a complete
+        // (shorter) result: the caller would mark the missed days as fetched.
         cpr::Response resp;
         try {
             resp = cpr::Get(cpr::Url{url}, cpr::Timeout{15000});
         } catch (const std::exception& e) {
-            spdlog::error("[Fetcher]: FetchSince network error: {}", e.what());
-            break;
+            throw FetchError(std::string("arXiv API network error: ") + e.what());
         }
-
-        if (resp.status_code != 200) {
-            spdlog::warn("[Fetcher]: FetchSince HTTP {}", resp.status_code);
-            break;
-        }
+        if (resp.status_code != 200)
+            throw FetchError("arXiv API returned HTTP " + std::to_string(resp.status_code));
 
         auto batch = ParseAtomFeed(resp.text);
         if (batch.empty())

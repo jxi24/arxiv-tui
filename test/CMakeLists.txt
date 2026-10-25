@@ -49,6 +49,7 @@ add_executable(unit_tests
     unit/ArticleTest.cc
     unit/BackgroundTaskTest.cc
     unit/ProcessTest.cc
+    unit/PathsTest.cc
 )
 
 # Link against Catch2 and our library

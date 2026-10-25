@@ -220,7 +220,9 @@ bool ArxivApp::HandleSettingsEvent(ftxui::Event event) {
         } else {
             if (!m_config_path.empty())
                 m_config.save_to_file(m_config_path);
-            core.SetRecommendThreshold(m_config.get_recommend_threshold());
+            // Apply now rather than on the next start.
+            core.ApplyConfig(m_config);
+            key_bindings = KeyBindings(m_config.get_key_mappings());
             dialog_depth = Dialog::None;
         }
         return true;
@@ -234,6 +236,13 @@ bool ArxivApp::HandleSettingsEvent(ftxui::Event event) {
         }
         settings_section = (settings_section + 1) % kNumSections;
         settings_field_index = 0;
+        return true;
+    }
+
+    // While a field is being edited every printable key is text — "j" and
+    // "k" must not be swallowed by the navigation bindings below.
+    if (event.is_character() && settings_editing) {
+        settings_edit_buffer += event.character();
         return true;
     }
 

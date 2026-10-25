@@ -1705,3 +1705,44 @@ TEST_CASE("AppCore regression: Recommended view does not race the training threa
 
     SUCCEED("no data race reported");
 }
+
+TEST_CASE("AppCore regression: a failed backfill does not mark the missed days as fetched",
+          "[app][fetch][regression]") {
+    // last_fetch_date used to be advanced before the fetch ran, so a network
+    // failure on the first launch of the day lost every missed day for good.
+    auto db = std::make_unique<DatabaseManager>(":memory:");
+    db->SetMetadata("last_fetch_date", "2000-01-01");
+    auto* db_raw = db.get();
+    auto fetcher = std::make_unique<FetcherMock>();
+    ALLOW_CALL(*fetcher, FetchSince(ANY(std::string)))
+        .THROW(Arxiv::FetchError("arXiv API: HTTP 503"));
+
+    std::unique_ptr<AppCore> core;
+    REQUIRE_NOTHROW(
+        core = std::make_unique<AppCore>(regression_config(), std::move(db), std::move(fetcher)));
+    REQUIRE(db_raw->GetMetadata("last_fetch_date") == "2000-01-01");
+}
+
+TEST_CASE("AppCore regression: offline mode neither fetches nor moves the New Articles anchor",
+          "[app][fetch][regression]") {
+    // Headless --export-today/--export-yaml and --replay must not consume the
+    // user's day-boundary crossing (or hit the network).
+    auto db = std::make_unique<DatabaseManager>(":memory:");
+    db->SetMetadata("last_fetch_date", "2000-01-01");
+    db->SetMetadata("last_fetch_end_ts", "946771200");
+    db->SetMetadata("new_articles_anchor_ts", "946684800");
+    auto* db_raw = db.get();
+    auto fetcher = std::make_unique<FetcherMock>();
+    FORBID_CALL(*fetcher, Fetch());
+    FORBID_CALL(*fetcher, FetchSince(ANY(std::string)));
+
+    AppCore core(
+        regression_config(), std::move(db), std::move(fetcher), AppCore::FetchMode::Offline);
+
+    SECTION("last fetch date unchanged") {
+        REQUIRE(db_raw->GetMetadata("last_fetch_date") == "2000-01-01");
+    }
+    SECTION("anchor unchanged") {
+        REQUIRE(db_raw->GetMetadata("new_articles_anchor_ts") == "946684800");
+    }
+}

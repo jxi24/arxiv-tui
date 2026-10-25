@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <mutex>
+#include <optional>
 #include <sqlite3.h>
 #include <string>
 #include <vector>
@@ -25,6 +26,8 @@ class DatabaseManager {
     // Article management
     virtual void AddArticle(const Article& article);
     virtual std::vector<Article> GetRecent(int days);
+    // One article by link, or nullopt if it is not stored.
+    virtual std::optional<Article> GetArticle(const std::string& link);
     virtual std::vector<Article> ListBookmarked();
     virtual std::vector<Article> GetArticlesForProject(const std::string& project_name);
     virtual std::vector<Article> GetArticlesForDateRange(const std::string& start_date,
@@ -38,7 +41,7 @@ class DatabaseManager {
     virtual void MarkArticleRead(const std::string& link);
     virtual std::vector<Article> GetUnreadArticles();
     // Delete articles older than max_age_days that are not bookmarked, rated,
-    // or in any project. Pass 0 to disable (no-op).
+    // tagged, or in any project. Pass 0 to disable (no-op).
     virtual void PruneArticles(int max_age_days);
 
     // Rating management

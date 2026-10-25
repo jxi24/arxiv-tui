@@ -135,13 +135,19 @@ Parses arXiv RSS/XML feeds via `cpr` + `pugixml`. Downloads PDFs. All virtual me
 Loads `config.yml` from the XDG config path on startup; creates defaults if missing. Stores topics, download directory, key bindings, and runtime file paths (`db_file_`, `ranker_file_`). The db and ranker paths are not written to YAML — they are set programmatically by `main.cc` from `Paths::Resolve()` before the app is constructed.
 
 **`Paths`** (`Paths.hh/cc`)
-Resolves all runtime file locations at startup following the XDG Base Directory Specification. Config is always `XDG_CONFIG_HOME/arxiv-tui/config.yml`. Data (database, ranker, downloads) and state (log, replay, crash reports) default to the compile-time install prefix (`InstallPaths.hh`, generated from `InstallPaths.hh.in` by CMake) and can be overridden at runtime via `XDG_DATA_HOME` / `XDG_STATE_HOME`.
+Resolves all runtime file locations at startup following the XDG Base Directory Specification. Config is always `XDG_CONFIG_HOME/arxiv-tui/config.yml`. Data (database, ranker, downloads) and state (log, replay, crash reports) default to the compile-time install prefix (`InstallPaths.hh`, generated from `InstallPaths.hh.in` by CMake) when this user can write there, otherwise to the XDG defaults under `$HOME`; `XDG_DATA_HOME` / `XDG_STATE_HOME` override both. `Paths::Resolve(getenv, install_data, install_state, usable)` is the testable core.
 
 **`KeyBindings`** (`KeyBindings.hh/cc`)
 Maps string action names to `ftxui::Event` instances from the config.
 
 **`Article`** (`Article.hh`)
-Plain data struct: `link`, `title`, `authors`, `abstract`, `date` (Unix timestamp), `bookmarked`.
+Plain data struct: `link`, `title`, `authors`, `abstract`, `date` (Unix timestamp), `bookmarked`. `id()` is everything after `/abs/` (old-style ids keep their archive prefix); use `file_stem()` for file names.
+
+**Background tasks** (`AppCore::Start*`)
+Obsidian export, selected digest (and archive) and PDF download run on one worker thread (`StartTask`). Inputs are captured on the UI thread; the worker only uses the fetcher, the filesystem and the DB, and reports via `GetBackgroundTaskStatus()`, which the main renderer shows as a badge. Worker threads (fetch, auto-refresh, training, tasks) never touch `m_current_articles` or invoke the update callback — they set `m_needs_refetch` / `m_pending_read` for the UI thread's `TryRefetchIfNeeded()`.
+
+**`Process`** (`Process.hh/cc`)
+Starts external programs (`xdg-open`, `tar`) via `posix_spawnp` with an argument vector and stdio on `/dev/null`. Never build shell command strings from article data.
 
 ### Database Schema
 
@@ -278,8 +284,10 @@ object programmatically.
 | `test/unit/RankerTest.cc` | Vocabulary fitting, training, prediction, persistence |
 | `test/unit/ArticleTest.cc` | `Article::id` for new- and old-style identifiers |
 | `test/unit/BackgroundTaskTest.cc` | Non-blocking exports/downloads: `AppCore` background task API and TUI progress |
+| `test/unit/ProcessTest.cc` | `Process::RunAndWait` / `SpawnDetached` (no-shell process launching) |
+| `test/unit/PathsTest.cc` | `Paths::Resolve` fallback when the install prefix is not writable |
 
-Tests tagged `[regression]` reproduce bugs found in code review and fail until each is fixed; the `[threads]` one only fails under ThreadSanitizer. `[background]` specifies the background-task feature (its `AppCore` methods are stubs for now).
+Tests tagged `[regression]` reproduce bugs found in code review (now fixed); the `[threads]` ones are only meaningful under ThreadSanitizer (the Sanitizers CI workflow). `[background]` covers the background-task API.
 
 ### Mocks
 - `test/mocks/DatabaseManagerMock.hh` — mocks all `DatabaseManager` virtual methods; stores `NAMED_ALLOW_CALL` handles in `m_expectations` so they outlive helper function scopes

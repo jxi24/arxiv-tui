@@ -5,10 +5,10 @@
 #ifndef ARXIV_ARTICLE
 #define ARXIV_ARTICLE
 
+#include <algorithm>
 #include <chrono>
 #include <string>
-
-#include "spdlog/spdlog.h"
+#include <string_view>
 
 namespace Arxiv {
 
@@ -54,13 +54,22 @@ struct Article {
                bookmarked == other.bookmarked;
     }
 
+    /// arXiv identifier: everything after "/abs/". Old-style identifiers keep
+    /// their archive prefix ("hep-ph/0101001"), which a last-slash split lost.
     std::string id() const {
-        size_t last_slash_pos = link.find_last_of('/');
-        if (last_slash_pos == std::string::npos) {
-            spdlog::error("[Article]: Invalid link format {}", link);
-            return "";
-        }
-        return link.substr(last_slash_pos + 1);
+        constexpr std::string_view abs = "/abs/";
+        auto pos = link.find(abs);
+        if (pos != std::string::npos)
+            return link.substr(pos + abs.size());
+        auto last_slash = link.find_last_of('/');
+        return last_slash == std::string::npos ? std::string() : link.substr(last_slash + 1);
+    }
+
+    /// id() made safe for a file name ("hep-ph/0101001" -> "hep-ph_0101001").
+    std::string file_stem() const {
+        std::string stem = id();
+        std::replace(stem.begin(), stem.end(), '/', '_');
+        return stem;
     }
 };
 

@@ -24,6 +24,9 @@ class DatabaseManagerMock : public Arxiv::DatabaseManager {
             NAMED_ALLOW_CALL(*this, GetRecent(ANY(int))).RETURN(std::vector<Arxiv::Article>{}));
         m_expectations.push_back(
             NAMED_ALLOW_CALL(*this, ListBookmarked()).RETURN(std::vector<Arxiv::Article>{}));
+        // Default: look the link up among the articles given to setArticles.
+        m_expectations.push_back(
+            NAMED_ALLOW_CALL(*this, GetArticle(ANY(std::string))).LR_RETURN(FindArticle(_1)));
         m_expectations.push_back(
             NAMED_ALLOW_CALL(*this, GetProjects()).RETURN(std::vector<std::string>{}));
         m_expectations.push_back(NAMED_ALLOW_CALL(*this, AddArticle(ANY(Arxiv::Article))));
@@ -100,6 +103,7 @@ class DatabaseManagerMock : public Arxiv::DatabaseManager {
     MAKE_MOCK1(AddArticle, void(const Arxiv::Article&), override);
     MAKE_MOCK1(AddArticles, void(const std::vector<Arxiv::Article>&), override);
     MAKE_MOCK1(GetRecent, std::vector<Arxiv::Article>(int), override);
+    MAKE_MOCK1(GetArticle, std::optional<Arxiv::Article>(const std::string&), override);
     MAKE_MOCK0(ListBookmarked, std::vector<Arxiv::Article>(), override);
     MAKE_MOCK1(GetArticlesForProject, std::vector<Arxiv::Article>(const std::string&), override);
     MAKE_MOCK2(ToggleBookmark, void(const std::string&, bool), override);
@@ -223,6 +227,13 @@ class DatabaseManagerMock : public Arxiv::DatabaseManager {
   private:
     std::vector<std::unique_ptr<trompeloeil::expectation>> m_expectations;
     std::vector<Arxiv::Article> m_articles;
+
+    std::optional<Arxiv::Article> FindArticle(const std::string& link) const {
+        for (const auto& a : m_articles)
+            if (a.link == link)
+                return a;
+        return std::nullopt;
+    }
     std::vector<Arxiv::Article> m_bookmarked_articles;
     std::vector<std::string> m_projects;
     std::unordered_map<std::string, std::vector<Arxiv::Article>> m_project_articles;

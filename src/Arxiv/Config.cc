@@ -6,6 +6,9 @@
 
 #include <filesystem>
 #include <fstream>
+#include <type_traits>
+
+#include "spdlog/spdlog.h"
 
 namespace Arxiv {
 
@@ -37,76 +40,61 @@ void Config::load_from_file(const std::string& config_file) {
 
     YAML::Node config = YAML::LoadFile(config_file);
 
-    // Load download settings
-    if (config["article_settings"]) {
-        const auto& ds = config["article_settings"];
-        article_settings_.download_dir = ds["download_dir"].as<std::string>();
-        article_settings_.topics = ds["topics"].as<std::vector<std::string>>();
-    }
-
-    // Load recommendation threshold
-    if (config["recommend_threshold"]) {
-        recommend_threshold_ = config["recommend_threshold"].as<float>();
-    }
-
-    // Load retrain interval
-    if (config["retrain_interval"]) {
-        retrain_interval_ = config["retrain_interval"].as<int>();
-    }
-
-    // Load auto-refresh interval (optional; 0 = disabled)
-    if (config["auto_refresh_minutes"]) {
-        auto_refresh_minutes_ = config["auto_refresh_minutes"].as<int>();
-    }
-
-    // Load Obsidian vault path (optional; empty = feature disabled)
-    if (config["obsidian_vault"]) {
-        obsidian_vault_ = config["obsidian_vault"].as<std::string>();
-    }
-
-    // Interest keywords file (optional; empty = <data_dir>/keywords.txt, set in main)
-    if (config["keywords_file"]) {
-        keywords_file_ = config["keywords_file"].as<std::string>();
-    }
-
-    // Download PDFs into the vault on Obsidian export (optional; default off)
-    if (config["obsidian_download_pdfs"]) {
-        obsidian_download_pdfs_ = config["obsidian_download_pdfs"].as<bool>();
-    }
-
-    if (config["scroll_margin"]) {
-        scroll_margin_ = config["scroll_margin"].as<int>();
-    }
-
-    if (config["max_article_age_days"]) {
-        max_article_age_days_ = config["max_article_age_days"].as<int>();
-    }
-
-    if (config["undo_buffer_size"]) {
-        undo_buffer_size_ = config["undo_buffer_size"].as<std::size_t>();
-    }
-
-    if (config["clipboard_backend"]) {
-        clipboard_backend_ = config["clipboard_backend"].as<std::string>();
-    }
-
-    if (config["article_columns"] && config["article_columns"].IsSequence()) {
-        article_columns_.clear();
-        for (const auto& col : config["article_columns"]) {
-            article_columns_.push_back(col.as<std::string>());
+    // Read one optional key. A value of the wrong type, or one `valid`
+    // rejects, keeps the default and logs a warning instead of aborting
+    // startup over a hand-edited config.
+    auto read = [&](const YAML::Node& node, const char* key, auto& field, auto valid) {
+        if (!node || !node[key])
+            return;
+        using T = std::decay_t<decltype(field)>;
+        try {
+            T value = node[key].template as<T>();
+            if (valid(value))
+                field = std::move(value);
+            else
+                spdlog::warn("[Config]: '{}' is out of range; keeping the default", key);
+        } catch (const YAML::Exception& e) {
+            spdlog::warn(
+                "[Config]: Ignoring invalid '{}' ({}); keeping the default", key, e.what());
         }
-        if (article_columns_.empty())
-            article_columns_ = {"title", "date"};
-    }
+    };
+    auto any = [](const auto&) { return true; };
+    auto positive = [](int v) { return v > 0; };
+    auto non_negative = [](int v) { return v >= 0; };
 
-    // Load key mappings
-    if (config["key_mappings"]) {
+    const YAML::Node settings = config["article_settings"];
+    read(settings, "download_dir", article_settings_.download_dir, any);
+    read(settings, "topics", article_settings_.topics, any);
+    read(config, "recommend_threshold", recommend_threshold_, [](float v) {
+        return v >= 1.0f && v <= 5.0f;
+    });
+    read(config, "retrain_interval", retrain_interval_, positive);
+    read(config, "auto_refresh_minutes", auto_refresh_minutes_, non_negative);
+    read(config, "obsidian_vault", obsidian_vault_, any);
+    read(config, "keywords_file", keywords_file_, any);
+    read(config, "obsidian_download_pdfs", obsidian_download_pdfs_, any);
+    read(config, "scroll_margin", scroll_margin_, non_negative);
+    read(config, "max_article_age_days", max_article_age_days_, non_negative);
+    // Read as a signed number first: "-1" must not wrap to SIZE_MAX.
+    long long undo_size = static_cast<long long>(undo_buffer_size_);
+    read(config, "undo_buffer_size", undo_size, [](long long v) { return v >= 0 && v <= 1000; });
+    undo_buffer_size_ = static_cast<std::size_t>(undo_size);
+    read(config, "clipboard_backend", clipboard_backend_, any);
+
+    std::vector<std::string> columns;
+    read(config, "article_columns", columns, any);
+    if (config["article_columns"] && !columns.empty())
+        article_columns_ = columns;
+
+    // Load key mappings; malformed entries are skipped individually.
+    if (config["key_mappings"] && config["key_mappings"].IsSequence()) {
         key_mappings_.clear();
         for (const auto& mapping : config["key_mappings"]) {
             KeyMapping km;
-            km.action = mapping["action"].as<std::string>();
-            km.key = mapping["key"].as<std::string>();
-            key_mappings_.push_back(km);
+            read(mapping, "action", km.action, any);
+            read(mapping, "key", km.key, any);
+            if (!km.action.empty() && !km.key.empty())
+                key_mappings_.push_back(km);
         }
     }
 }

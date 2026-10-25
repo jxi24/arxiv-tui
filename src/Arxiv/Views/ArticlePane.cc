@@ -100,18 +100,14 @@ void ArxivApp::SetupArticlePane() {
             if (key_bindings.matches(event, KeyBindings::Action::DownloadArticle)) {
                 if (core.GetCurrentArticles().empty())
                     return true;
-                auto article =
+                // Downloads run in the background; the status badge reports
+                // progress and the outcome, and marks the article read.
+                const auto& article =
                     core.GetCurrentArticles()[static_cast<size_t>(core.GetArticleIndex())];
-                spdlog::debug("[App]: Downloading article ({}) to articles folder", article.id());
+                spdlog::debug("[App]: Downloading article ({})", article.id());
                 if (m_recorder)
                     m_recorder->RecordDownloadArticle(article.id());
-                bool success = core.DownloadArticle(article.id());
-                if (success) {
-                    core.MarkArticleRead(article.link);
-                } else {
-                    dialog_depth = Dialog::Error;
-                    err_msg = fmt::format("Failed to download article: {}", article.id());
-                }
+                StartTaskOrExplain(core.StartDownloadArticle(article.link), false);
                 return true;
             }
             return false;
