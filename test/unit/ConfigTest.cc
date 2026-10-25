@@ -86,7 +86,8 @@ TEST_CASE("Config: recommend_threshold round-trips through save/load", "[config]
     cfg.save_to_file(tmp.path);
 
     Config loaded(tmp.path);
-    REQUIRE_THAT(loaded.get_recommend_threshold(), Catch::Matchers::WithinRel(4.2f, 0.001f));
+    REQUIRE_THAT(static_cast<double>(loaded.get_recommend_threshold()),
+                 Catch::Matchers::WithinRel(4.2, 0.001));
 }
 
 TEST_CASE("Config: retrain_interval round-trips through save/load", "[config]") {
