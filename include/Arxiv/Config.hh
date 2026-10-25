@@ -45,6 +45,9 @@ class Config {
     bool get_obsidian_download_pdfs() const { return obsidian_download_pdfs_; }
     const std::string& get_clipboard_backend() const { return clipboard_backend_; }
     const std::string& get_theme() const { return theme_; }
+    // Problems found while loading (bad values, unparseable file). Each
+    // affected setting keeps its default.
+    const std::vector<std::string>& get_warnings() const { return warnings_; }
     const std::map<std::string, std::string>& get_theme_colors() const { return theme_colors_; }
     int get_auto_refresh_minutes() const { return auto_refresh_minutes_; }
     int get_scroll_margin() const { return scroll_margin_; }
@@ -91,6 +94,8 @@ class Config {
     int max_article_age_days_{0};
     std::size_t undo_buffer_size_{10};
     std::string clipboard_backend_;
+    std::vector<std::string> warnings_;
+    void apply_defaults();
     std::string theme_{"frappe"};                     // colour preset
     std::map<std::string, std::string> theme_colors_; // per-colour "#rrggbb" overrides
     std::vector<std::string> article_columns_{"title", "date"};

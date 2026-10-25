@@ -14,7 +14,6 @@
 #include <cstring>
 #include <ctime>
 #include <iostream>
-#include <optional>
 #include <string>
 #include <unistd.h>
 
@@ -75,17 +74,14 @@ int main(int argc, char* argv[]) {
 
     CreateLogger(trace_mode, paths.state_dir / "arxiv_tui.log");
 
-    // Bad values fall back to defaults inside Config; only an unparseable
-    // file ends up here.
-    std::optional<Arxiv::Config> loaded;
-    try {
-        loaded.emplace(paths.config_file.string());
-    } catch (const std::exception& e) {
-        std::cerr << "Cannot read " << paths.config_file.string() << ": " << e.what() << "\n";
-        spdlog::error("Cannot read config {}: {}", paths.config_file.string(), e.what());
-        return 1;
-    }
-    Arxiv::Config& config = *loaded;
+    // Bad values (or an unparseable file) fall back to the defaults; the TUI
+    // shows the warnings in a pop-up, headless modes print them.
+    Arxiv::Config config(paths.config_file.string());
+    const bool headless = fetch_only || !export_today_path.empty() || !export_yaml_path.empty() ||
+                          !replay_file.empty();
+    if (headless)
+        for (const auto& w : config.get_warnings())
+            std::cerr << "config: " << w << "\n";
 
     // Apply resolved defaults for any path that was not explicitly set in the
     // config file (empty string is the sentinel for "not configured").

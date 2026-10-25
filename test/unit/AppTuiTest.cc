@@ -17,6 +17,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
+#include <filesystem>
+#include <fstream>
+#include <unistd.h>
 
 #include "fixtures/test_data.hh"
 #include "mocks/DatabaseManagerMock.hh"
@@ -461,4 +464,39 @@ TEST_CASE("Settings lets the user cycle the theme", "[tui][theme][settings]") {
     handler->OnEvent(Event::Return); // next preset
     REQUIRE_THAT(render(*app), Catch::Matchers::ContainsSubstring("latte"));
     Arxiv::SetTheme("frappe");
+}
+
+// ---------------------------------------------------------------------------
+// Bad config pop-up
+// ---------------------------------------------------------------------------
+
+TEST_CASE("A bad config value is reported in a pop-up at startup", "[tui][config]") {
+    const auto path = (std::filesystem::temp_directory_path() /
+                       ("arxiv_tui_badcfg_" + std::to_string(::getpid()) + ".yml"))
+                          .string();
+    {
+        std::ofstream f(path);
+        f << "article_settings:\n  download_dir: /tmp\n  topics: [hep-ph]\n"
+          << "retrain_interval: five\n";
+    }
+    Config cfg(path);
+    std::filesystem::remove(path);
+    auto app = make_app(cfg);
+
+    const std::string out = render(*app);
+    SECTION("names the key") {
+        REQUIRE_THAT(out, Catch::Matchers::ContainsSubstring("retrain_interval"));
+    }
+    SECTION("says the default is used") {
+        REQUIRE_THAT(out, Catch::Matchers::ContainsSubstring("default"));
+    }
+    SECTION("dismissed with Enter") {
+        app->GetEventHandler()->OnEvent(Event::Return);
+        REQUIRE_THAT(render(*app), !Catch::Matchers::ContainsSubstring("retrain_interval"));
+    }
+}
+
+TEST_CASE("A valid config shows no pop-up", "[tui][config]") {
+    auto app = make_app();
+    REQUIRE_THAT(render(*app), !Catch::Matchers::ContainsSubstring("Config problem"));
 }

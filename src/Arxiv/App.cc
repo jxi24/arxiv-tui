@@ -32,6 +32,10 @@ ArxivApp::ArxivApp(const Config& config, const std::string& config_path, ReplayR
         m_recorder->RecordEvent("app/setup_ui_begin");
     Arxiv::SetTheme(m_config.get_theme(), m_config.get_theme_colors());
     SetupUI();
+    // Settings that were rejected while loading config.yml: say which, and
+    // that their defaults are in use.
+    if (!m_config.get_warnings().empty())
+        dialog_depth = Dialog::ConfigWarning;
     if (m_recorder)
         m_recorder->RecordEvent("app/setup_ui_end");
     // auto_refresh_minutes was read but never acted on; 0 keeps it off.
@@ -52,6 +56,10 @@ ArxivApp::ArxivApp(Config cfg,
     , screen(ScreenInteractive::Fullscreen()) {
     Arxiv::SetTheme(m_config.get_theme(), m_config.get_theme_colors());
     SetupUI();
+    // Settings that were rejected while loading config.yml: say which, and
+    // that their defaults are in use.
+    if (!m_config.get_warnings().empty())
+        dialog_depth = Dialog::ConfigWarning;
     // No refresh thread: tests drive events directly via GetEventHandler().
 }
 #endif

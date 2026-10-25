@@ -159,6 +159,24 @@ void ArxivApp::SetupMainRenderer() {
                                 borderStyled(ROUNDED, TextColors::error()) |
                                 bgcolor(TextColors::surface()) | clear_under | center;
             document = dbox({document, error_dialog});
+        } else if (dialog_depth == Dialog::ConfigWarning) {
+            Elements lines = {
+                text("Config problem") | bold | center | color(TextColors::error()),
+                separator() | color(TextColors::error()),
+            };
+            for (const auto& w : m_config.get_warnings())
+                lines.push_back(paragraph("• " + w) | color(TextColors::text()));
+            lines.push_back(separator() | color(TextColors::border()));
+            lines.push_back(
+                text("Fix config.yml, or change these in Settings (" +
+                     KeyBindings::DisplayKey(key_bindings.get_key(KeyBindings::Action::Settings)) +
+                     ").") |
+                color(TextColors::subtext()));
+            lines.push_back(text("Press Enter or Esc to continue") | color(TextColors::subtext()));
+            auto warning_dialog = vbox(lines) | size(WIDTH, LESS_THAN, 76) |
+                                  borderStyled(ROUNDED, TextColors::error()) |
+                                  bgcolor(TextColors::surface()) | clear_under | center;
+            document = dbox({document, warning_dialog});
         } else if (dialog_depth == Dialog::Success) {
             auto success_dialog =
                 vbox({
@@ -301,6 +319,12 @@ void ArxivApp::SetupEventHandler() {
             return HandleNotesEvent(event);
         if (dialog_depth == Dialog::Export)
             return HandleExportEvent(event);
+
+        if (dialog_depth == Dialog::ConfigWarning) {
+            if (event == Event::Return || event == Event::Escape)
+                dialog_depth = Dialog::None;
+            return true;
+        }
 
         // Success dialog dismiss
         if (dialog_depth == Dialog::Success) {

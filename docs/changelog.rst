@@ -27,8 +27,9 @@ Unreleased
   same backfill logic as the TUI, and ``--export-today``/``--export-yaml``/
   ``--replay`` no longer fetch or move the *New Articles* window.
 - **Robust config** — a wrongly typed or out-of-range value in
-  ``config.yml`` falls back to its default with a warning instead of
-  crashing; an unparseable file is reported clearly.
+  ``config.yml`` falls back to its default instead of crashing, and a pop-up
+  at startup lists each one; an unparseable file runs on the defaults (and
+  is left unchanged) with the same pop-up.
 - **Data directories** — when the compiled-in install prefix is not
   writable (e.g. ``/usr/local``), data and state fall back to
   ``~/.local/share`` / ``~/.local/state`` instead of failing at startup.

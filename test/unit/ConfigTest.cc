@@ -7,6 +7,7 @@
 #include <atomic>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -355,4 +356,51 @@ TEST_CASE("Config: theme and colour overrides round-trip", "[config][theme]") {
     Config loaded(tmp.path);
     REQUIRE(loaded.get_theme() == "latte");
     REQUIRE(loaded.get_theme_colors().at("primary") == "#112233");
+}
+
+// ---------------------------------------------------------------------------
+// Bad config: every rejected value is reported (the TUI shows them in a
+// pop-up) and the default is used instead.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Config: rejected values are reported as warnings", "[config][warnings]") {
+    TempConfig tmp;
+    {
+        std::ofstream f(tmp.path);
+        f << "article_settings:\n"
+          << "  download_dir: /tmp\n"
+          << "  topics: [cs.AI]\n"
+          << "retrain_interval: five\n"
+          << "scroll_margin: -4\n";
+    }
+    Config loaded(tmp.path);
+    const auto& warnings = loaded.get_warnings();
+
+    REQUIRE(warnings.size() == 2);
+    REQUIRE_THAT(warnings[0], Catch::Matchers::ContainsSubstring("retrain_interval"));
+    REQUIRE_THAT(warnings[1], Catch::Matchers::ContainsSubstring("scroll_margin"));
+    REQUIRE(loaded.get_retrain_interval() == 5);
+    REQUIRE(loaded.get_scroll_margin() == 3);
+}
+
+TEST_CASE("Config: a valid file produces no warnings", "[config][warnings]") {
+    TempConfig tmp;
+    Config cfg;
+    cfg.set_topics({"hep-ph"});
+    cfg.save_to_file(tmp.path);
+    REQUIRE(Config(tmp.path).get_warnings().empty());
+}
+
+TEST_CASE("Config: an unparseable file loads the defaults with a warning", "[config][warnings]") {
+    TempConfig tmp;
+    {
+        std::ofstream f(tmp.path);
+        f << "article_settings: [unclosed\n  topics: {\n";
+    }
+    std::optional<Config> loaded;
+    REQUIRE_NOTHROW(loaded.emplace(tmp.path));
+    REQUIRE(loaded->get_topics() ==
+            std::vector<std::string>{"hep-ph", "hep-ex", "hep-lat", "hep-th"});
+    REQUIRE(loaded->get_warnings().size() == 1);
+    REQUIRE_THAT(loaded->get_warnings()[0], Catch::Matchers::ContainsSubstring("defaults"));
 }

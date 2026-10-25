@@ -128,8 +128,12 @@ Reference
        theme_colors:
          primary: "#fab387"
 
-Values of the wrong type or out of range are ignored with a warning in the
-log, and the default is used instead.
+A value of the wrong type or out of range is ignored and its default is used
+instead; when the TUI starts it shows a pop-up listing each such setting. If
+the file cannot be parsed at all, every setting uses its default and the file
+is left untouched so you can fix it. Saving from the Settings dialog writes
+the values in use (defaults included) back to ``config.yml``. Headless modes
+(``--fetch``, ``--export-*``, ``--replay``) print the same warnings to stderr.
 
 Environment overrides
 ---------------------

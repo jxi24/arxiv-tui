@@ -14,57 +14,75 @@ namespace Arxiv {
 
 Config::Config(const std::string& config_file) { load_from_file(config_file); }
 
+void Config::apply_defaults() {
+    article_settings_.topics = {"hep-ph", "hep-ex", "hep-lat", "hep-th"};
+    recommend_threshold_ = 3.5f;
+    retrain_interval_ = 5;
+    key_mappings_ = {
+        {"next", "j"},
+        {"previous", "k"},
+        {"quit", "q"},
+        {"create_project", "p"},
+        {"delete_project", "x"},
+        {"download_article", "d"},
+        {"show_detail", "a"},
+        {"undo_delete", "u"},
+    };
+}
+
 void Config::load_from_file(const std::string& config_file) {
+    warnings_.clear();
     if (!std::filesystem::exists(config_file)) {
         // Create default configuration; download_dir is left empty so the
         // caller (main) can fill it in from the resolved XDG/install paths.
-        article_settings_.topics = {"hep-ph", "hep-ex", "hep-lat", "hep-th"};
-        recommend_threshold_ = 3.5f;
-        retrain_interval_ = 5;
-
-        // Default key mappings
-        key_mappings_ = {
-            {"next", "j"},
-            {"previous", "k"},
-            {"quit", "q"},
-            {"create_project", "p"},
-            {"delete_project", "x"},
-            {"download_article", "d"},
-            {"show_detail", "a"},
-            {"undo_delete", "u"},
-        };
-
+        apply_defaults();
         save_to_file(config_file);
         return;
     }
 
-    YAML::Node config = YAML::LoadFile(config_file);
+    YAML::Node config;
+    try {
+        config = YAML::LoadFile(config_file);
+    } catch (const YAML::Exception& e) {
+        // Unreadable as YAML: run on the defaults and say so. The file is
+        // left as it is so the user can fix it.
+        apply_defaults();
+        warnings_.push_back("config.yml could not be read (" + std::string(e.what()) +
+                            "); using the defaults for every setting. The file was not changed.");
+        spdlog::error("[Config]: {}", warnings_.back());
+        return;
+    }
+
+    const YAML::Node settings_node = config["article_settings"];
 
     // Read one optional key. A value of the wrong type, or one `valid`
-    // rejects, keeps the default and logs a warning instead of aborting
-    // startup over a hand-edited config.
+    // rejects, keeps the default and is reported in warnings_ (the TUI shows
+    // them in a pop-up) instead of aborting startup over a hand-edited config.
     auto read = [&](const YAML::Node& node, const char* key, auto& field, auto valid) {
         if (!node || !node[key])
             return;
         using T = std::decay_t<decltype(field)>;
+        const std::string name =
+            (&node == &settings_node ? "article_settings." : "") + std::string(key);
+        const std::string shown =
+            node[key].IsScalar() ? "'" + node[key].Scalar() + "'" : "this value";
         try {
             T value = node[key].template as<T>();
-            if (valid(value))
+            if (valid(value)) {
                 field = std::move(value);
-            else
-                spdlog::warn("[Config]: '{}' is out of range; keeping the default", key);
-        } catch (const YAML::Exception& e) {
-            spdlog::warn(
-                "[Config]: Ignoring invalid '{}' ({}); keeping the default", key, e.what());
+                return;
+            }
+        } catch (const YAML::Exception&) {
         }
+        warnings_.push_back(name + ": " + shown + " is not valid; using the default.");
+        spdlog::warn("[Config]: {}", warnings_.back());
     };
     auto any = [](const auto&) { return true; };
     auto positive = [](int v) { return v > 0; };
     auto non_negative = [](int v) { return v >= 0; };
 
-    const YAML::Node settings = config["article_settings"];
-    read(settings, "download_dir", article_settings_.download_dir, any);
-    read(settings, "topics", article_settings_.topics, any);
+    read(settings_node, "download_dir", article_settings_.download_dir, any);
+    read(settings_node, "topics", article_settings_.topics, any);
     read(config, "recommend_threshold", recommend_threshold_, [](float v) {
         return v >= 1.0f && v <= 5.0f;
     });
