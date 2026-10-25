@@ -95,8 +95,10 @@ Reference
 
 ``obsidian_vault``
     Obsidian vault that ``o`` exports selected articles into; notes are
-    written to ``<vault>/arxiv-tui/<date>/``. Empty or absent disables the
-    export. Also editable in the Settings dialog (``S`` → Export).
+    written to ``<vault>/arxiv-tui/<date>/``. A note that already exists is
+    left as it is (it may hold your reading notes), and exporting again on the
+    same day adds to that day's ``digest-<date>.md`` index. Empty or absent
+    disables the export. Also editable in the Settings dialog (``S`` → Export).
 
 ``obsidian_download_pdfs``
     What each exported note points to. ``false`` (the default) adds a

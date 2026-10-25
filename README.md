@@ -147,7 +147,7 @@ key_mappings:
 
 **`max_article_age_days`** is the maximum age (in days) of articles kept in the database. Articles older than this threshold are deleted on startup unless they are bookmarked, rated, or assigned to a project. Set to `0` to disable pruning entirely. Default: `0`.
 
-**`obsidian_vault`** is the Obsidian vault that `o` exports selected articles into (notes go to `<vault>/arxiv-tui/<date>/`). Empty or absent disables the export.
+**`obsidian_vault`** is the Obsidian vault that `o` exports selected articles into (notes go to `<vault>/arxiv-tui/<date>/`; existing notes are never overwritten, and a second export the same day adds to that day's index). Empty or absent disables the export.
 
 **`obsidian_download_pdfs`** controls what each exported note points to. `false` (the default) adds a `[PDF on arXiv](https://arxiv.org/pdf/<id>)` link and downloads nothing, which keeps git-synced vaults small. `true` downloads the PDF next to the note and embeds it (`![[<id>.pdf]]`). It's also toggled in the Settings dialog (`S` → Export → Download PDFs). Default: `false`.
 

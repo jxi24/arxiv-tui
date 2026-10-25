@@ -11,7 +11,10 @@ Unreleased
   keywords file, exports, Obsidian notes and project ``.bib`` files are
   written to a temporary file and renamed into place, so a full disk or a
   crash mid-write leaves the previous version instead of a truncated file.
-  A symlinked ``config.yml`` stays a symlink.
+  A symlinked ``config.yml`` stays a symlink. Obsidian export no longer
+  overwrites a paper's existing note (and your reading notes in it), and a
+  second export on the same day adds to that day's index instead of
+  replacing it.
 
 - **Security hardening** — a crash no longer hangs, restores the terminal
   and leaves ``SIGTERM`` alone; the crash report holds the end of

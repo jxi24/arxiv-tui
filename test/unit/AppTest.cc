@@ -976,6 +976,80 @@ TEST_CASE("AppCore::ExportSelectedDigest", "[app][export]") {
     }
 }
 
+namespace {
+// AppCore over the sample articles exporting to `vault` (PDFs linked only).
+std::unique_ptr<AppCore> obsidian_core(const std::filesystem::path& vault) {
+    Config config("test/fixtures/test_config.yml");
+    config.set_obsidian_vault(vault.string());
+    auto db = std::make_unique<Arxiv::DatabaseManager>(":memory:");
+    for (const auto& a : sample_articles)
+        db->AddArticle(a);
+    auto core = std::make_unique<AppCore>(
+        config, std::move(db), std::make_unique<FetcherMock>(), AppCore::FetchMode::Offline);
+    core->SetFilterIndex(AppCore::FilterView::All);
+    return core;
+}
+
+std::string read_all(const std::filesystem::path& p) {
+    std::ifstream f(p);
+    std::stringstream ss;
+    ss << f.rdbuf();
+    return ss.str();
+}
+} // namespace
+
+TEST_CASE("Obsidian export keeps reading notes written in an existing note",
+          "[app][export][obsidian][regression]") {
+    auto vault = std::filesystem::temp_directory_path() /
+                 ("arxiv_obsidian_keep_" + std::to_string(::getpid()));
+    std::filesystem::remove_all(vault);
+    auto core = obsidian_core(vault);
+    core->ToggleSelection(sample_articles[0].link);
+    auto index = core->ExportSelectedToObsidian();
+    REQUIRE_FALSE(index.empty());
+    auto note =
+        std::filesystem::path(index).parent_path() / (sample_articles[0].file_stem() + ".md");
+    {
+        std::ofstream(note, std::ios::app) << "My thoughts on this paper.\n";
+    }
+
+    REQUIRE_FALSE(core->ExportSelectedToObsidian().empty());
+
+    REQUIRE_THAT(read_all(note), ContainsSubstring("My thoughts on this paper."));
+    std::filesystem::remove_all(vault);
+}
+
+TEST_CASE("Obsidian export on the same day keeps earlier papers in the index",
+          "[app][export][obsidian][regression]") {
+    auto vault = std::filesystem::temp_directory_path() /
+                 ("arxiv_obsidian_index_" + std::to_string(::getpid()));
+    std::filesystem::remove_all(vault);
+    auto core = obsidian_core(vault);
+
+    core->ToggleSelection(sample_articles[0].link);
+    REQUIRE_FALSE(core->ExportSelectedToObsidian().empty());
+    core->ClearSelections();
+    core->ToggleSelection(sample_articles[1].link);
+    auto index = core->ExportSelectedToObsidian();
+    REQUIRE_FALSE(index.empty());
+
+    auto content = read_all(index);
+    SECTION("first batch still linked") {
+        REQUIRE_THAT(content, ContainsSubstring("[[" + sample_articles[0].file_stem() + "|"));
+    }
+    SECTION("second batch linked") {
+        REQUIRE_THAT(content, ContainsSubstring("[[" + sample_articles[1].file_stem() + "|"));
+    }
+    SECTION("re-exporting a paper does not list it twice") {
+        core->ClearSelections();
+        core->ToggleSelection(sample_articles[1].link);
+        content = read_all(core->ExportSelectedToObsidian());
+        const std::string link = "[[" + sample_articles[1].file_stem() + "|";
+        REQUIRE(content.find(link) == content.rfind(link));
+    }
+    std::filesystem::remove_all(vault);
+}
+
 TEST_CASE("AppCore::ExportSelectedToObsidian", "[app][export]") {
     SECTION("Returns empty string when no vault configured") {
         Config config("test/fixtures/test_config.yml");
