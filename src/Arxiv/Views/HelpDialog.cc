@@ -15,28 +15,31 @@ void ArxivApp::SetupHelpDialog() {
         if (!show_help)
             return emptyElement();
 
-        auto bindings = key_bindings.filter_bindings(help_search_query);
+        const auto bindings = key_bindings.grouped_bindings(help_search_query);
 
-        for (auto& [_, key] : bindings) {
-            if (key == " ")
-                key = "<space>";
-        }
-
-        std::sort(bindings.begin(), bindings.end(), [](const auto& a, const auto& b) {
-            return a.first < b.first;
-        });
-
-        int term_width = Terminal::Size().dimx;
-        int dialog_width = std::min(term_width - 4, 80);
-        int column_width = (dialog_width - 4) / 3;
-
-        std::vector<Element> columns[3];
-        for (size_t i = 0; i < bindings.size(); ++i) {
-            const auto& [action, key] = bindings[i];
-            columns[i % 3].push_back(hbox({text(action) | bold | color(TextColors::primary()),
-                                           text(": ") | color(TextColors::primary()),
-                                           text(key) | color(TextColors::subtext())}) |
-                                     size(WIDTH, EQUAL, column_width));
+        // Two columns of groups; each entry is "key  Action", key first so
+        // the eye can scan for a letter.
+        auto entry = [](const KeyBindings::BindingInfo& b) {
+            return hbox({text(KeyBindings::DisplayKey(b.key)) | bold |
+                             color(TextColors::primary()) | size(WIDTH, EQUAL, 7),
+                         text(b.name) | color(TextColors::text())});
+        };
+        std::vector<Element> columns[2];
+        std::size_t rows[2] = {0, 0};
+        for (std::size_t i = 0; i < bindings.size();) {
+            const std::string group = bindings[i].group;
+            std::size_t j = i;
+            while (j < bindings.size() && bindings[j].group == group)
+                ++j;
+            // Put the group in the shorter column, keeping groups together.
+            const int col = rows[0] <= rows[1] ? 0 : 1;
+            if (!columns[col].empty())
+                columns[col].push_back(text(""));
+            columns[col].push_back(text(group) | bold | underlined | color(TextColors::subtext()));
+            for (std::size_t k = i; k < j; ++k)
+                columns[col].push_back(entry(bindings[k]));
+            rows[col] += (j - i) + 2;
+            i = j;
         }
 
         std::vector<Element> dialog_content = {
@@ -56,19 +59,18 @@ void ArxivApp::SetupHelpDialog() {
             dialog_content.push_back(text("No bindings match \"" + help_search_query + "\"") |
                                      center | color(TextColors::subtext()));
         } else {
-            for (size_t i = 0; i < columns[0].size(); ++i) {
-                Elements row;
-                for (int col = 0; col < 3; ++col) {
-                    if (i < columns[col].size()) {
-                        row.push_back(columns[col][i]);
-                    } else {
-                        row.push_back(text("") | size(WIDTH, EQUAL, column_width));
-                    }
-                    if (col < 2)
-                        row.push_back(text(" | ") | color(TextColors::border()));
-                }
-                dialog_content.push_back(hbox(row));
-            }
+            dialog_content.push_back(hbox(
+                {vbox(columns[0]) | size(WIDTH, GREATER_THAN, 34), text("   "), vbox(columns[1])}));
+        }
+
+        // A key bound to two actions only ever triggers one of them.
+        for (const auto& c : key_bindings.Conflicts()) {
+            std::string names;
+            for (const auto& n : c.actions)
+                names += (names.empty() ? "" : " and ") + n;
+            dialog_content.push_back(
+                text("⚠ " + KeyBindings::DisplayKey(c.key) + " is bound twice: " + names) |
+                color(TextColors::error()));
         }
 
         dialog_content.push_back(separator() | color(TextColors::border()));

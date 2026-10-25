@@ -34,6 +34,7 @@ add_library(libarxiv-tui
     Views/SettingsDialog.cc
     Views/NewProjectDialog.cc
     Views/MainRenderer.cc
+    Views/Theme.cc
 )
 target_link_libraries(libarxiv-tui PRIVATE arxiv_tui_options arxiv_tui_warnings
                                     PUBLIC spdlog::spdlog std::filesystem

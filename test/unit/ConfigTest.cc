@@ -343,3 +343,16 @@ TEST_CASE("Config regression: out-of-range numbers fall back to their defaults",
         REQUIRE(loaded->get_undo_buffer_size() == 10);
     }
 }
+
+TEST_CASE("Config: theme and colour overrides round-trip", "[config][theme]") {
+    TempConfig tmp;
+    Config cfg;
+    REQUIRE(cfg.get_theme() == "frappe"); // default: the original palette
+    cfg.set_theme("latte");
+    cfg.set_theme_colors({{"primary", "#112233"}});
+    cfg.save_to_file(tmp.path);
+
+    Config loaded(tmp.path);
+    REQUIRE(loaded.get_theme() == "latte");
+    REQUIRE(loaded.get_theme_colors().at("primary") == "#112233");
+}

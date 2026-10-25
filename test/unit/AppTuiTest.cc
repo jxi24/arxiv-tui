@@ -9,6 +9,7 @@
 #include "Arxiv/App.hh"
 #include "Arxiv/Config.hh"
 #include "Arxiv/KeyBindings.hh"
+#include "Arxiv/Views/Colors.hh"
 
 #include <ftxui/component/event.hpp>
 #include <ftxui/dom/elements.hpp>
@@ -363,4 +364,101 @@ TEST_CASE("ArxivApp regression: navigation keys can be typed into a settings fie
     handler->OnEvent(Event::Character("k"));
 
     REQUIRE_THAT(render(*app), Catch::Matchers::ContainsSubstring("/tmpjk"));
+}
+
+// ---------------------------------------------------------------------------
+// Help overlay: grouped by task, keys first, nothing truncated, conflicts shown
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Help overlay groups bindings by task", "[tui][help]") {
+    auto app = make_app();
+    app->GetEventHandler()->OnEvent(Event::Character("?"));
+    const std::string out = render(*app);
+
+    SECTION("navigation") { REQUIRE_THAT(out, Catch::Matchers::ContainsSubstring("Navigation")); }
+    SECTION("export") { REQUIRE_THAT(out, Catch::Matchers::ContainsSubstring("Export & share")); }
+}
+
+TEST_CASE("Help overlay shows every action name and key in full", "[tui][help]") {
+    auto app = make_app();
+    app->GetEventHandler()->OnEvent(Event::Character("?"));
+    const std::string out = render(*app);
+
+    SECTION("long action name") {
+        REQUIRE_THAT(out, Catch::Matchers::ContainsSubstring("Export Selected Digest"));
+    }
+    SECTION("space key spelled out, not cut off") {
+        REQUIRE_THAT(out, !Catch::Matchers::ContainsSubstring("<space"));
+        REQUIRE_THAT(out, Catch::Matchers::ContainsSubstring("Toggle Selection"));
+    }
+}
+
+TEST_CASE("Help overlay warns about keys bound to two actions", "[tui][help]") {
+    auto db = std::make_unique<DatabaseManagerMock>();
+    auto fetcher = std::make_unique<FetcherMock>();
+    KeyBindings kb{std::vector<Config::KeyMapping>{{"next", "b"}}}; // b is also Bookmark
+    auto app = std::make_unique<ArxivApp>(
+        make_test_config(), std::move(db), std::move(fetcher), std::move(kb));
+    app->GetEventHandler()->OnEvent(Event::Character("?"));
+
+    REQUIRE_THAT(render(*app), Catch::Matchers::ContainsSubstring("bound twice"));
+}
+
+// ---------------------------------------------------------------------------
+// Article list layout (TUI audit)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Article list keeps the title readable when many columns are configured",
+          "[tui][layout]") {
+    // With title, date, authors and category on an 80-column terminal the
+    // title used to get 8 characters while authors took 24. Optional columns
+    // are dropped from the right until the title has room.
+    Config cfg = make_test_config();
+    cfg.set_article_columns({"title", "date", "authors", "category"});
+    auto [db, app] = make_app_with_articles(cfg);
+    app->GetCore().SetFilterIndex(AppCore::FilterView::All);
+
+    REQUIRE_THAT(render(*app), Catch::Matchers::ContainsSubstring("Sample Article Title"));
+}
+
+TEST_CASE("An empty Bookmarks view says how to add one", "[tui][layout]") {
+    auto app = make_app();
+    app->GetCore().SetFilterIndex(AppCore::FilterView::Bookmarks);
+
+    REQUIRE_THAT(render(*app), Catch::Matchers::ContainsSubstring("press b"));
+}
+
+TEST_CASE("The footer drops the topic list rather than overlap on a narrow terminal",
+          "[tui][layout]") {
+    Config cfg = make_test_config();
+    cfg.set_topics({"hep-ph", "hep-ex", "hep-lat", "hep-th", "astro-ph.CO"});
+    auto [db, app] = make_app_with_articles(cfg);
+    app->GetCore().SetFilterIndex(AppCore::FilterView::All);
+
+    auto screen = Screen::Create(Dimension::Fixed(80), Dimension::Fixed(24));
+    ftxui::Render(screen, app->GetEventHandler()->Render());
+    const std::string out = screen.ToString();
+    REQUIRE_THAT(out, !Catch::Matchers::ContainsSubstring("2hep"));
+}
+
+TEST_CASE("The configured theme is applied when the app starts", "[tui][theme]") {
+    Config cfg = make_test_config();
+    cfg.set_theme("high-contrast");
+    auto app = make_app(cfg);
+    const ftxui::Color hc_base = TextColors::base();
+    Arxiv::SetTheme("frappe");
+    REQUIRE_FALSE(hc_base == TextColors::base());
+}
+
+TEST_CASE("Settings lets the user cycle the theme", "[tui][theme][settings]") {
+    auto app = make_app();
+    auto handler = app->GetEventHandler();
+    handler->OnEvent(Event::Character("S"));
+    for (int i = 0; i < 3; ++i) // General: download dir, auto-refresh, scroll margin, theme
+        handler->OnEvent(Event::Character("j"));
+    REQUIRE_THAT(render(*app), Catch::Matchers::ContainsSubstring("Theme"));
+
+    handler->OnEvent(Event::Return); // next preset
+    REQUIRE_THAT(render(*app), Catch::Matchers::ContainsSubstring("latte"));
+    Arxiv::SetTheme("frappe");
 }

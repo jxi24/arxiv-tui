@@ -132,7 +132,13 @@ void ArxivApp::SetupMainRenderer() {
         footer_els.push_back(text("  ") | color(TextColors::subtext()));
         footer_els.push_back(text(position) | color(TextColors::text()));
         footer_els.push_back(filler());
-        footer_els.push_back(text(topics_str) | color(TextColors::subtext()));
+        // The topic list is the least important part: leave it out rather
+        // than let it run into the position counter on a narrow terminal.
+        const std::size_t left_width = quit_key.size() + help_key.size() + filter_label.size() +
+                                       (filter_detail.empty() ? 0 : filter_detail.size() + 2) +
+                                       position.size() + 34;
+        if (left_width + topics_str.size() + 2 <= static_cast<std::size_t>(Terminal::Size().dimx))
+            footer_els.push_back(text(topics_str) | color(TextColors::subtext()));
         footer_els.push_back(text(" "));
 
         auto footer =

@@ -383,6 +383,9 @@ Inside test bodies, plain `ALLOW_CALL` is fine because the generated local varia
 - Log levels: `trace` for detailed flow, `info` for significant events, `error` for failures.
 
 ### UI (FTXUI)
+- Colours come from `TextColors::*()`, which read the current theme (`Views/Theme.cc`, `SetTheme`, config `theme` / `theme_colors`). Never hard-code colours.
+- Every key-binding action has a help-overlay group in `kActionTable` (`KeyBindings.cc`); `KeyBindings::Conflicts()` reports keys bound twice. Show keys with `KeyBindings::DisplayKey`.
+- Empty article lists show `ArxivApp::EmptyViewMessage()` — one line per view saying what to do next, using the user's actual keys.
 - UI components are built in `ArxivApp::SetupUI()`.
 - A background `std::thread` drives periodic UI refresh via `screen.PostEvent(Event::Custom)`.
 - Key events are dispatched through the `event_handler` component which checks `KeyBindings` before falling through to child components.

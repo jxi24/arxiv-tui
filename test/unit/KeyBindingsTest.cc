@@ -42,7 +42,6 @@ TEST_CASE("KeyBindings: defaults are populated for every action", "[keybindings]
                    Action::ExportSelectedDigest,
                    Action::ExportToObsidian,
                    Action::Settings,
-                   Action::GenerateBibtex,
                    Action::DeleteArticle,
                    Action::UndoDelete,
                    Action::ExportDigestArchive}) {
@@ -158,7 +157,6 @@ TEST_CASE("KeyBindings: get_action_name covers every action", "[keybindings]") {
                    Action::ExportSelectedDigest,
                    Action::ExportToObsidian,
                    Action::Settings,
-                   Action::GenerateBibtex,
                    Action::DeleteArticle,
                    Action::UndoDelete,
                    Action::ExportDigestArchive}) {
@@ -245,4 +243,20 @@ TEST_CASE("KeyBindings::filter_bindings", "[keybindings][help-search]") {
 TEST_CASE("KeyBindings: ExportDigestArchive action exists with default key", "[keybindings]") {
     KeyBindings kb(std::vector<Config::KeyMapping>{});
     REQUIRE_FALSE(kb.get_key(Action::ExportDigestArchive).empty());
+}
+
+TEST_CASE("KeyBindings: no two actions share a default key", "[keybindings]") {
+    // "c" used to be bound to both Export BibTeX and an unused Generate
+    // BibTeX action, so the help overlay listed a key that did two things.
+    KeyBindings kb(std::vector<Config::KeyMapping>{});
+    REQUIRE(kb.Conflicts().empty());
+}
+
+TEST_CASE("KeyBindings: a user mapping that collides with another action is reported",
+          "[keybindings]") {
+    KeyBindings kb(std::vector<Config::KeyMapping>{{"next", "b"}}); // b = bookmark
+    const auto conflicts = kb.Conflicts();
+    REQUIRE(conflicts.size() == 1);
+    REQUIRE(conflicts[0].key == "b");
+    REQUIRE(conflicts[0].actions.size() == 2);
 }

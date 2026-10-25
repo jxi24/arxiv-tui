@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -43,6 +44,8 @@ class Config {
     const std::string& get_obsidian_vault() const { return obsidian_vault_; }
     bool get_obsidian_download_pdfs() const { return obsidian_download_pdfs_; }
     const std::string& get_clipboard_backend() const { return clipboard_backend_; }
+    const std::string& get_theme() const { return theme_; }
+    const std::map<std::string, std::string>& get_theme_colors() const { return theme_colors_; }
     int get_auto_refresh_minutes() const { return auto_refresh_minutes_; }
     int get_scroll_margin() const { return scroll_margin_; }
     int get_max_article_age_days() const { return max_article_age_days_; }
@@ -61,6 +64,8 @@ class Config {
     void set_obsidian_vault(const std::string& path) { obsidian_vault_ = path; }
     void set_obsidian_download_pdfs(bool on) { obsidian_download_pdfs_ = on; }
     void set_clipboard_backend(const std::string& b) { clipboard_backend_ = b; }
+    void set_theme(const std::string& t) { theme_ = t; }
+    void set_theme_colors(const std::map<std::string, std::string>& c) { theme_colors_ = c; }
     void set_auto_refresh_minutes(int m) { auto_refresh_minutes_ = m; }
     void set_scroll_margin(int n) { scroll_margin_ = n; }
     void set_max_article_age_days(int n) { max_article_age_days_ = n; }
@@ -86,6 +91,8 @@ class Config {
     int max_article_age_days_{0};
     std::size_t undo_buffer_size_{10};
     std::string clipboard_backend_;
+    std::string theme_{"frappe"};                     // colour preset
+    std::map<std::string, std::string> theme_colors_; // per-colour "#rrggbb" overrides
     std::vector<std::string> article_columns_{"title", "date"};
 };
 

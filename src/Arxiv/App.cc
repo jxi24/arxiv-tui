@@ -5,6 +5,7 @@
 #include "Arxiv/App.hh"
 
 #include "Arxiv/Article.hh"
+#include "Arxiv/Views/Colors.hh"
 
 #include "spdlog/spdlog.h"
 
@@ -29,6 +30,7 @@ ArxivApp::ArxivApp(const Config& config, const std::string& config_path, ReplayR
     core.ReloadKeywords();
     if (m_recorder)
         m_recorder->RecordEvent("app/setup_ui_begin");
+    Arxiv::SetTheme(m_config.get_theme(), m_config.get_theme_colors());
     SetupUI();
     if (m_recorder)
         m_recorder->RecordEvent("app/setup_ui_end");
@@ -48,6 +50,7 @@ ArxivApp::ArxivApp(Config cfg,
     , m_config_path(config_path)
     , m_config(cfg)
     , screen(ScreenInteractive::Fullscreen()) {
+    Arxiv::SetTheme(m_config.get_theme(), m_config.get_theme_colors());
     SetupUI();
     // No refresh thread: tests drive events directly via GetEventHandler().
 }

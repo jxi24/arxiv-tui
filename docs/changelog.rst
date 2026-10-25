@@ -47,6 +47,17 @@ Unreleased
   stored in full; link normalisation only strips real version suffixes;
   out-of-range dates in feeds are rejected instead of overflowing; a corrupt
   stored date no longer aborts startup.
+- **Themes** — ``theme`` selects ``frappe`` (default), ``latte``,
+  ``mocha``, ``high-contrast`` or ``terminal``; ``theme_colors`` overrides
+  individual colours. Settings → General → Theme cycles them live.
+- **Easier to find your way** — the help overlay (``?``) groups bindings by
+  task (Navigation, Articles, Selection, Projects, Export & share, Ranking,
+  App) with the key first and nothing cut off, and warns about keys bound to
+  two actions. The unused *Generate BibTeX* binding, which shared ``c``
+  with *Export BibTeX*, is gone. Empty views say what to do next ("No
+  bookmarks yet — press b …"). With many list columns the title keeps a
+  readable width (optional columns are hidden from the right), and the
+  footer drops the topic list instead of overlapping on narrow terminals.
 - **Smoother under load** — the database uses WAL journaling and waits for
   a busy lock instead of failing, so a cron ``--fetch`` and the TUI can run
   together; bookmarking or marking read no longer rewrites the search index;

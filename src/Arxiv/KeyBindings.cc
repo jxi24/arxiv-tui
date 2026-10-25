@@ -22,43 +22,51 @@ struct ActionInfo {
     std::string_view config_name; // YAML key under "key_mappings"
     std::string_view default_key;
     std::string_view display_name; // shown in the help overlay
+    std::string_view group;        // help overlay section
 };
 
 using Action = KeyBindings::Action;
 
-constexpr std::array<ActionInfo, 32> kActionTable = {{
-    {Action::Next, "next", "j", "Next"},
-    {Action::Previous, "previous", "k", "Previous"},
-    {Action::Quit, "quit", "q", "Quit"},
-    {Action::CreateProject, "create_project", "p", "Create Project"},
-    {Action::DeleteProject, "delete_project", "x", "Delete Project"},
-    {Action::DownloadArticle, "download_article", "d", "Download Article"},
-    {Action::ShowDetail, "show_detail", "a", "Show Detail"},
-    {Action::MoveRight, "move_right", "l", "Move Right"},
-    {Action::MoveLeft, "move_left", "h", "Move Left"},
-    {Action::Bookmark, "bookmark", "b", "Bookmark"},
-    {Action::ShowHelp, "show_help", "?", "Show Help"},
-    {Action::SetDateRange, "set_date_range", "r", "Set Date Range"},
-    {Action::Search, "search", "/", "Search"},
-    {Action::RateArticle, "rate_article", "n", "Rate Article"},
-    {Action::ForceRetrain, "force_retrain", "R", "Force Retrain"},
-    {Action::EditNote, "edit_note", "N", "Edit Note"},
-    {Action::ExportProject, "export_project", "e", "Export Project"},
-    {Action::ImportProject, "import_project", "I", "Import Project"},
-    {Action::ExportBibTeX, "export_bibtex", "c", "Export BibTeX"},
-    {Action::EditKeywords, "edit_keywords", "K", "Edit Keywords"},
-    {Action::ExportDigest, "export_digest", "X", "Export Digest"},
-    {Action::FilterCategories, "filter_categories", "t", "Filter Categories"},
-    {Action::ToggleSelection, "toggle_selection", " ", "Toggle Selection"},
-    {Action::ExportSelectedDigest, "export_selected_digest", "g", "Export Selected Digest"},
-    {Action::ExportToObsidian, "export_to_obsidian", "o", "Export to Obsidian"},
-    {Action::Settings, "settings", "S", "Settings"},
-    {Action::GenerateBibtex, "generate_bibtex", "c", "Generate BibTeX"},
-    {Action::DeleteArticle, "delete_article", "D", "Delete Article"},
-    {Action::UndoDelete, "undo_delete", "u", "Undo Delete"},
-    {Action::ExportDigestArchive, "export_digest_archive", "G", "Export Digest Archive"},
-    {Action::OpenInBrowser, "open_in_browser", "O", "Open in Browser"},
-    {Action::RateSelection, "rate_selection", "W", "Rate Selection"},
+constexpr std::array<ActionInfo, 31> kActionTable = {{
+    {Action::Next, "next", "j", "Next", "Navigation"},
+    {Action::Previous, "previous", "k", "Previous", "Navigation"},
+    {Action::Quit, "quit", "q", "Quit", "App"},
+    {Action::CreateProject, "create_project", "p", "Create Project", "Projects"},
+    {Action::DeleteProject, "delete_project", "x", "Delete Project", "Projects"},
+    {Action::DownloadArticle, "download_article", "d", "Download Article", "Articles"},
+    {Action::ShowDetail, "show_detail", "a", "Show Detail", "Navigation"},
+    {Action::MoveRight, "move_right", "l", "Move Right", "Navigation"},
+    {Action::MoveLeft, "move_left", "h", "Move Left", "Navigation"},
+    {Action::Bookmark, "bookmark", "b", "Bookmark", "Articles"},
+    {Action::ShowHelp, "show_help", "?", "Show Help", "App"},
+    {Action::SetDateRange, "set_date_range", "r", "Set Date Range", "Navigation"},
+    {Action::Search, "search", "/", "Search", "Navigation"},
+    {Action::RateArticle, "rate_article", "n", "Rate Article", "Articles"},
+    {Action::ForceRetrain, "force_retrain", "R", "Force Retrain", "Ranking"},
+    {Action::EditNote, "edit_note", "N", "Edit Note", "Articles"},
+    {Action::ExportProject, "export_project", "e", "Export Project", "Projects"},
+    {Action::ImportProject, "import_project", "I", "Import Project", "Projects"},
+    {Action::ExportBibTeX, "export_bibtex", "c", "Export BibTeX", "Export & share"},
+    {Action::EditKeywords, "edit_keywords", "K", "Edit Keywords", "Ranking"},
+    {Action::ExportDigest, "export_digest", "X", "Export Digest", "Export & share"},
+    {Action::FilterCategories, "filter_categories", "t", "Filter Categories", "Navigation"},
+    {Action::ToggleSelection, "toggle_selection", " ", "Toggle Selection", "Selection"},
+    {Action::ExportSelectedDigest,
+     "export_selected_digest",
+     "g",
+     "Export Selected Digest",
+     "Export & share"},
+    {Action::ExportToObsidian, "export_to_obsidian", "o", "Export to Obsidian", "Export & share"},
+    {Action::Settings, "settings", "S", "Settings", "App"},
+    {Action::DeleteArticle, "delete_article", "D", "Delete Article", "Articles"},
+    {Action::UndoDelete, "undo_delete", "u", "Undo Delete", "Articles"},
+    {Action::ExportDigestArchive,
+     "export_digest_archive",
+     "G",
+     "Export Digest Archive",
+     "Export & share"},
+    {Action::OpenInBrowser, "open_in_browser", "O", "Open in Browser", "Navigation"},
+    {Action::RateSelection, "rate_selection", "W", "Rate Selection", "Selection"},
 }};
 
 const ActionInfo* find_by_config_name(std::string_view name) {
@@ -146,6 +154,42 @@ bool KeyBindings::matches(const ftxui::Event& event, Action action) const {
     if (!event.is_character())
         return false;
     return event.character() == get_key(action);
+}
+
+std::vector<KeyBindings::BindingInfo>
+KeyBindings::grouped_bindings(const std::string& query) const {
+    static constexpr std::array<std::string_view, 7> kGroupOrder = {
+        "Navigation", "Articles", "Selection", "Projects", "Export & share", "Ranking", "App"};
+    std::vector<BindingInfo> result;
+    for (const auto& [name, key] : filter_bindings(query)) {
+        const ActionInfo* info = nullptr;
+        for (const auto& row : kActionTable)
+            if (row.display_name == name)
+                info = &row;
+        result.push_back({info ? std::string(info->group) : "Other", name, key});
+    }
+    auto rank = [](const std::string& group) {
+        auto it = std::find(kGroupOrder.begin(), kGroupOrder.end(), group);
+        return static_cast<std::size_t>(it - kGroupOrder.begin());
+    };
+    std::stable_sort(result.begin(), result.end(), [&](const auto& a, const auto& b) {
+        return rank(a.group) < rank(b.group);
+    });
+    return result;
+}
+
+std::string KeyBindings::DisplayKey(const std::string& key) { return key == " " ? "Space" : key; }
+
+std::vector<KeyBindings::Conflict> KeyBindings::Conflicts() const {
+    std::map<std::string, std::vector<std::string>> by_key;
+    for (const auto& [action, key] : bindings_)
+        if (!key.empty())
+            by_key[key].push_back(get_action_name(action));
+    std::vector<Conflict> conflicts;
+    for (auto& [key, actions] : by_key)
+        if (actions.size() > 1)
+            conflicts.push_back({key, std::move(actions)});
+    return conflicts;
 }
 
 } // namespace Arxiv

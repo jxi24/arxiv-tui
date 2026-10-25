@@ -16,6 +16,43 @@
 using namespace ftxui;
 using namespace Arxiv;
 
+std::string ArxivApp::EmptyViewMessage() const {
+    if (core.IsFetching())
+        return "Fetching new articles…";
+    auto key = [&](KeyBindings::Action a) {
+        return KeyBindings::DisplayKey(key_bindings.get_key(a));
+    };
+    switch (core.GetFilterView()) {
+    case AppCore::FilterView::Bookmarks:
+        return "No bookmarks yet — press " + key(KeyBindings::Action::Bookmark) +
+               " on an article to bookmark it";
+    case AppCore::FilterView::Search:
+        return "No matches for \"" + core.GetSearchQuery() + "\" — press " +
+               key(KeyBindings::Action::Search) + " to search again";
+    case AppCore::FilterView::Unread:
+        return "All caught up — nothing unread";
+    case AppCore::FilterView::NewArticles:
+        return "No new articles since your last session";
+    case AppCore::FilterView::Updated:
+        return "No updated papers since your last session";
+    case AppCore::FilterView::Recommended:
+        return "No recommendations yet — rate articles with " +
+               key(KeyBindings::Action::RateArticle) + " to train the ranker";
+    case AppCore::FilterView::FollowedAuthors:
+        return "No articles from followed authors";
+    case AppCore::FilterView::Range:
+        return "No articles in this date range — press " + key(KeyBindings::Action::SetDateRange) +
+               " to change it";
+    case AppCore::FilterView::Project:
+        return "This project is empty — press " + key(KeyBindings::Action::CreateProject) +
+               " on an article to add it";
+    case AppCore::FilterView::TagBase:
+        return "No articles with this tag";
+    default:
+        return "No articles here — try another view";
+    }
+}
+
 void ArxivApp::SetupArticlePane() {
     article_list =
         Menu(&core.GetCurrentTitles(), &core.GetArticleIndex()) | vscroll_indicator | frame |
@@ -123,9 +160,7 @@ void ArxivApp::SetupArticlePane() {
             return vbox({
                        header,
                        separator() | color(TextColors::border()),
-                       text("No articles available") | center | color(TextColors::subtext()),
-                       separator() | color(TextColors::border()),
-                       text("Try changing filters.") | center | color(TextColors::subtext()),
+                       text(EmptyViewMessage()) | center | color(TextColors::subtext()),
                    }) |
                    borderStyled(ROUNDED, TextColors::border());
         }
@@ -156,23 +191,33 @@ void ArxivApp::SetupArticlePane() {
             return 0; // title: computed below
         };
 
-        const auto& configured_cols = core.GetConfig().get_article_columns();
-
         // Compute title column width.
         // Usable area = articles_width - 2 (ROUNDED border) - 1 (vscroll_indicator).
-        // Separators between adjacent columns = configured_cols.size() - 1.
-        bool has_title = false;
-        int fixed_cols_w = 0;
-        for (const auto& col : configured_cols) {
-            if (col == "title") {
-                has_title = true;
-            } else {
-                fixed_cols_w += col_width(col);
-            }
+        // Separators between adjacent columns = cols.size() - 1.
+        // The title matters most: optional columns are dropped from the right
+        // until it gets a readable share of the width.
+        std::vector<std::string> configured_cols = core.GetConfig().get_article_columns();
+        const bool has_title = std::find(configured_cols.begin(), configured_cols.end(), "title") !=
+                               configured_cols.end();
+        const int usable = articles_width - 3; // 2 border + 1 scroll indicator
+        const int min_title = std::max(24, usable * 45 / 100);
+        auto title_width = [&] {
+            int fixed = 0;
+            for (const auto& col : configured_cols)
+                fixed += col == "title" ? 0 : col_width(col);
+            int seps = std::max(0, static_cast<int>(configured_cols.size()) - 1);
+            return std::max(8, usable - fixed - seps);
+        };
+        int title_w = title_width();
+        while (has_title && title_w < min_title && configured_cols.size() > 1) {
+            auto last = std::find_if(configured_cols.rbegin(),
+                                     configured_cols.rend(),
+                                     [](const std::string& c) { return c != "title"; });
+            if (last == configured_cols.rend())
+                break;
+            configured_cols.erase(std::next(last).base());
+            title_w = title_width();
         }
-        int num_seps = std::max(0, static_cast<int>(configured_cols.size()) - 1);
-        int usable = articles_width - 3; // 2 border + 1 scroll indicator
-        int title_w = std::max(8, usable - fixed_cols_w - num_seps);
 
         // Format helpers.
         auto fmt_date = [](const Article& a) -> std::string {

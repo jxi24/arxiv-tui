@@ -201,6 +201,8 @@ class ArxivApp {
     // Shows why a background task did not start (busy, nothing selected);
     // returns `started`.
     bool StartTaskOrExplain(bool started, bool needs_selection);
+    // What to show instead of an empty article list, per view.
+    std::string EmptyViewMessage() const;
     void SetupEventHandler();
 
     // Event handlers (called from SetupEventHandler dispatch or HandleGlobalEvent)

@@ -89,7 +89,8 @@ Reference
 ``max_article_age_days``
     Maximum age (in days) of articles kept in the database. Articles older
     than this threshold are deleted on startup unless they are bookmarked,
-    rated, or assigned to a project. Set to ``0`` to disable pruning.
+    rated, tagged, noted, or assigned to a project. Set to ``0`` to disable
+    pruning.
     Default: ``0``.
 
 ``obsidian_vault``
@@ -107,7 +108,28 @@ Reference
 
 ``key_mappings``
     List of ``{action, key}`` pairs that remap the default key bindings.
-    See :doc:`keybindings` for the full list of action names.
+    See :doc:`keybindings` for the full list of action names. If two actions
+    end up on the same key, the help overlay (``?``) lists the conflict.
+
+``theme``
+    Colour theme: ``frappe`` (default), ``latte`` (light), ``mocha``,
+    ``high-contrast``, or ``terminal`` (uses your terminal's own palette —
+    pick this for 16-colour terminals). Cycle through them live in the
+    Settings dialog (``S`` → General → Theme).
+
+``theme_colors``
+    Optional per-colour overrides on top of ``theme``, as ``#rrggbb``. Keys:
+    ``base``, ``surface``, ``text``, ``subtext``, ``primary``, ``border``,
+    ``secondary``, ``error``.
+
+    .. code-block:: yaml
+
+       theme: mocha
+       theme_colors:
+         primary: "#fab387"
+
+Values of the wrong type or out of range are ignored with a warning in the
+log, and the default is used instead.
 
 Environment overrides
 ---------------------

@@ -80,6 +80,8 @@ void Config::load_from_file(const std::string& config_file) {
     read(config, "undo_buffer_size", undo_size, [](long long v) { return v >= 0 && v <= 1000; });
     undo_buffer_size_ = static_cast<std::size_t>(undo_size);
     read(config, "clipboard_backend", clipboard_backend_, any);
+    read(config, "theme", theme_, any);
+    read(config, "theme_colors", theme_colors_, any);
 
     std::vector<std::string> columns;
     read(config, "article_columns", columns, any);
@@ -127,6 +129,9 @@ void Config::save_to_file(const std::string& config_file) const {
     config["article_columns"] = article_columns_;
     if (!clipboard_backend_.empty())
         config["clipboard_backend"] = clipboard_backend_;
+    config["theme"] = theme_;
+    if (!theme_colors_.empty())
+        config["theme_colors"] = theme_colors_;
     if (!obsidian_vault_.empty()) {
         config["obsidian_vault"] = obsidian_vault_;
     }
