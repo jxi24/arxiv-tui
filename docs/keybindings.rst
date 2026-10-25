@@ -4,15 +4,16 @@
 Key Bindings
 ============
 
-All bindings are remappable in ``config.yml`` via the ``key_mappings`` section.
-See :doc:`configuration` for the config format.
+All bindings are remappable in ``config.yml`` via the ``key_mappings`` section,
+using the *action names* below. See :doc:`configuration` for the config format.
+The groups match the in-app help overlay (``?``).
 
 Navigation
 ----------
 
 .. list-table::
    :header-rows: 1
-   :widths: 20 30 50
+   :widths: 15 30 55
 
    * - Key
      - Action name
@@ -23,118 +24,113 @@ Navigation
    * - ``k``
      - ``previous``
      - Move to the previous article
-   * - ``h``
-     - ``focus_left``
-     - Move focus to the left pane
-   * - ``l``
-     - ``focus_right``
-     - Move focus to the right pane
    * - ``a``
      - ``show_detail``
      - Toggle the detail (abstract) pane
-   * - ``?``
-     - ``help``
-     - Toggle the help overlay
-   * - ``q``
-     - ``quit``
-     - Quit the application
+   * - ``l``
+     - ``move_right``
+     - Move focus to the pane on the right
+   * - ``h``
+     - ``move_left``
+     - Move focus to the pane on the left
+   * - ``r``
+     - ``set_date_range``
+     - Set the date range (when the *Range* filter is active)
+   * - ``/``
+     - ``search``
+     - Open the search dialog
+   * - ``t``
+     - ``filter_categories``
+     - Choose which arXiv categories are shown
+   * - ``O``
+     - ``open_in_browser``
+     - Open the article (or every selected article) in the default browser
 
-Article actions
----------------
+Articles
+--------
 
 .. list-table::
    :header-rows: 1
-   :widths: 20 30 50
+   :widths: 15 30 55
+
+   * - Key
+     - Action name
+     - Description
+   * - ``d``
+     - ``download_article``
+     - Download the article PDF to ``download_dir`` (runs in the background)
+   * - ``b``
+     - ``bookmark``
+     - Bookmark (or unbookmark) the article; bookmarks every selected article when a selection is active
+   * - ``n``
+     - ``rate_article``
+     - Rate the focused article 1–5 stars (always the focused article; see ``W`` for a selection)
+   * - ``N``
+     - ``edit_note``
+     - Edit the article's note for the current project
+   * - ``D``
+     - ``delete_article``
+     - Delete the article (or every selected article), with confirmation
+   * - ``u``
+     - ``undo_delete``
+     - Undo the last delete, restoring rating, project memberships, notes, tags and read state
+   * - ``f``
+     - ``follow_authors``
+     - Follow or unfollow authors: the focused article's authors, your followed list, or a typed name (``+``)
+
+Selection
+---------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 15 30 55
 
    * - Key
      - Action name
      - Description
    * - ``Space``
      - ``toggle_selection``
-     - Toggle selection on the current article
-   * - ``b``
-     - ``bookmark``
-     - Bookmark (or unbookmark) the current article; bookmarks all selected articles when a selection is active
-   * - ``D``
-     - ``delete_article``
-     - Delete the current article (or all selected articles) with confirmation
-   * - ``u``
-     - ``undo``
-     - Undo the last delete, restoring the article(s), rating, project memberships, and tags
-   * - ``d``
-     - ``download_article``
-     - Download the article PDF to ``download_dir``
-   * - ``n``
-     - ``rate``
-     - Rate the article 1–5 stars; with a selection active, rates all selected articles at once
-   * - ``c``
-     - ``copy_bibtex``
-     - Copy the BibTeX entry to the system clipboard (with InspireHEP lookup)
-   * - ``N``
-     - ``edit_note``
-     - Edit the per-article note for the current project
-   * - ``f``
-     - ``follow_authors``
-     - Follow or unfollow authors: the focused article's authors, your followed list, or a typed name (``+``)
+     - Select or deselect the article
+   * - ``W``
+     - ``rate_selection``
+     - Rate every selected article with one score
 
-Selection and bulk actions
---------------------------
-
-Select any number of articles with ``Space``. While a selection is active the
-article pane header shows ``[N selected]``.
+Select any number of articles with ``Space`` (the selection survives
+switching views). While a selection is active the article pane header shows
+``[N selected]``, and these keys act on the whole selection:
 
 .. list-table::
    :header-rows: 1
-   :widths: 20 80
+   :widths: 15 85
 
    * - Key
      - Bulk behaviour
    * - ``b``
-     - Bookmark all selected articles
-   * - ``n``
-     - Rate all selected articles with a single score
+     - Bookmark every selected article
+   * - ``W``
+     - Rate every selected article with a single score
    * - ``p``
-     - Open the project dialog in bulk-add mode — confirming links all selected articles to the checked projects
+     - Add every selected article to the checked projects
    * - ``D``
-     - Delete all selected articles (confirmation required)
-   * - ``g``
-     - Export selected articles as a Markdown digest + PDF bundle
-   * - ``o``
-     - Export selected articles to an Obsidian vault
-
-Filtering and search
---------------------
-
-.. list-table::
-   :header-rows: 1
-   :widths: 20 30 50
-
-   * - Key
-     - Action name
-     - Description
-   * - ``/``
-     - ``search``
-     - Open the search dialog
-   * - ``r``
-     - ``date_range``
-     - Set the date range filter (when the *Date Range* filter is active)
-   * - ``t``
-     - ``toggle_category``
-     - Toggle the category filter
+     - Delete every selected article (with confirmation)
+   * - ``O``
+     - Open every selected article in the browser
+   * - ``g`` / ``G`` / ``o``
+     - Export the selection (digest, digest archive, Obsidian)
 
 Projects
 --------
 
 .. list-table::
    :header-rows: 1
-   :widths: 20 30 50
+   :widths: 15 30 55
 
    * - Key
      - Action name
      - Description
    * - ``p``
      - ``create_project``
-     - Assign or remove the current article from projects
+     - Add the article (or the selection) to projects, or create one
    * - ``x``
      - ``delete_project``
      - Delete the focused project
@@ -145,22 +141,68 @@ Projects
      - ``import_project``
      - Import a project from JSON
 
-Ranking and settings
---------------------
+Export & share
+--------------
 
 .. list-table::
    :header-rows: 1
-   :widths: 20 30 50
+   :widths: 15 30 55
+
+   * - Key
+     - Action name
+     - Description
+   * - ``c``
+     - ``export_bibtex``
+     - Copy the article's BibTeX to the clipboard (InspireHEP first, else built from arXiv data); saves ``<id>.bib`` when no clipboard tool is available
+   * - ``X``
+     - ``export_digest``
+     - Write today's articles to ``digest-YYYY-MM-DD.md``
+   * - ``g``
+     - ``export_selected_digest``
+     - Export the selection as a Markdown digest plus PDFs (background)
+   * - ``G``
+     - ``export_digest_archive``
+     - As ``g``, then pack it into a ``.tar.gz`` (background)
+   * - ``o``
+     - ``export_to_obsidian``
+     - Export the selection to the Obsidian vault (background)
+
+Ranking
+-------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 15 30 55
 
    * - Key
      - Action name
      - Description
    * - ``R``
-     - ``retrain``
-     - Force a full cold-start retrain of the ranking model
+     - ``force_retrain``
+     - Retrain the ranking model from scratch
+   * - ``K``
+     - ``edit_keywords``
+     - Edit the interest keywords used for ranking
+
+App
+---
+
+.. list-table::
+   :header-rows: 1
+   :widths: 15 30 55
+
+   * - Key
+     - Action name
+     - Description
    * - ``S``
      - ``settings``
      - Open the settings dialog
+   * - ``?``
+     - ``show_help``
+     - Toggle the help overlay (type to filter it)
+   * - ``q``
+     - ``quit``
+     - Quit (or close the open dialog)
 
 Remapping a key
 ---------------
@@ -171,9 +213,11 @@ Add or override an entry in the ``key_mappings`` section of
 .. code-block:: yaml
 
    key_mappings:
-     - action: next
-       key: n          # remap "next article" from j to n
-     - action: previous
-       key: p          # remap "previous article" from k to p
+     - action: bookmark
+       key: m          # bookmark with m instead of b
      - action: quit
-       key: q
+       key: Q          # quit with Q, so a stray q does not exit
+
+Keys are single characters and case-sensitive. If two actions end up on the
+same key only one of them fires; the help overlay (``?``) lists any such
+conflict.

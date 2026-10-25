@@ -192,11 +192,13 @@ article_columns:
 | `Space` | Toggle selection on current article |
 | `b` | Bookmark current article (or all selected if a selection is active) |
 | `D` | Delete current article (or all selected), with confirmation |
-| `u` | Undo the last delete (restores article, rating, project memberships, and tags) |
+| `u` | Undo the last delete (restores article, rating, project memberships, notes, tags, and read state) |
 | `d` | Download article PDF |
 | `O` | Open article in the default browser (`xdg-open`) |
 | `n` | Rate focused article 1–5 stars (always rates the single focused article) |
-| `c` | Export article as BibTeX |
+| `c` | Copy the article's BibTeX to the clipboard (saves `<id>.bib` when no clipboard tool is available) |
+| `X` | Write today's articles to `digest-YYYY-MM-DD.md` |
+| `f` | Follow / unfollow authors (the article's authors, your followed list, or a typed name) |
 | `N` | Edit per-article note (within a project) |
 
 ### Selection and bulk actions
@@ -241,7 +243,7 @@ The filter pane includes an **Unread** entry that shows only articles not yet re
 | `S` | Open settings dialog |
 | `K` | Edit interest keywords (cold-start ranking) |
 
-All bindings are remappable in `config.yml` via the `key_mappings` section.
+All bindings are remappable in `config.yml` via the `key_mappings` section, using the action names listed on the [Key Bindings](docs/keybindings.rst) page.
 
 ---
 

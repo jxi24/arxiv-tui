@@ -7,6 +7,10 @@
 #include "Arxiv/Config.hh"
 
 #include <catch2/catch_test_macros.hpp>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <regex>
 
 using Arxiv::Config;
 using Arxiv::KeyBindings;
@@ -259,4 +263,59 @@ TEST_CASE("KeyBindings: a user mapping that collides with another action is repo
     REQUIRE(conflicts.size() == 1);
     REQUIRE(conflicts[0].key == "b");
     REQUIRE(conflicts[0].actions.size() == 2);
+}
+
+// ---------------------------------------------------------------------------
+// docs/keybindings.rst must match the code: every "Action name" in its
+// tables is a real config name whose default is the key shown, and every
+// action is documented. (The page had drifted: copy_bibtex, focus_left, ...)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+struct DocRow {
+    std::string key, action;
+};
+
+std::vector<DocRow> documented_rows() {
+    const auto path =
+        std::filesystem::path(__FILE__).parent_path() / ".." / ".." / "docs" / "keybindings.rst";
+    std::ifstream in(path);
+    REQUIRE(in.is_open());
+    const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    std::vector<DocRow> rows;
+    const std::regex row(R"(   \* - ``([^`]+)``\n     - ``([a-z_]+)``)");
+    for (auto it = std::sregex_iterator(text.begin(), text.end(), row);
+         it != std::sregex_iterator();
+         ++it)
+        rows.push_back({(*it)[1].str(), (*it)[2].str()});
+    return rows;
+}
+
+} // namespace
+
+TEST_CASE("Docs: every documented action name is real and shows its default key",
+          "[keybindings][docs]") {
+    const KeyBindings defaults(std::vector<Config::KeyMapping>{});
+    for (const auto& row : documented_rows()) {
+        INFO("documented: " << row.key << " -> " << row.action);
+        // A real config name changes some binding when remapped.
+        KeyBindings remapped(std::vector<Config::KeyMapping>{{row.action, "\x01"}});
+        std::string default_key;
+        bool found = false;
+        const auto before = defaults.get_all_bindings();
+        const auto after = remapped.get_all_bindings();
+        for (std::size_t i = 0; i < after.size(); ++i)
+            if (after[i].second == "\x01") {
+                found = true;
+                default_key = KeyBindings::DisplayKey(before[i].second);
+            }
+        REQUIRE(found);
+        REQUIRE(default_key == row.key);
+    }
+}
+
+TEST_CASE("Docs: every action is documented", "[keybindings][docs]") {
+    const KeyBindings defaults(std::vector<Config::KeyMapping>{});
+    REQUIRE(documented_rows().size() == defaults.get_all_bindings().size());
 }
