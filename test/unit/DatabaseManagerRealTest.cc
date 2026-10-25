@@ -988,7 +988,9 @@ TEST_CASE("Real DB regression: NULL values in name columns are skipped, not dere
                  ("arxiv_nulls_" + std::to_string(::getpid()) + ".db"))
                     .string();
     std::filesystem::remove(path);
-    { DatabaseManager create(path); }
+    {
+        DatabaseManager create(path);
+    }
     sqlite3* raw = nullptr;
     REQUIRE(sqlite3_open(path.c_str(), &raw) == SQLITE_OK);
     REQUIRE(sqlite3_exec(raw,
@@ -1115,7 +1117,9 @@ TEST_CASE("Real DB: list queries return the newest articles first", "[database][
 TEST_CASE("Real DB: file databases use WAL journaling", "[database][real]") {
     // WAL lets the TUI read while a cron --fetch writes.
     auto path = temp_db_path("wal");
-    { DatabaseManager db(path); }
+    {
+        DatabaseManager db(path);
+    }
     REQUIRE(query_text(path, "PRAGMA journal_mode") == "wal");
 }
 
@@ -1149,7 +1153,9 @@ TEST_CASE("Real DB: the full-text index is only rewritten when indexed columns c
     // Bookmarking, read marks and relevance scores used to rewrite the FTS
     // row on every UPDATE.
     auto path = temp_db_path("fts_trigger");
-    { DatabaseManager db(path); }
+    {
+        DatabaseManager db(path);
+    }
     const std::string trigger =
         query_text(path, "SELECT sql FROM sqlite_master WHERE name = 'articles_au'");
     REQUIRE_THAT(trigger, ContainsSubstring("UPDATE OF title, authors, abstract"));
