@@ -117,3 +117,5 @@ endif()
 include(CTest)
 catch_discover_tests(unit_tests)
 catch_discover_tests(integration_tests)
+
+add_subdirectory(fuzz)

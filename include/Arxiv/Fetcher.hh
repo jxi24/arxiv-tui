@@ -16,7 +16,7 @@ namespace Arxiv {
 
 using time_point = std::chrono::system_clock::time_point;
 
-class Article;
+struct Article;
 
 /// Thrown by Fetch/FetchSince when arXiv could not be reached or answered
 /// with an error, so callers can tell "nothing new" from "fetch failed".

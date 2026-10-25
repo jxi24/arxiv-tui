@@ -16,6 +16,7 @@
 #include <iomanip>
 #include <iterator>
 #include <locale>
+#include <regex>
 #include <sstream>
 #include <string_view>
 #include <utility>
@@ -165,17 +166,17 @@ std::string Fetcher::NormalizeLink(const std::string& link) {
     std::string result = link;
 
     // Normalize scheme to https
-    if (result.substr(0, 7) == "http://")
+    if (result.compare(0, 7, "http://") == 0)
         result.replace(0, 7, "https://");
 
-    // Strip trailing version suffix: "v" followed only by digits
-    auto v_pos = result.rfind('v');
-    if (v_pos != std::string::npos && v_pos + 1 < result.size()) {
-        std::string_view suffix(result.c_str() + v_pos + 1);
-        bool all_digits = !suffix.empty() && std::all_of(suffix.begin(), suffix.end(), ::isdigit);
-        if (all_digits)
-            result.erase(v_pos);
-    }
+    // Strip the version suffix of a real arXiv identifier only — new style
+    // (2401.12345v2) or old style (hep-ph/0101001v3). Stripping any trailing
+    // "v<digits>" made the result depend on how often it was applied.
+    static const std::regex versioned(
+        R"(^(.*/abs/(?:\d{4}\.\d{4,5}|[A-Za-z-]+(?:\.[A-Za-z]{2})?/\d{7}))v\d+$)");
+    std::smatch m;
+    if (std::regex_match(result, m, versioned))
+        result = m[1].str();
 
     return result;
 }
@@ -310,6 +311,14 @@ std::vector<Article> Fetcher::ParseFeed(const std::string& xml_content) const {
     return articles;
 }
 
+namespace {
+
+// system_clock counts nanoseconds in 64 bits (about 1678–2262); anything
+// outside a sane window would overflow from_time_t. arXiv dates start in 1991.
+bool year_in_range(const std::tm& tm) { return tm.tm_year >= 0 && tm.tm_year <= 300; }
+
+} // namespace
+
 std::optional<Arxiv::time_point> Fetcher::ParseDate(const std::string& date) const {
     if (date.empty())
         return std::nullopt;
@@ -326,7 +335,7 @@ std::optional<Arxiv::time_point> Fetcher::ParseDate(const std::string& date) con
         ss.imbue(std::locale::classic());
         std::tm tm = {};
         ss >> std::get_time(&tm, "%a, %d %b %Y %H:%M:%S");
-        if (ss.fail())
+        if (ss.fail() || !year_in_range(tm))
             return std::nullopt;
 
         // The fields in tm are wall-clock time at the trailing zone offset.
@@ -354,7 +363,7 @@ std::optional<Arxiv::time_point> Fetcher::ParseDate(const std::string& date) con
     ss.imbue(std::locale::classic());
     std::tm tm = {};
     ss >> std::get_time(&tm, "%Y-%m-%dT%H:%M:%S");
-    if (ss.fail())
+    if (ss.fail() || !year_in_range(tm))
         return std::nullopt;
     // The ISO feed is UTC ('Z'); interpret the fields as UTC, not local time.
     return std::chrono::system_clock::from_time_t(timegm(&tm));
@@ -864,7 +873,7 @@ std::optional<Arxiv::time_point> Fetcher::ParseAtomDate(const std::string& date)
     // Format: "2026-05-04T00:00:00-04:00" or "2026-05-04T00:00:00Z"
     // We only need the date portion for day-level granularity.
     std::tm tm{};
-    if (!parse_ymd_prefix(date, tm))
+    if (!parse_ymd_prefix(date, tm) || !year_in_range(tm))
         return std::nullopt;
     return std::chrono::system_clock::from_time_t(timegm(&tm));
 }

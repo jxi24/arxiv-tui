@@ -1,0 +1,11 @@
+# Project JSON keys for fuzz_import_json
+"{\"name\":"
+"\"articles\":["
+"\"link\":\"https://arxiv.org/abs/2401.00001\""
+"\"title\":"
+"\"authors\":"
+"\"abstract\":"
+"\"date\":1700000000"
+"\"note\":"
+"null"
+"true"

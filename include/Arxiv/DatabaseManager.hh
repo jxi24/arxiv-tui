@@ -14,7 +14,7 @@
 
 namespace Arxiv {
 
-class Article;
+struct Article;
 
 class DatabaseManager {
   public:
@@ -41,7 +41,7 @@ class DatabaseManager {
     virtual void MarkArticleRead(const std::string& link);
     virtual std::vector<Article> GetUnreadArticles();
     // Delete articles older than max_age_days that are not bookmarked, rated,
-    // tagged, or in any project. Pass 0 to disable (no-op).
+    // tagged, noted, or in any project. Pass 0 to disable (no-op).
     virtual void PruneArticles(int max_age_days);
 
     // Rating management
@@ -128,7 +128,7 @@ class DatabaseManager {
     void ExecuteSQL(const std::string& sql);
     void Query(const std::string& query);
     Article RowToArticle(sqlite3_stmt* stmt);
-    const char* ExtractColumn(sqlite3_stmt* stmt, int index);
+    std::string ExtractColumn(sqlite3_stmt* stmt, int index);
     void MigrateNormalizeLinks();
     void MigrateAddReadAt();
     void MigrateAddAddedAt();

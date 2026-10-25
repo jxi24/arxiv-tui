@@ -1,0 +1,17 @@
+article_settings:
+  download_dir: /tmp/arxiv
+  topics: [hep-ph, hep-th]
+recommend_threshold: 3.5
+retrain_interval: 5
+auto_refresh_minutes: 0
+scroll_margin: 3
+max_article_age_days: 30
+undo_buffer_size: 10
+obsidian_vault: /tmp/vault
+obsidian_download_pdfs: false
+article_columns: [title, date, authors]
+key_mappings:
+  - action: next
+    key: j
+  - action: previous
+    key: k

@@ -1,0 +1,113 @@
+# SPDX-FileCopyrightText: 2024-2026 Josh Isaacson
+#
+# SPDX-License-Identifier: GPL-3.0-only
+
+# libFuzzer runs of the targets in test/fuzz. Pull requests get a short run
+# per target; the nightly schedule runs longer and keeps the grown corpus as an
+# artifact. A crash fails the job and uploads the reproducer — add it to
+# test/fuzz/corpus/<target>/ (plus a unit test) with the fix so ctest replays
+# it in every build.
+
+name: Fuzz
+
+on:
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: "Seconds per target"
+        default: "300"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    name: libFuzzer (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - ranker_load
+          - feeds
+          - text
+          - config
+          - import_json
+          - replay
+          - digest_yaml
+          - db_ops
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y clang libclang-rt-dev libsqlite3-dev libcurl4-openssl-dev ccache
+
+      - name: Cache CPM packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/CPM
+          key: cpm-${{ hashFiles('Dependencies.txt') }}
+          restore-keys: cpm-
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-fuzz-${{ runner.os }}-${{ github.sha }}
+          restore-keys: ccache-fuzz-${{ runner.os }}-
+
+      - name: Configure
+        env:
+          CC: clang
+          CXX: clang++
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DARXIV_TUI_ENABLE_FUZZING=ON \
+            -DCPM_SOURCE_CACHE=~/.cache/CPM
+
+      - name: Build
+        run: cmake --build build -j4 --target fuzz_${{ matrix.target }}
+
+      - name: Fuzz
+        run: |
+          SECONDS_PER_TARGET=60
+          if [ "${{ github.event_name }}" = "schedule" ]; then SECONDS_PER_TARGET=1200; fi
+          if [ -n "${{ github.event.inputs.seconds }}" ]; then SECONDS_PER_TARGET=${{ github.event.inputs.seconds }}; fi
+          mkdir -p corpus artifacts
+          cp -r test/fuzz/corpus/${{ matrix.target }}/. corpus/ 2>/dev/null || true
+          DICT=test/fuzz/dict/${{ matrix.target }}.dict
+          DICT_ARG=""
+          if [ -f "$DICT" ]; then DICT_ARG="-dict=$DICT"; fi
+          ./build/test/fuzz/fuzz_${{ matrix.target }} corpus $DICT_ARG \
+            -max_total_time=$SECONDS_PER_TARGET -timeout=10 -rss_limit_mb=2048 \
+            -artifact_prefix=artifacts/ -print_final_stats=1
+
+      - name: Upload crash reproducers
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crash-${{ matrix.target }}
+          path: artifacts/
+
+      - name: Upload grown corpus
+        if: github.event_name == 'schedule'
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-corpus-${{ matrix.target }}
+          path: corpus/
+          retention-days: 14

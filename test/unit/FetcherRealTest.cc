@@ -527,3 +527,29 @@ TEST_CASE("Fetcher regression: RSS items whose link is not an arXiv abstract URL
         REQUIRE(fetcher.ParseFeed(feed_with_link("https://evil.example/abs/2403.12345")).empty());
     }
 }
+
+TEST_CASE("Fetcher regression: NormalizeLink only strips a real version suffix",
+          "[fetcher][real][regression]") {
+    // Found by fuzz_text: stripping any trailing "v<digits>" made the result
+    // depend on how many times it was applied.
+    const std::string odd = "https://arxiv.org/abs/hep-ph/0101001v0202002v3";
+    const std::string once = Fetcher::NormalizeLink(odd);
+
+    SECTION("idempotent") { REQUIRE(Fetcher::NormalizeLink(once) == once); }
+    SECTION("old-style id with version") {
+        REQUIRE(Fetcher::NormalizeLink("http://arxiv.org/abs/hep-ph/0101001v3") ==
+                "https://arxiv.org/abs/hep-ph/0101001");
+    }
+}
+
+TEST_CASE("Fetcher regression: dates outside the representable range are rejected",
+          "[fetcher][real][regression]") {
+    // Found by fuzz_text (UBSan): year 0001 overflowed the nanosecond
+    // system_clock duration in from_time_t.
+    auto tmp = std::filesystem::temp_directory_path() / "arxiv_fetcher_regression";
+    Fetcher fetcher({"hep-ph"}, tmp.string());
+
+    SECTION("RFC 822") { REQUIRE_FALSE(fetcher.ParseDate("Mon, 01 Jan 0001 00:00:00 +0000")); }
+    SECTION("ISO 8601") { REQUIRE_FALSE(fetcher.ParseDate("0001-01-01T00:00:00Z")); }
+    SECTION("Atom") { REQUIRE_FALSE(fetcher.ParseAtomDate("0001-01-01T00:00:00Z")); }
+}

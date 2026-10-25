@@ -42,6 +42,13 @@ Unreleased
   old-style IDs such as ``hep-ph/0101001`` work for PDFs, BibTeX and
   Obsidian notes; a corrupt ``ranker.bin`` is rejected instead of crashing;
   malformed import or replay files are reported instead of aborting.
+- **Found by fuzzing** — pruning no longer deletes articles that carry a
+  project note (the note was left orphaned); text containing a NUL byte is
+  stored in full; link normalisation only strips real version suffixes;
+  out-of-range dates in feeds are rejected instead of overflowing; a corrupt
+  stored date no longer aborts startup.
+- **Builds with Clang** — fixed a ``class``/``struct`` mismatch that Clang
+  rejects, and cpr's own ``-Werror`` no longer trips on libstdc++ 13.
 
 - **Obsidian export without PDFs** — ``o`` no longer downloads each PDF into
   the vault. Notes link to the PDF on arXiv instead

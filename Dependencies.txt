@@ -31,6 +31,9 @@ CPMAddPackage(
     OPTIONS "CPR_USE_SYSTEM_CURL ${ARXIV_TUI_USE_SYSTEM_CURL}"
 )
 add_library(cpr::cpr ALIAS cpr)
+# cpr builds itself with -Werror; with Clang + libstdc++ 13 its use of
+# std::result_of trips -Wdeprecated-declarations. Not our code to fix.
+target_compile_options(cpr PRIVATE -Wno-error=deprecated-declarations)
 
 CPMAddPackage(
     Name ftxui

@@ -1019,3 +1019,44 @@ TEST_CASE("Real DB regression: NULL values in name columns are skipped, not dere
     }
     std::filesystem::remove(path);
 }
+
+TEST_CASE("Real DB regression: PruneArticles keeps articles that carry a note",
+          "[database][real][regression]") {
+    // Found by fuzz_db_ops: a note does not require project membership, so
+    // pruning deleted the article and left its note orphaned. Notes are user
+    // content, like ratings and tags, so the article is kept.
+    DatabaseManager db(":memory:");
+    Article old_article = sample_articles[0];
+    old_article.date = std::chrono::system_clock::from_time_t(1000);
+    db.AddArticle(old_article);
+    db.SetProjectNote("reading", old_article.link, "check eq. 3");
+
+    db.PruneArticles(30);
+
+    REQUIRE(db.GetProjectNote("reading", old_article.link) == "check eq. 3");
+    REQUIRE(db.GetRecent(-1).size() == 1);
+}
+
+TEST_CASE("Real DB regression: text with an embedded NUL is stored in full",
+          "[database][real][regression]") {
+    // Found by fuzz_digest_yaml: strings were bound with length -1, so SQLite
+    // stopped at the first NUL byte and the rest was lost.
+    DatabaseManager db(":memory:");
+    Article a = sample_articles[0];
+    a.authors = std::string("A. Author\0B. Author", 19);
+    db.AddArticle(a);
+
+    auto stored = db.GetArticle(a.link);
+    REQUIRE(stored.has_value());
+    REQUIRE(stored->authors == a.authors);
+}
+
+TEST_CASE("Real DB regression: a malformed date for GetArticlesSince is not fatal",
+          "[database][real][regression]") {
+    // The date comes from the metadata table; a corrupt value used to throw
+    // std::invalid_argument out of std::stoi and abort startup.
+    DatabaseManager db(":memory:");
+    db.AddArticle(sample_articles[0]);
+    std::vector<Article> found;
+    REQUIRE_NOTHROW(found = db.GetArticlesSince("not-a-date"));
+}

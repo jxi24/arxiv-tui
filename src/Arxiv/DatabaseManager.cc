@@ -62,7 +62,8 @@ class Stmt {
     Stmt& operator=(const Stmt&) = delete;
 
     Stmt& bind(int idx, const std::string& v) {
-        sqlite3_bind_text(m_stmt, idx, v.c_str(), -1, SQLITE_TRANSIENT);
+        // Explicit length: with -1 SQLite stops at an embedded NUL byte.
+        sqlite3_bind_text(m_stmt, idx, v.data(), static_cast<int>(v.size()), SQLITE_TRANSIENT);
         return *this;
     }
     Stmt& bind(int idx, const char* v) {
@@ -223,17 +224,7 @@ void DatabaseManager::MigrateNormalizeLinks() {
             if (!text)
                 return;
             std::string link = reinterpret_cast<const char*>(text);
-            std::string canonical = link;
-
-            if (canonical.substr(0, 7) == "http://")
-                canonical.replace(0, 7, "https://");
-
-            auto v = canonical.rfind('v');
-            if (v != std::string::npos && v + 1 < canonical.size()) {
-                std::string_view tail(canonical.c_str() + v + 1);
-                if (!tail.empty() && std::all_of(tail.begin(), tail.end(), ::isdigit))
-                    canonical.erase(v);
-            }
+            const std::string canonical = Fetcher::NormalizeLink(link);
 
             if (canonical != link)
                 to_rename.emplace_back(link, canonical);
@@ -706,7 +697,8 @@ void DatabaseManager::PruneArticles(int max_age_days) {
               "AND bookmarked = 0 "
               "AND link NOT IN (SELECT article_link FROM article_ratings) "
               "AND link NOT IN (SELECT article_link FROM project_articles) "
-              "AND link NOT IN (SELECT article_link FROM article_tags)",
+              "AND link NOT IN (SELECT article_link FROM article_tags) "
+              "AND link NOT IN (SELECT article_link FROM project_notes)",
               "PruneArticles");
     stmt.bind(1, max_age_days).step_done();
 }
@@ -786,9 +778,13 @@ DatabaseManager::GetArticlesForProject(const std::string& project_name) {
     return articles;
 }
 
-const char* DatabaseManager::ExtractColumn(sqlite3_stmt* stmt, int index) {
+std::string DatabaseManager::ExtractColumn(sqlite3_stmt* stmt, int index) {
     const unsigned char* text = sqlite3_column_text(stmt, index);
-    return text ? reinterpret_cast<const char*>(text) : "";
+    if (!text)
+        return {};
+    // By length, not up to the first NUL.
+    return std::string(reinterpret_cast<const char*>(text),
+                       static_cast<std::size_t>(sqlite3_column_bytes(stmt, index)));
 }
 
 Arxiv::Article DatabaseManager::RowToArticle(sqlite3_stmt* stmt) {
@@ -1098,11 +1094,14 @@ std::string DatabaseManager::GetMetadata(const std::string& key) {
 
 std::vector<Arxiv::Article> DatabaseManager::GetArticlesSince(const std::string& utc_date) {
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
-    // Convert "YYYY-MM-DD" to UTC midnight Unix timestamp.
+    // Convert "YYYY-MM-DD" to UTC midnight Unix timestamp. The value comes
+    // from the metadata table, so a malformed one means "no lower bound".
     std::tm tm{};
-    tm.tm_year = std::stoi(utc_date.substr(0, 4)) - 1900;
-    tm.tm_mon = std::stoi(utc_date.substr(5, 2)) - 1;
-    tm.tm_mday = std::stoi(utc_date.substr(8, 2));
+    char* end = strptime(utc_date.c_str(), "%Y-%m-%d", &tm);
+    if (!end || *end != '\0') {
+        spdlog::warn("[Database]: Ignoring malformed date '{}'", utc_date);
+        return GetRecent(-1);
+    }
     std::time_t since_ts = timegm(&tm);
 
     std::vector<Arxiv::Article> articles;

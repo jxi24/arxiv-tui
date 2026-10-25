@@ -1,0 +1,13 @@
+{"ts": 1, "action": "set_filter_index", "index": 0}
+{"ts": 2, "action": "set_article_index", "index": 2}
+{"ts": 3, "action": "toggle_bookmark", "article_link": "https://arxiv.org/abs/2401.00001"}
+{"ts": 4, "action": "add_project", "name": "p"}
+{"ts": 5, "action": "set_project_parent", "project": "p", "parent": "q"}
+{"ts": 6, "action": "link_article_to_project", "article_link": "https://arxiv.org/abs/2401.00002", "project": "p"}
+{"ts": 7, "action": "set_search_query", "query": "quark \"gluon", "title": true, "authors": false, "abstract_field": false}
+{"ts": 8, "action": "rate_article", "article_link": "https://arxiv.org/abs/2401.00001", "rating": 4}
+{"ts": 9, "action": "toggle_selection", "article_link": "https://arxiv.org/abs/2401.00003"}
+{"ts": 10, "action": "toggle_category", "category": "hep-th"}
+{"ts": 11, "action": "set_date_range", "start": "2024-01-01", "end": "bad"}
+{"ts": 12, "action": "export_project_json", "project": "p", "path": "/tmp/x.json"}
+{"ts": 13, "action": "set_filter_index", "index": "abc"}

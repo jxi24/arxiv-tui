@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:arxiv="http://arxiv.org/schemas/atom">
+  <entry>
+    <id>http://arxiv.org/abs/2605.28788v1</id>
+    <title>Quantum Corrections to Higgs Production</title>
+    <summary>We compute NLO corrections to Higgs boson production.</summary>
+    <author><name>Alice Smith</name></author>
+    <author><name>Bob Jones</name></author>
+    <published>2026-05-10T00:00:00Z</published>
+    <arxiv:primary_category term="hep-ph"/>
+    <arxiv:announce_type>new</arxiv:announce_type>
+  </entry>
+  <entry>
+    <id>http://arxiv.org/abs/2605.28789v2</id>
+    <title>Updated Lattice QCD Results</title>
+    <summary>An update to our previous lattice calculation.</summary>
+    <author><name>Carol Davis</name></author>
+    <published>2026-05-09T00:00:00Z</published>
+    <arxiv:primary_category term="hep-lat"/>
+    <arxiv:announce_type>replace</arxiv:announce_type>
+  </entry>
+</feed>
