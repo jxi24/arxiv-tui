@@ -457,6 +457,39 @@ TEST_CASE("AppCore project export", "[app][projects]") {
     }
 }
 
+TEST_CASE("Project import does not overwrite articles already in the database",
+          "[app][projects][regression]") {
+    // An exported project carries title/authors/abstract/date only, and an
+    // import file may be old or hand-edited: the stored paper (category,
+    // replacement flag, current title) wins.
+    auto dir = std::filesystem::temp_directory_path() /
+               ("arxiv_import_keep_" + std::to_string(::getpid()));
+    std::filesystem::create_directories(dir);
+    auto stored = sample_articles[0];
+    stored.category = "hep-ph";
+    auto db = std::make_unique<Arxiv::DatabaseManager>(":memory:");
+    db->AddArticle(stored);
+    auto* db_ptr = db.get();
+    Config config("test/fixtures/test_config.yml");
+    AppCore core(
+        config, std::move(db), std::make_unique<FetcherMock>(), AppCore::FetchMode::Offline);
+
+    auto file = dir / "p.json";
+    std::ofstream(file) << R"({"name":"P","articles":[{"link":")" << stored.link
+                        << R"(","title":"Edited title","authors":"","abstract":""}]})";
+    REQUIRE(core.ImportProjectJSON(file.string()));
+    auto after = db_ptr->GetArticle(stored.link);
+
+    SECTION("title kept") { REQUIRE(after->title == stored.title); }
+    SECTION("authors kept") { REQUIRE(after->authors == stored.authors); }
+    SECTION("category kept") { REQUIRE(after->category == "hep-ph"); }
+    SECTION("still linked to the project") {
+        auto projects = db_ptr->GetProjectsForArticle(stored.link);
+        REQUIRE(std::find(projects.begin(), projects.end(), "P") != projects.end());
+    }
+    std::filesystem::remove_all(dir);
+}
+
 TEST_CASE("AppCore project import", "[app][projects]") {
     Config config("test/fixtures/test_config.yml");
     auto db = std::make_unique<DatabaseManagerMock>();

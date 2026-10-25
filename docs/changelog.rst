@@ -14,7 +14,9 @@ Unreleased
   A symlinked ``config.yml`` stays a symlink. Obsidian export no longer
   overwrites a paper's existing note (and your reading notes in it), and a
   second export on the same day adds to that day's index instead of
-  replacing it.
+  replacing it. Importing a project no longer overwrites papers already in
+  the database (their title, authors and category were replaced by the
+  file's, and the category emptied).
 
 - **Security hardening** — a crash no longer hangs, restores the terminal
   and leaves ``SIGTERM`` alone; the crash report holds the end of

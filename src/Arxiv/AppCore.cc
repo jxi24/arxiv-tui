@@ -1069,19 +1069,22 @@ bool AppCore::ImportProjectJSON(const std::string& input_path) {
                 continue;
             }
 
-            Article article;
-            article.link = link;
-            article.title = string_field(entry, "title");
-            article.authors = string_field(entry, "authors");
-            article.abstract = string_field(entry, "abstract");
-            article.bookmarked = false;
-            std::time_t ts = 0;
-            auto date = entry.find("date");
-            if (date != entry.end() && date->is_number_integer())
-                ts = date->get<std::time_t>();
-            article.date = std::chrono::system_clock::from_time_t(ts);
-
-            m_db->AddArticle(article);
+            // A paper already in the database keeps its stored metadata (the
+            // file has no category and may be old or hand-edited).
+            if (!m_db->GetArticle(link)) {
+                Article article;
+                article.link = link;
+                article.title = string_field(entry, "title");
+                article.authors = string_field(entry, "authors");
+                article.abstract = string_field(entry, "abstract");
+                article.bookmarked = false;
+                std::time_t ts = 0;
+                auto date = entry.find("date");
+                if (date != entry.end() && date->is_number_integer())
+                    ts = date->get<std::time_t>();
+                article.date = std::chrono::system_clock::from_time_t(ts);
+                m_db->AddArticle(article);
+            }
             m_db->LinkArticleToProject(link, project_name);
 
             std::string note = string_field(entry, "note");
