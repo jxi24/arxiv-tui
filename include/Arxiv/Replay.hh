@@ -124,11 +124,12 @@ class ReplayPlayer {
         std::string error;
     };
 
-    /// Replay from a JSONL string.
+    /// Replay from a JSONL string, or from a crash report (its Replay Log
+    /// section is replayed).
     static Result FromString(const std::string& jsonl, AppCore& core);
     static Result FromString(const std::string& jsonl, AppCore& core, const Options& options);
 
-    /// Replay from a JSONL file.
+    /// Replay from a JSONL file or a crash report file.
     static Result FromFile(const std::string& path, AppCore& core);
     static Result FromFile(const std::string& path, AppCore& core, const Options& options);
 

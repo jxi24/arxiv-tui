@@ -180,11 +180,16 @@ All UI actions are recorded to a JSONL replay log at
 restored and a report with a backtrace and the end of the replay log is
 written to ``~/.local/state/arxiv-tui/crash_*.txt``.
 
-To reproduce a crash, replay the log:
+To reproduce a crash, replay the crash report (its replay log is replayed)
+or the full log:
 
 .. code-block:: bash
 
+   arxiv-tui --replay ~/.local/state/arxiv-tui/crash_20260101_120000_SIGSEGV_1234.txt
    arxiv-tui --replay ~/.local/state/arxiv-tui/replay.jsonl
+
+A crash report carries the last 64 KiB of the log, which covers the actions
+leading up to the crash; replay ``replay.jsonl`` for the whole history.
 
 A replay never changes your data: it runs on an in-memory copy of the
 database (the ranker and keywords are copied to a scratch directory), and

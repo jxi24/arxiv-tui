@@ -9,6 +9,7 @@
 #include "Arxiv/CrashHandler.hh"
 #include "Arxiv/DatabaseManager.hh"
 
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <csignal>
@@ -608,5 +609,54 @@ TEST_CASE("ReplayPlayer: file actions run when allowed", "[replay]") {
 
     REQUIRE(result.replayed == 1);
     REQUIRE(fs::exists(out));
+    fs::remove_all(dir);
+}
+
+// A crash report is what users have after a crash, so --replay takes it
+// directly: the player replays its Replay Log section.
+namespace {
+std::string read_file(const std::string& path) {
+    std::ifstream f(path);
+    std::stringstream ss;
+    ss << f.rdbuf();
+    return ss.str();
+}
+} // namespace
+
+TEST_CASE("ReplayPlayer replays the log inside a crash report", "[replay][crashhandler]") {
+    fs::path dir = fs::temp_directory_path() / ("crash_replay_" + std::to_string(::getpid()));
+    fs::create_directories(dir);
+    auto core = make_real_replay_core();
+
+    SECTION("in-memory recorder") {
+        Arxiv::ReplayRecorder recorder;
+        recorder.RecordAddProject("FromCrash");
+        recorder.RecordAddProject("Second");
+        auto report = Arxiv::WriteCrashReport(SIGSEGV, &recorder, dir.string());
+
+        auto result = Arxiv::ReplayPlayer::FromString(read_file(report), *core);
+
+        REQUIRE(result.error.empty());
+        REQUIRE(result.replayed == 2);
+    }
+    SECTION("replay file longer than the copied tail") {
+        // Only the end of the file is copied; the cut must not leave half a
+        // JSON line at the start of the log.
+        auto replay = dir / "replay.jsonl";
+        {
+            Arxiv::ReplayRecorder recorder(replay.string());
+            for (int i = 0; i < 2000; ++i)
+                recorder.RecordEvent("tick", std::string(60, 'x'));
+            recorder.RecordAddProject("FromCrash");
+            auto report = Arxiv::WriteCrashReport(SIGABRT, &recorder, dir.string());
+
+            auto result = Arxiv::ReplayPlayer::FromString(read_file(report), *core);
+
+            REQUIRE(result.error.empty());
+            REQUIRE(result.replayed == 1);
+        }
+    }
+    auto projects = core->GetProjects();
+    REQUIRE(std::find(projects.begin(), projects.end(), "FromCrash") != projects.end());
     fs::remove_all(dir);
 }

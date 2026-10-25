@@ -128,9 +128,9 @@ Replaying a crash report
 -------------------------
 
 If arxiv-tui crashes, a report is saved to ``~/.local/state/arxiv-tui/``.
-Replay the session's action log to reproduce it (your database is not
-changed; see :doc:`features`):
+Replay it to reproduce the crash (your database is not changed; see
+:doc:`features`):
 
 .. code-block:: bash
 
-   arxiv-tui --replay ~/.local/state/arxiv-tui/replay.jsonl
+   arxiv-tui --replay ~/.local/state/arxiv-tui/crash_20260101_120000_SIGSEGV_1234.txt

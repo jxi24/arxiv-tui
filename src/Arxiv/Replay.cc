@@ -178,6 +178,31 @@ const std::unordered_map<std::string, Handler>& dispatch_table() {
     return table;
 }
 
+// A crash report (CrashHandler) carries the session's replay log between a
+// "--- Replay Log" line and "=== End of Report ==="; anything else is taken
+// to be a plain JSONL replay file.
+std::string ReplayLogOf(const std::string& text) {
+    constexpr std::string_view kReportHeader = "=== arxiv-tui Crash Report ===";
+    if (text.compare(0, kReportHeader.size(), kReportHeader) != 0)
+        return text;
+    std::istringstream in(text);
+    std::string line, log;
+    bool inside = false;
+    while (std::getline(in, line)) {
+        if (!inside) {
+            inside = line.rfind("--- Replay Log", 0) == 0;
+            continue;
+        }
+        if (line.rfind("=== End of Report", 0) == 0)
+            break;
+        if (line == "(earlier entries omitted)")
+            continue;
+        log += line;
+        log += '\n';
+    }
+    return log;
+}
+
 // Actions that read or write files outside the database, or download.
 bool touches_files(const std::string& action) {
     static const std::set<std::string_view> file_actions = {
@@ -508,8 +533,9 @@ ReplayPlayer::Result ReplayPlayer::FromString(const std::string& jsonl, AppCore&
 }
 
 ReplayPlayer::Result
-ReplayPlayer::FromString(const std::string& jsonl, AppCore& core, const Options& options) {
+ReplayPlayer::FromString(const std::string& text, AppCore& core, const Options& options) {
     Result result;
+    const std::string jsonl = ReplayLogOf(text);
     if (jsonl.empty())
         return result;
 
