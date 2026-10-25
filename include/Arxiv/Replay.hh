@@ -88,9 +88,14 @@ class ReplayRecorder {
     /// Number of entries recorded so far.
     std::size_t GetCount() const;
 
+    /// The replay file being streamed to, or "" in in-memory mode. Fixed at
+    /// construction, so the crash handler can read it without locking.
+    const std::string& GetFilePath() const { return m_file_path; }
+
   private:
     std::deque<std::string> m_entries; // newest kMaxEntries
     std::ofstream m_file;
+    std::string m_file_path;
     mutable std::mutex m_mutex;
 
     void Record(const std::string& json_line);

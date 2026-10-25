@@ -296,6 +296,7 @@ object programmatically.
 | `test/unit/BackgroundTaskTest.cc` | Non-blocking exports/downloads: `AppCore` background task API and TUI progress |
 | `test/unit/ProcessTest.cc` | `Process::RunAndWait` / `SpawnDetached` (no-shell process launching) |
 | `test/unit/PathsTest.cc` | `Paths::Resolve` fallback when the install prefix is not writable |
+| `test/unit/CrashHandlerTest.cc` | Crash handler in forked children: report, no hang on a busy recorder, terminal restored, SIGTERM untouched |
 
 Tests tagged `[regression]` reproduce bugs found in code review (now fixed); the `[threads]` ones are only meaningful under ThreadSanitizer (the Sanitizers CI workflow). `[background]` covers the background-task API.
 

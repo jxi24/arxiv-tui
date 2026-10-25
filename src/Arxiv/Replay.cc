@@ -187,9 +187,9 @@ ReplayRecorder::ReplayRecorder() = default;
 
 ReplayRecorder::ReplayRecorder(const std::string& file_path)
     : m_file(file_path, std::ios::out | std::ios::app) {
-    if (!m_file.is_open()) {
-        // Non-fatal: fall back to in-memory only
-    }
+    // If the file cannot be opened the recorder stays in-memory only.
+    if (m_file.is_open())
+        m_file_path = file_path;
 }
 
 ReplayRecorder::~ReplayRecorder() {
