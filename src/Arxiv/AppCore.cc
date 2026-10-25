@@ -1038,7 +1038,8 @@ bool AppCore::ImportProjectJSON(const std::string& input_path) {
     nlohmann::json j;
     try {
         file >> j;
-    } catch (const nlohmann::json::parse_error& e) {
+    } catch (const nlohmann::json::exception& e) {
+        // parse_error, or out_of_range for numbers like 1e70000
         spdlog::error("[AppCore]: JSON parse error: {}", e.what());
         return false;
     }

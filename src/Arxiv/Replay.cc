@@ -474,7 +474,7 @@ bool ReplayPlayer::DispatchAction(const std::string& json_line,
     json j;
     try {
         j = json::parse(json_line);
-    } catch (const json::parse_error& e) {
+    } catch (const json::exception& e) { // parse_error, or out_of_range (1e70000)
         error_out = std::string("JSON parse error: ") + e.what();
         return false;
     }
