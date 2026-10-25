@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <chrono>
 #include <ctime>
+#include <mutex>
 #include <sqlite3.h>
 #include <sstream>
 #include <stdexcept>
@@ -360,6 +361,7 @@ void DatabaseManager::ExecuteSQL(const std::string& sql) {
 }
 
 void DatabaseManager::AddArticles(const std::vector<Article>& articles) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     if (articles.empty())
         return;
     ExecuteSQL("BEGIN TRANSACTION");
@@ -374,6 +376,7 @@ void DatabaseManager::AddArticles(const std::vector<Article>& articles) {
 }
 
 void DatabaseManager::AddArticle(const Article& article) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     spdlog::debug("[Database]: Adding article: {}", article.link);
     auto timestamp =
         std::chrono::duration_cast<std::chrono::seconds>(article.date.time_since_epoch()).count();
@@ -419,6 +422,7 @@ void DatabaseManager::AddArticle(const Article& article) {
 }
 
 std::vector<Arxiv::Article> DatabaseManager::GetRecent(int days) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     std::string sql = std::string("SELECT ") + ARTICLE_COLUMNS + " FROM articles";
     if (days >= 0) {
         auto now = std::chrono::system_clock::now();
@@ -436,6 +440,7 @@ std::vector<Arxiv::Article> DatabaseManager::GetRecent(int days) {
 }
 
 std::vector<Arxiv::Article> DatabaseManager::ListBookmarked() {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     spdlog::debug("[Database]: Collecting all bookmarked articles");
     std::string sql =
         std::string("SELECT ") + ARTICLE_COLUMNS + " FROM articles WHERE bookmarked = 1";
@@ -446,12 +451,14 @@ std::vector<Arxiv::Article> DatabaseManager::ListBookmarked() {
 }
 
 void DatabaseManager::ToggleBookmark(const std::string& link, bool bookmarked) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     spdlog::debug("[Database]: Toggling bookmark for {}", link);
     Stmt stmt(db, "UPDATE articles SET bookmarked = ? WHERE link = ?", "ToggleBookmark");
     stmt.bind(1, bookmarked ? 1 : 0).bind(2, link).step_done();
 }
 
 void DatabaseManager::DeleteArticle(const std::string& link) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     spdlog::debug("[Database]: Deleting article {}", link);
     Stmt pn(db, "DELETE FROM project_notes WHERE article_link = ?", "DeleteArticle/notes");
     pn.bind(1, link).step_done();
@@ -507,11 +514,13 @@ void DatabaseManager::CreateTagTables() {
 }
 
 void DatabaseManager::AddTag(const std::string& name) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     Stmt stmt(db, "INSERT OR IGNORE INTO tags (name) VALUES (?)", "AddTag");
     stmt.bind(1, name).step_done();
 }
 
 void DatabaseManager::RemoveTag(const std::string& name) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     Stmt at(db, "DELETE FROM article_tags WHERE tag_name = ?", "RemoveTag/at");
     at.bind(1, name).step_done();
     Stmt t(db, "DELETE FROM tags WHERE name = ?", "RemoveTag");
@@ -519,6 +528,7 @@ void DatabaseManager::RemoveTag(const std::string& name) {
 }
 
 std::vector<std::string> DatabaseManager::GetTags() {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     std::vector<std::string> tags;
     Stmt stmt(db, "SELECT name FROM tags ORDER BY name", "GetTags");
     stmt.for_each([&](sqlite3_stmt* s) {
@@ -530,6 +540,7 @@ std::vector<std::string> DatabaseManager::GetTags() {
 }
 
 std::vector<std::string> DatabaseManager::GetTagsForArticle(const std::string& link) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     std::vector<std::string> tags;
     Stmt stmt(db,
               "SELECT tag_name FROM article_tags WHERE article_link = ? ORDER BY tag_name",
@@ -544,6 +555,7 @@ std::vector<std::string> DatabaseManager::GetTagsForArticle(const std::string& l
 }
 
 void DatabaseManager::LinkArticleToTag(const std::string& link, const std::string& tag) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     // Ensure the tag exists before linking.
     AddTag(tag);
     Stmt stmt(db,
@@ -553,6 +565,7 @@ void DatabaseManager::LinkArticleToTag(const std::string& link, const std::strin
 }
 
 void DatabaseManager::UnlinkArticleFromTag(const std::string& link, const std::string& tag) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     Stmt stmt(db,
               "DELETE FROM article_tags WHERE article_link = ? AND tag_name = ?",
               "UnlinkArticleFromTag");
@@ -560,6 +573,7 @@ void DatabaseManager::UnlinkArticleFromTag(const std::string& link, const std::s
 }
 
 std::vector<Arxiv::Article> DatabaseManager::GetArticlesForTag(const std::string& tag) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     std::vector<Article> articles;
     std::string sql = std::string("SELECT ") + ARTICLE_COLUMNS_A +
                       " FROM articles a"
@@ -580,6 +594,7 @@ void DatabaseManager::MigrateAddProjectBibPath() {
 }
 
 std::string DatabaseManager::GetProjectBibPath(const std::string& project_name) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     Stmt stmt(db, "SELECT bib_path FROM projects WHERE name = ?", "GetProjectBibPath");
     stmt.bind(1, project_name);
     if (stmt.step() == SQLITE_ROW) {
@@ -590,6 +605,7 @@ std::string DatabaseManager::GetProjectBibPath(const std::string& project_name) 
 }
 
 void DatabaseManager::SetProjectBibPath(const std::string& project_name, const std::string& path) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     Stmt stmt(db, "UPDATE projects SET bib_path = ? WHERE name = ?", "SetProjectBibPath");
     stmt.bind(1, path).bind(2, project_name).step_done();
 }
@@ -645,6 +661,7 @@ void DatabaseManager::MigrateAddFTS5() {
 }
 
 void DatabaseManager::MarkArticleRead(const std::string& link) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     spdlog::debug("[Database]: Marking article read {}", link);
     Stmt stmt(
         db,
@@ -654,6 +671,7 @@ void DatabaseManager::MarkArticleRead(const std::string& link) {
 }
 
 std::vector<Arxiv::Article> DatabaseManager::GetUnreadArticles() {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     std::vector<Article> articles;
     std::string sql =
         std::string("SELECT ") + ARTICLE_COLUMNS + " FROM articles WHERE read_at IS NULL";
@@ -663,6 +681,7 @@ std::vector<Arxiv::Article> DatabaseManager::GetUnreadArticles() {
 }
 
 void DatabaseManager::PruneArticles(int max_age_days) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     if (max_age_days <= 0)
         return;
     spdlog::info("[Database]: Pruning articles older than {} days", max_age_days);
@@ -677,11 +696,15 @@ void DatabaseManager::PruneArticles(int max_age_days) {
 }
 
 void DatabaseManager::AddProject(const std::string& project_name) {
-    Stmt stmt(db, "INSERT OR REPLACE INTO projects (name) VALUES (?)", "AddProject");
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    // OR IGNORE, not OR REPLACE: REPLACE deletes the existing row and resets
+    // its parent and bib_path to their defaults.
+    Stmt stmt(db, "INSERT OR IGNORE INTO projects (name) VALUES (?)", "AddProject");
     stmt.bind(1, project_name).step_done();
 }
 
 void DatabaseManager::RemoveProject(const std::string& project_name) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     ExecuteSQL("BEGIN TRANSACTION");
     auto bind_and_step = [&](const char* sql, const char* op) {
         try {
@@ -702,6 +725,7 @@ void DatabaseManager::RemoveProject(const std::string& project_name) {
 }
 
 std::vector<std::string> DatabaseManager::GetProjects() {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     std::vector<std::string> projects;
     Stmt stmt(db, "SELECT name FROM projects", "GetProjects");
     stmt.for_each([&](sqlite3_stmt* s) {
@@ -712,6 +736,7 @@ std::vector<std::string> DatabaseManager::GetProjects() {
 
 void DatabaseManager::LinkArticleToProject(const std::string& article_link,
                                            const std::string& project_name) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     spdlog::debug("[Database]: Linking article {} to project {}", article_link, project_name);
     Stmt stmt(db,
               "INSERT OR IGNORE INTO project_articles (project_name, article_link) VALUES (?, ?)",
@@ -721,6 +746,7 @@ void DatabaseManager::LinkArticleToProject(const std::string& article_link,
 
 void DatabaseManager::UnlinkArticleFromProject(const std::string& article_link,
                                                const std::string& project_name) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     spdlog::debug("[Database]: Unlinking article {} from project {}", article_link, project_name);
     Stmt stmt(db,
               "DELETE FROM project_articles WHERE project_name = ? AND article_link = ?",
@@ -730,6 +756,7 @@ void DatabaseManager::UnlinkArticleFromProject(const std::string& article_link,
 
 std::vector<Arxiv::Article>
 DatabaseManager::GetArticlesForProject(const std::string& project_name) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     spdlog::debug("[Database]: Collecting articles for project {}", project_name);
     std::string sql = std::string("SELECT ") + ARTICLE_COLUMNS_A +
                       " FROM articles a JOIN project_articles pa ON a.link = pa.article_link "
@@ -788,6 +815,7 @@ int DatabaseManager::TraceCallback(unsigned type, void*, void* p, void* x) {
 }
 
 std::vector<std::string> DatabaseManager::GetProjectsForArticle(const std::string& article_link) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     spdlog::debug("[Database]: Getting projects for article {}", article_link);
     std::vector<std::string> projects;
     Stmt stmt(db,
@@ -802,6 +830,7 @@ std::vector<std::string> DatabaseManager::GetProjectsForArticle(const std::strin
 
 std::vector<Arxiv::Article> DatabaseManager::GetArticlesForDateRange(const std::string& start_date,
                                                                      const std::string& end_date) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     std::vector<Article> articles;
     std::tm start_tm = {};
     std::tm end_tm = {};
@@ -832,6 +861,7 @@ std::vector<Arxiv::Article> DatabaseManager::GetArticlesForDateRange(const std::
 }
 
 void DatabaseManager::SetRating(const std::string& link, int rating) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     spdlog::debug("[Database]: Setting rating {} for {}", rating, link);
     Stmt stmt(db,
               "INSERT OR REPLACE INTO article_ratings (article_link, rating) VALUES (?, ?)",
@@ -840,6 +870,7 @@ void DatabaseManager::SetRating(const std::string& link, int rating) {
 }
 
 int DatabaseManager::GetRating(const std::string& link) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     Stmt stmt(db, "SELECT rating FROM article_ratings WHERE article_link = ?", "GetRating");
     stmt.bind(1, link);
     int rating = 0;
@@ -850,6 +881,7 @@ int DatabaseManager::GetRating(const std::string& link) {
 }
 
 DatabaseManager::RatedArticleList DatabaseManager::GetRatedArticles() {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     RatedArticleList result;
     std::string sql = std::string("SELECT ") + ARTICLE_COLUMNS_A +
                       ", r.rating "
@@ -866,6 +898,7 @@ DatabaseManager::RatedArticleList DatabaseManager::GetRatedArticles() {
 }
 
 std::string DatabaseManager::GetProjectParent(const std::string& project_name) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     Stmt stmt(db, "SELECT COALESCE(parent, '') FROM projects WHERE name = ?", "GetProjectParent");
     stmt.bind(1, project_name);
     std::string parent;
@@ -876,6 +909,7 @@ std::string DatabaseManager::GetProjectParent(const std::string& project_name) {
 }
 
 void DatabaseManager::SetProjectParent(const std::string& project_name, const std::string& parent) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     Stmt stmt(db, "UPDATE projects SET parent = ? WHERE name = ?", "SetProjectParent");
     stmt.bind(1, parent).bind(2, project_name).step_done();
 }
@@ -883,6 +917,7 @@ void DatabaseManager::SetProjectParent(const std::string& project_name, const st
 void DatabaseManager::SetProjectNote(const std::string& project_name,
                                      const std::string& article_link,
                                      const std::string& note) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     spdlog::debug(
         "[Database]: Setting note for article {} in project {}", article_link, project_name);
     Stmt stmt(
@@ -894,6 +929,7 @@ void DatabaseManager::SetProjectNote(const std::string& project_name,
 
 std::string DatabaseManager::GetProjectNote(const std::string& project_name,
                                             const std::string& article_link) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     Stmt stmt(db,
               "SELECT note FROM project_notes WHERE project_name = ? AND article_link = ?",
               "GetProjectNote");
@@ -909,6 +945,7 @@ std::vector<Arxiv::Article> DatabaseManager::SearchArticles(const std::string& q
                                                             bool search_title,
                                                             bool search_authors,
                                                             bool search_abstract) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     std::vector<Article> articles;
 
     if (!search_title && !search_authors && !search_abstract) {
@@ -975,11 +1012,13 @@ std::vector<Arxiv::Article> DatabaseManager::SearchArticles(const std::string& q
 }
 
 void DatabaseManager::SetRelevanceScore(const std::string& link, float score) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     Stmt stmt(db, "UPDATE articles SET relevance_score = ? WHERE link = ?", "SetRelevanceScore");
     stmt.bind(1, static_cast<double>(score)).bind(2, link).step_done();
 }
 
 float DatabaseManager::GetRelevanceScore(const std::string& link) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     Stmt stmt(db, "SELECT relevance_score FROM articles WHERE link = ?", "GetRelevanceScore");
     stmt.bind(1, link);
     float score = 0.0f;
@@ -990,23 +1029,27 @@ float DatabaseManager::GetRelevanceScore(const std::string& link) {
 }
 
 void DatabaseManager::FollowAuthor(const std::string& author_name) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     Stmt stmt(
         db, "INSERT OR IGNORE INTO followed_authors (author_name) VALUES (?)", "FollowAuthor");
     stmt.bind(1, author_name).step();
 }
 
 void DatabaseManager::UnfollowAuthor(const std::string& author_name) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     Stmt stmt(db, "DELETE FROM followed_authors WHERE author_name = ?", "UnfollowAuthor");
     stmt.bind(1, author_name).step();
 }
 
 bool DatabaseManager::IsFollowingAuthor(const std::string& author_name) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     Stmt stmt(db, "SELECT 1 FROM followed_authors WHERE author_name = ?", "IsFollowingAuthor");
     stmt.bind(1, author_name);
     return stmt.step() == SQLITE_ROW;
 }
 
 std::vector<std::string> DatabaseManager::GetFollowedAuthors() {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     std::vector<std::string> authors;
     Stmt stmt(db, "SELECT author_name FROM followed_authors", "GetFollowedAuthors");
     stmt.for_each([&](sqlite3_stmt* s) {
@@ -1016,11 +1059,13 @@ std::vector<std::string> DatabaseManager::GetFollowedAuthors() {
 }
 
 void DatabaseManager::SetMetadata(const std::string& key, const std::string& value) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     Stmt stmt(db, "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)", "SetMetadata");
     stmt.bind(1, key).bind(2, value).step();
 }
 
 std::string DatabaseManager::GetMetadata(const std::string& key) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     Stmt stmt(db, "SELECT value FROM metadata WHERE key = ?", "GetMetadata");
     stmt.bind(1, key);
     std::string result;
@@ -1033,6 +1078,7 @@ std::string DatabaseManager::GetMetadata(const std::string& key) {
 }
 
 std::vector<Arxiv::Article> DatabaseManager::GetArticlesSince(const std::string& utc_date) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     // Convert "YYYY-MM-DD" to UTC midnight Unix timestamp.
     std::tm tm{};
     tm.tm_year = std::stoi(utc_date.substr(0, 4)) - 1900;
@@ -1050,6 +1096,7 @@ std::vector<Arxiv::Article> DatabaseManager::GetArticlesSince(const std::string&
 }
 
 std::vector<Arxiv::Article> DatabaseManager::GetArticlesAddedSince(std::int64_t since_ts) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     std::vector<Arxiv::Article> articles;
     // Strictly greater: since_ts is the instant the previous fetch finished, so
     // rows carrying exactly that timestamp were stored *by* that fetch and the
@@ -1066,6 +1113,7 @@ std::vector<Arxiv::Article> DatabaseManager::GetArticlesAddedSince(std::int64_t 
 }
 
 std::vector<Arxiv::Article> DatabaseManager::GetArticlesUpdatedSince(std::int64_t since_ts) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     std::vector<Arxiv::Article> articles;
     // Strictly greater, and ordered by the update itself rather than by `date`:
     // these are re-announcements of papers whose submission dates are spread

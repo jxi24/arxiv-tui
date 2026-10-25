@@ -6,6 +6,7 @@
 #define ARXIV_DATABASE_MANAGER
 
 #include <cstdint>
+#include <mutex>
 #include <sqlite3.h>
 #include <string>
 #include <vector>
@@ -113,6 +114,12 @@ class DatabaseManager {
 
   private:
     sqlite3* db;
+    // One connection is shared by the UI thread and the background fetch.
+    // Every public method holds this lock, so a bulk insert's transaction
+    // can never absorb (and on rollback discard) another thread's write.
+    // Recursive because public methods call each other (AddArticles →
+    // AddArticle, LinkArticleToTag → AddTag).
+    std::recursive_mutex m_mutex;
 
     void SetupTracing();
     void ExecuteSQL(const std::string& sql);

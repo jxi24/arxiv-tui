@@ -37,6 +37,12 @@ class Fetcher {
     /// e.g. "http://arxiv.org/abs/2605.28788v1" → "https://arxiv.org/abs/2605.28788"
     static std::string NormalizeLink(const std::string& link);
 
+    /// True if `link` is a canonical arXiv abstract URL
+    /// ("https://arxiv.org/abs/<id>"), where <id> uses only the characters
+    /// that appear in arXiv identifiers. Links reach file names and external
+    /// programs, so anything else coming from a feed or an import is rejected.
+    static bool IsArxivAbsLink(const std::string& link);
+
     /// Concatenate today's RSS announcement with the API backfill, announcement
     /// first. The two feeds date a paper differently — RSS carries the
     /// announcement date, the API the v1 submission date — and a paper

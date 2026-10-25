@@ -466,7 +466,14 @@ bool ReplayPlayer::DispatchAction(const std::string& json_line,
         // Unknown action — caller treats this as skipped, not error
         return false;
     }
-    it->second(core, j);
+    // Handlers read fields with json::value(), which throws type_error when a
+    // field has the wrong type; a malformed line is an error, not a crash.
+    try {
+        it->second(core, j);
+    } catch (const json::exception& e) {
+        error_out = std::string("Malformed '") + it->first + "' action: " + e.what();
+        return false;
+    }
     return true;
 }
 

@@ -13,7 +13,10 @@
 #include <ctime>
 #include <filesystem>
 #include <fixtures/test_data.hh>
+#include <future>
 #include <sqlite3.h>
+#include <stdexcept>
+#include <thread>
 #include <unistd.h>
 
 // Tests against the *real* DatabaseManager implementation (in-memory SQLite).
@@ -927,4 +930,52 @@ TEST_CASE("Real DB regression: PruneArticles keeps tagged articles",
     db.PruneArticles(30);
 
     REQUIRE(db.GetArticlesForTag("keep").size() == 1);
+}
+
+TEST_CASE("Real DB regression: a write from another thread is not lost when a bulk insert "
+          "rolls back",
+          "[database][real][regression][threads]") {
+    // The background fetch and the UI share one connection. Without
+    // serialisation, a bookmark written while AddArticles holds its
+    // transaction open becomes part of it and is discarded by the ROLLBACK.
+    struct FailingDb : DatabaseManager {
+        using DatabaseManager::DatabaseManager;
+        std::promise<void> inside_txn;
+        void AddArticle(const Article& a) override {
+            if (a.link == "https://arxiv.org/abs/poison") {
+                inside_txn.set_value();
+                // Give the other thread time to write; with a lock it blocks
+                // until the rollback below has finished.
+                std::this_thread::sleep_for(std::chrono::milliseconds(300));
+                throw std::runtime_error("simulated insert failure");
+            }
+            DatabaseManager::AddArticle(a);
+        }
+    };
+
+    auto path = (std::filesystem::temp_directory_path() /
+                 ("arxiv_rollback_" + std::to_string(::getpid()) + ".db"))
+                    .string();
+    std::filesystem::remove(path);
+    FailingDb db(path);
+    db.AddArticle(sample_articles[0]);
+    auto started = db.inside_txn.get_future();
+
+    Article poison = sample_articles[1];
+    poison.link = "https://arxiv.org/abs/poison";
+    std::thread fetch([&] {
+        try {
+            db.AddArticles({sample_articles[1], poison});
+        } catch (const std::exception&) {
+        }
+    });
+    started.wait();
+    db.ToggleBookmark(sample_articles[0].link, true);
+    fetch.join();
+
+    auto bookmarked = db.ListBookmarked();
+    REQUIRE(std::any_of(bookmarked.begin(), bookmarked.end(), [](const Article& a) {
+        return a.link == sample_articles[0].link;
+    }));
+    std::filesystem::remove(path);
 }

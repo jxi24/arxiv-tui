@@ -4,6 +4,7 @@
 
 #include "Arxiv/App.hh"
 #include "Arxiv/Clipboard.hh"
+#include "Arxiv/Process.hh"
 #include "Arxiv/Views/Colors.hh"
 
 #include <chrono>
@@ -522,10 +523,8 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
     if (key_bindings.matches(event, KeyBindings::Action::OpenInBrowser)) {
         auto links = core.GetLinksToOpen();
         for (const auto& url : links) {
-            std::string cmd = "xdg-open \"" + url + "\" >/dev/null 2>&1 &";
-            FILE* p = ::popen(cmd.c_str(), "r");
-            if (p)
-                ::pclose(p);
+            // No shell: the link is passed to xdg-open as a single argument.
+            Process::SpawnDetached({"xdg-open", url});
             spdlog::info("open_in_browser url={}", url);
         }
         if (!links.empty()) {

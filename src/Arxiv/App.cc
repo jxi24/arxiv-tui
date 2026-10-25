@@ -32,6 +32,9 @@ ArxivApp::ArxivApp(const Config& config, const std::string& config_path, ReplayR
     SetupUI();
     if (m_recorder)
         m_recorder->RecordEvent("app/setup_ui_end");
+    // auto_refresh_minutes was read but never acted on; 0 keeps it off.
+    if (config.get_auto_refresh_minutes() > 0)
+        core.StartAutoRefresh();
 }
 
 #ifdef TESTING

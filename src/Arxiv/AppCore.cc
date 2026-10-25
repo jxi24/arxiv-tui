@@ -5,6 +5,7 @@
 #include "Arxiv/AppCore.hh"
 
 #include "Arxiv/FuzzyMatch.hh"
+#include "Arxiv/Process.hh"
 #include "Arxiv/Replay.hh"
 
 #include <nlohmann/json.hpp>
@@ -274,6 +275,8 @@ void AppCore::FetchArticles() {
                                             today_articles.end(),
                                             [](const Article& a) { return a.is_replacement; }),
                              today_articles.end());
+        // The training thread swaps in a new model under m_ranker_mutex.
+        std::unique_lock<std::mutex> ranker_lock(m_ranker_mutex);
         if (m_ranker.IsTrained()) {
             std::vector<std::pair<float, Article>> scored;
             scored.reserve(today_articles.size());
@@ -282,6 +285,7 @@ void AppCore::FetchArticles() {
                 if (score >= m_recommend_threshold)
                     scored.emplace_back(score, a);
             }
+            ranker_lock.unlock();
             std::sort(scored.begin(), scored.end(), [](const auto& lhs, const auto& rhs) {
                 return lhs.first > rhs.first;
             });
@@ -326,15 +330,13 @@ void AppCore::FetchArticles() {
         // *every* new paper, just in priority order. Predict is called
         // exactly once per article (cached side-vector) to keep the sort
         // O(N log N) on the comparisons.
+        std::unique_lock<std::mutex> ranker_lock(m_ranker_mutex);
         if (m_ranker.IsTrained() && m_current_articles.size() > 1) {
             std::vector<std::pair<float, Article>> scored;
             scored.reserve(m_current_articles.size());
-            {
-                std::lock_guard<std::mutex> lock(m_ranker_mutex);
-                for (auto& a : m_current_articles) {
-                    scored.emplace_back(m_ranker.Predict(a), std::move(a));
-                }
-            }
+            for (auto& a : m_current_articles)
+                scored.emplace_back(m_ranker.Predict(a), std::move(a));
+            ranker_lock.unlock();
             std::sort(scored.begin(), scored.end(), [](const auto& l, const auto& r) {
                 return l.first > r.first;
             });
@@ -647,6 +649,9 @@ void AppCore::MarkArticleRead(const std::string& link) {
 void AppCore::SetFilterIndex(FilterView view) { SetFilterIndex(static_cast<int>(view)); }
 
 void AppCore::SetArticleIndex(int index) {
+    // Every caller indexes m_current_articles with this, so keep it in range.
+    const int last = static_cast<int>(m_current_articles.size()) - 1;
+    index = std::max(0, std::min(index, last));
     if (index != m_article_index) {
         m_article_index = index;
         NotifyArticleUpdate();
@@ -789,12 +794,7 @@ void AppCore::RateSelected(int rating) {
     if (rating < 1 || rating > 5)
         return;
 
-    std::vector<std::string> targets;
-    if (!m_selected_links.empty()) {
-        targets.assign(m_selected_links.begin(), m_selected_links.end());
-    } else if (!m_current_articles.empty()) {
-        targets.push_back(m_current_articles[static_cast<size_t>(m_article_index)].link);
-    }
+    const std::vector<std::string> targets = TargetLinks();
 
     for (const auto& link : targets) {
         m_db->SetRating(link, rating);
@@ -858,8 +858,9 @@ void AppCore::SpawnTrainingThread(bool warm_start) {
             m_ranker = std::move(seed_ranker);
         }
         m_training = false;
+        // The UI thread re-queries on its next tick (TryRefetchIfNeeded); the
+        // update callback is never invoked from a worker thread.
         m_needs_refetch = true;
-        NotifyArticleUpdate();
     });
 }
 
@@ -1071,32 +1072,49 @@ bool AppCore::ImportProjectJSON(const std::string& input_path) {
     std::string project_name = j["name"].get<std::string>();
     m_db->AddProject(project_name);
 
+    // The file is untrusted: skip entries that are not objects, ignore fields
+    // of the wrong type, and only accept canonical arXiv abstract links (they
+    // end up in file names and are handed to xdg-open).
+    auto string_field = [](const nlohmann::json& entry, const char* key) {
+        auto it = entry.find(key);
+        return (it != entry.end() && it->is_string()) ? it->get<std::string>() : std::string();
+    };
+    std::size_t skipped = 0;
     if (j.contains("articles") && j["articles"].is_array()) {
         for (const auto& entry : j["articles"]) {
-            std::string link = entry.value("link", "");
-            if (link.empty())
+            if (!entry.is_object()) {
+                ++skipped;
                 continue;
+            }
+            const std::string link = Fetcher::NormalizeLink(string_field(entry, "link"));
+            if (!Fetcher::IsArxivAbsLink(link)) {
+                ++skipped;
+                continue;
+            }
 
             Article article;
             article.link = link;
-            article.title = entry.value("title", "");
-            article.authors = entry.value("authors", "");
-            article.abstract = entry.value("abstract", "");
+            article.title = string_field(entry, "title");
+            article.authors = string_field(entry, "authors");
+            article.abstract = string_field(entry, "abstract");
             article.bookmarked = false;
-            // Read as time_t directly: a cast from int64_t is a -Wuseless-cast error where they are
-            // the same type (64-bit Linux GCC, e.g. a Raspberry Pi).
-            std::time_t ts = entry.value("date", std::time_t{0});
+            std::time_t ts = 0;
+            auto date = entry.find("date");
+            if (date != entry.end() && date->is_number_integer())
+                ts = date->get<std::time_t>();
             article.date = std::chrono::system_clock::from_time_t(ts);
 
             m_db->AddArticle(article);
             m_db->LinkArticleToProject(link, project_name);
 
-            std::string note = entry.value("note", "");
+            std::string note = string_field(entry, "note");
             if (!note.empty()) {
                 m_db->SetProjectNote(project_name, link, note);
             }
         }
     }
+    if (skipped > 0)
+        spdlog::warn("[AppCore]: Import skipped {} malformed article entr(y/ies)", skipped);
 
     RefreshFilterOptions();
     if (m_project_update_callback)
@@ -1353,23 +1371,19 @@ void AppCore::ClearSelections() {
     NotifyArticleUpdate();
 }
 
-std::vector<std::string> AppCore::GetLinksToOpen() const {
+std::vector<std::string> AppCore::GetLinksToOpen() const { return TargetLinks(); }
+
+std::vector<std::string> AppCore::TargetLinks() const {
     if (!m_selected_links.empty())
-        return std::vector<std::string>(m_selected_links.begin(), m_selected_links.end());
-    const auto& articles = GetCurrentArticles();
-    int idx = GetArticleIndex();
-    if (idx >= 0 && idx < static_cast<int>(articles.size()))
-        return {articles[static_cast<size_t>(idx)].link};
+        return {m_selected_links.begin(), m_selected_links.end()};
+    if (m_article_index >= 0 &&
+        static_cast<std::size_t>(m_article_index) < m_current_articles.size())
+        return {m_current_articles[static_cast<std::size_t>(m_article_index)].link};
     return {};
 }
 
 void AppCore::DeleteCurrentOrSelected() {
-    std::vector<std::string> to_delete;
-    if (!m_selected_links.empty()) {
-        to_delete.assign(m_selected_links.begin(), m_selected_links.end());
-    } else if (!m_current_articles.empty()) {
-        to_delete.push_back(m_current_articles[static_cast<size_t>(m_article_index)].link);
-    }
+    std::vector<std::string> to_delete = TargetLinks();
 
     if (to_delete.empty()) {
         return;
@@ -1409,12 +1423,7 @@ void AppCore::DeleteCurrentOrSelected() {
 }
 
 void AppCore::BookmarkSelected(bool bookmarked) {
-    std::vector<std::string> targets;
-    if (!m_selected_links.empty()) {
-        targets.assign(m_selected_links.begin(), m_selected_links.end());
-    } else if (!m_current_articles.empty()) {
-        targets.push_back(m_current_articles[static_cast<size_t>(m_article_index)].link);
-    }
+    const std::vector<std::string> targets = TargetLinks();
     for (const auto& link : targets) {
         m_db->ToggleBookmark(link, bookmarked);
         auto it = std::find_if(m_current_articles.begin(),
@@ -1428,12 +1437,7 @@ void AppCore::BookmarkSelected(bool bookmarked) {
 }
 
 void AppCore::AddSelectedToProject(const std::string& project_name) {
-    std::vector<std::string> targets;
-    if (!m_selected_links.empty()) {
-        targets.assign(m_selected_links.begin(), m_selected_links.end());
-    } else if (!m_current_articles.empty()) {
-        targets.push_back(m_current_articles[static_cast<size_t>(m_article_index)].link);
-    }
+    const std::vector<std::string> targets = TargetLinks();
     for (const auto& link : targets)
         m_db->LinkArticleToProject(link, project_name);
     NotifyArticleUpdate();
@@ -1577,10 +1581,12 @@ std::string AppCore::ExportSelectedDigestArchive() {
     fs::path archive = dir_path.parent_path() / (dir_path.filename().string() + ".tar.gz");
 
     // Pack the digest directory into a .tar.gz alongside it.
-    std::string cmd = "tar -czf \"" + archive.string() + "\" -C \"" +
-                      dir_path.parent_path().string() + "\" \"" + dir_path.filename().string() +
-                      "\" 2>/dev/null";
-    if (std::system(cmd.c_str()) != 0) {
+    if (Process::RunAndWait({"tar",
+                             "-czf",
+                             archive.string(),
+                             "-C",
+                             dir_path.parent_path().string(),
+                             dir_path.filename().string()}) != 0) {
         spdlog::error("[AppCore]: tar failed for digest archive {}", archive.string());
         return "";
     }
@@ -1776,27 +1782,48 @@ bool AppCore::SaveKeywords(const std::vector<std::string>& keywords) {
 std::vector<std::string> AppCore::GetKeywords() const { return m_keywords; }
 
 void AppCore::StartAutoRefresh() {
+    int minutes = m_auto_refresh_minutes > 0 ? m_auto_refresh_minutes : 60;
+    StartAutoRefresh(std::chrono::minutes(minutes));
+}
+
+void AppCore::StartAutoRefresh(std::chrono::milliseconds interval) {
     if (m_refresh_running.load())
         return;
     m_refresh_running.store(true);
-    m_refresh_thread = std::thread([this] {
+    m_refresh_thread = std::thread([this, interval] {
         // Hold the mutex for the entire loop so that StopAutoRefresh() can
         // only write m_refresh_running while the mutex is free (i.e. while
-        // the thread is either inside wait_for or inside FetchArticles with
-        // the lock temporarily released).  This prevents the lost-wakeup
-        // race where notify_all() fires before wait_for() begins.
+        // the thread is either inside wait_for or fetching with the lock
+        // temporarily released).  This prevents the lost-wakeup race where
+        // notify_all() fires before wait_for() begins.
         std::unique_lock<std::mutex> lock(m_refresh_mutex);
         while (m_refresh_running.load()) {
-            int minutes = m_auto_refresh_minutes > 0 ? m_auto_refresh_minutes : 60;
-            m_refresh_cv.wait_for(
-                lock, std::chrono::minutes(minutes), [this] { return !m_refresh_running.load(); });
-            if (m_refresh_running.load()) {
-                lock.unlock();
-                FetchArticles();
-                lock.lock();
-            }
+            m_refresh_cv.wait_for(lock, interval, [this] { return !m_refresh_running.load(); });
+            if (!m_refresh_running.load())
+                break;
+            lock.unlock();
+            RefreshFromNetwork();
+            lock.lock();
         }
     });
+}
+
+void AppCore::RefreshFromNetwork() {
+    // Runs on the refresh thread. It only touches the fetcher and the DB
+    // (which serialises access); the article list belongs to the UI thread,
+    // which re-queries via TryRefetchIfNeeded once m_needs_refetch is set.
+    if (m_fetching.exchange(true))
+        return; // the initial fetch is still running
+    try {
+        auto articles = m_fetcher->Fetch();
+        m_db->AddArticles(articles);
+        m_db->SetMetadata("last_fetch_end_ts", std::to_string(now_ts()));
+        spdlog::info("[AppCore]: Auto-refresh stored {} article(s)", articles.size());
+    } catch (const std::exception& e) {
+        spdlog::error("[AppCore]: Auto-refresh failed: {}", e.what());
+    }
+    m_fetching.store(false);
+    m_needs_refetch.store(true);
 }
 
 void AppCore::StopAutoRefresh() {

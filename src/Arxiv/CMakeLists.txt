@@ -7,6 +7,7 @@ add_library(libarxiv-tui
     App.cc
     AppCore.cc
     Clipboard.cc
+    Process.cc
     Fetcher.cc
     DatabaseManager.cc
     Config.cc

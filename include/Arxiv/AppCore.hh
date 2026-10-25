@@ -12,6 +12,7 @@
 #include "Arxiv/Ranker.hh"
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
@@ -194,6 +195,8 @@ class AppCore {
 
     // Background auto-refresh
     void StartAutoRefresh();
+    // Test hook: refresh on a custom interval instead of auto_refresh_minutes.
+    void StartAutoRefresh(std::chrono::milliseconds interval);
     void StopAutoRefresh();
     bool IsAutoRefreshing() const;
     int GetAutoRefreshMinutes() const;
@@ -338,6 +341,9 @@ class AppCore {
     // warm_start=true: keep existing vocab and weights as starting point.
     // warm_start=false: refit vocabulary and reset weights (full retrain).
     void SpawnTrainingThread(bool warm_start);
+    void RefreshFromNetwork();
+    // The selection if any, otherwise the focused article (empty if none).
+    std::vector<std::string> TargetLinks() const;
 
     std::vector<Article> m_current_articles;
     std::vector<std::string> m_current_titles;

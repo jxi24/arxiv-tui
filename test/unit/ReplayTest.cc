@@ -17,6 +17,7 @@
 #include <sstream>
 #include <string>
 
+#include "fixtures/test_data.hh"
 #include "mocks/DatabaseManagerMock.hh"
 #include "mocks/FetcherMock.hh"
 
@@ -195,11 +196,14 @@ TEST_CASE("ReplayPlayer::FromString dispatches actions to AppCore", "[replay][pl
     }
 
     SECTION("set_article_index action updates article index") {
-        std::string jsonl = R"({"ts":1000,"action":"set_article_index","index":2})"
+        // The index is clamped to the list, so give it articles to point at.
+        ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(arxiv_tui::test::fixtures::sample_articles);
+        core->SetFilterIndex(Arxiv::AppCore::FilterView::All);
+        std::string jsonl = R"({"ts":1000,"action":"set_article_index","index":1})"
                             "\n";
         auto result = Arxiv::ReplayPlayer::FromString(jsonl, *core);
         REQUIRE(result.replayed == 1);
-        REQUIRE(core->GetArticleIndex() == 2);
+        REQUIRE(core->GetArticleIndex() == 1);
     }
 
     SECTION("unknown action is skipped without error") {

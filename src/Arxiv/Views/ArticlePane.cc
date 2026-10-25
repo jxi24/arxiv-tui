@@ -75,13 +75,10 @@ void ArxivApp::SetupArticlePane() {
                     for (const auto& project : projects)
                         checkbox_states[project] = false;
                 } else if (!articles.empty()) {
-                    selected_projects = std::set<std::string>(
-                        core.GetProjectsForArticle(
-                                articles[static_cast<size_t>(core.GetArticleIndex())].link)
-                            .begin(),
-                        core.GetProjectsForArticle(
-                                articles[static_cast<size_t>(core.GetArticleIndex())].link)
-                            .end());
+                    // One call: begin() and end() must come from the same vector.
+                    const auto linked = core.GetProjectsForArticle(
+                        articles[static_cast<size_t>(core.GetArticleIndex())].link);
+                    selected_projects = std::set<std::string>(linked.begin(), linked.end());
                     for (const auto& project : projects)
                         checkbox_states[project] = selected_projects.count(project) > 0;
                 }
@@ -101,6 +98,8 @@ void ArxivApp::SetupArticlePane() {
                 return true;
             }
             if (key_bindings.matches(event, KeyBindings::Action::DownloadArticle)) {
+                if (core.GetCurrentArticles().empty())
+                    return true;
                 auto article =
                     core.GetCurrentArticles()[static_cast<size_t>(core.GetArticleIndex())];
                 spdlog::debug("[App]: Downloading article ({}) to articles folder", article.id());

@@ -8,6 +8,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <cctype>
 #include <chrono>
 #include <ctime>
@@ -107,7 +108,7 @@ bool Fetcher::DownloadPaper(const std::string& paper_id, const std::string& outp
 
     try {
         auto url = ConstructPaperUrl(paper_id, "pdf");
-        auto response = cpr::Get(cpr::Url{url});
+        auto response = cpr::Get(cpr::Url{url}, cpr::Timeout{120000});
 
         if (response.status_code == 200) {
             std::ofstream file(base_path / output_path, std::ios::binary);
@@ -180,6 +181,19 @@ std::string Fetcher::NormalizeLink(const std::string& link) {
     return result;
 }
 
+bool Fetcher::IsArxivAbsLink(const std::string& link) {
+    constexpr std::string_view prefix = "https://arxiv.org/abs/";
+    if (link.size() <= prefix.size() || link.compare(0, prefix.size(), prefix) != 0)
+        return false;
+    const std::string_view id(link.c_str() + prefix.size());
+    if (id.front() == '/' || id.find("..") != std::string_view::npos)
+        return false;
+    return std::all_of(id.begin(), id.end(), [](char c) {
+        return std::isalnum(static_cast<unsigned char>(c)) || c == '.' || c == '-' || c == '/' ||
+               c == '_';
+    });
+}
+
 std::string Fetcher::ConstructPaperUrl(const std::string& paper_id,
                                        const std::string& format) const {
     return fmt::format("https://arxiv.org/{}/{}", format, paper_id);
@@ -194,9 +208,9 @@ std::optional<std::string> Fetcher::FetchFeeds() {
     }
     spdlog::trace("[Fetcher]: Fetching articles for topics [{}]", fmt::join(m_topics, ", "));
     try {
-        auto url = fmt::format("http://rss.arxiv.org/rss/{}", fmt::join(m_topics, "+"));
+        auto url = fmt::format("https://rss.arxiv.org/rss/{}", fmt::join(m_topics, "+"));
 
-        auto response = cpr::Get(cpr::Url{url});
+        auto response = cpr::Get(cpr::Url{url}, cpr::Timeout{30000});
 
         if (response.status_code == 200) {
             return response.text;
@@ -237,6 +251,10 @@ std::vector<Article> Fetcher::ParseFeed(const std::string& xml_content) const {
             // Extract basic fields using node values
             article.title = LatexToMarkdown(item.child_value("title"));
             article.link = NormalizeLink(item.child_value("link"));
+            if (!IsArxivAbsLink(article.link)) {
+                spdlog::warn("[Fetcher]: Skipping RSS item with invalid link '{}'", article.link);
+                continue;
+            }
             std::string abstract_text = item.child_value("description");
             // Find the position of "Abstract:" and remove everything up to and including it
             size_t abstract_pos = abstract_text.find("Abstract:");
@@ -784,6 +802,11 @@ std::vector<Article> Fetcher::ParseAtomFeed(const std::string& xml_content) cons
         // <id> holds the URL e.g. http://arxiv.org/abs/2605.12345v1; normalize it.
         std::string raw_link = entry.child_value("id");
         article.link = NormalizeLink(raw_link);
+        // The API reports errors as an <entry> whose id is an errors URL.
+        if (!IsArxivAbsLink(article.link)) {
+            spdlog::warn("[Fetcher]: Skipping Atom entry with id '{}'", raw_link);
+            continue;
+        }
 
         article.title = LatexToMarkdown(entry.child_value("title"));
         article.abstract = LatexToMarkdown(entry.child_value("summary"));
