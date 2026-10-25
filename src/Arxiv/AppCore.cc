@@ -1065,7 +1065,7 @@ bool AppCore::ImportProjectJSON(const std::string& input_path) {
                 continue;
             }
             const std::string link = Fetcher::NormalizeLink(string_field(entry, "link"));
-            if (!Fetcher::IsArxivAbsLink(link)) {
+            if (!Fetcher::IsArxivLink(link)) {
                 ++skipped;
                 continue;
             }

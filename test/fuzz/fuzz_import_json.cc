@@ -22,6 +22,6 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         return 0;
     for (const auto& project : core->GetProjects())
         for (const auto& a : core->GetArticlesForProject(project))
-            FUZZ_CHECK(Arxiv::Fetcher::IsArxivAbsLink(a.link));
+            FUZZ_CHECK(Arxiv::Fetcher::IsArxivLink(a.link));
     return 0;
 }

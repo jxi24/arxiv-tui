@@ -19,8 +19,10 @@ Unreleased
 - **Auto-refresh works** — ``auto_refresh_minutes`` now periodically fetches
   new articles; the list is refreshed without losing your place.
 - **Safer fetching** — the RSS feed is fetched over HTTPS; network requests
-  time out; links that are not ``https://arxiv.org/abs/<id>`` are rejected
-  from feeds and imports; arXiv API error responses are no longer stored as
+  time out; links that are not arXiv abstract or PDF links
+  (``https://arxiv.org/abs/<id>`` or ``.../pdf/<id>``) are rejected from
+  feeds and imports, and PDF links are stored as their ``/abs/`` form so a
+  paper is never kept twice; arXiv API error responses are no longer stored as
   articles; ``xdg-open`` and ``tar`` are started without a shell.
 - **No more lost days** — a failed fetch no longer marks the missed days as
   fetched, so the next start retries the backfill. ``--fetch`` now uses the

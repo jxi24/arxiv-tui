@@ -1819,3 +1819,16 @@ TEST_CASE("AppCore: removing the project being viewed refreshes the list", "[app
     REQUIRE(core->GetFilterView() == AppCore::FilterView::NewArticles);
     REQUIRE(core->GetCurrentArticles().size() == 1); // the New Articles list, not the stale one
 }
+
+TEST_CASE("AppCore: ImportProjectJSON accepts /pdf/ links", "[app][import][links]") {
+    auto core = make_memory_core();
+    auto path = write_temp_json(
+        "pdf_links",
+        R"({"name": "p", "articles": [{"link": "https://arxiv.org/pdf/2401.00009v3.pdf"}]})");
+
+    REQUIRE(core->ImportProjectJSON(path));
+    auto imported = core->GetArticlesForProject("p");
+    REQUIRE(imported.size() == 1);
+    REQUIRE(imported[0].link == "https://arxiv.org/abs/2401.00009");
+    std::filesystem::remove(path);
+}

@@ -128,6 +128,12 @@ std::string Fetcher::NormalizeLink(const std::string& link) {
     if (result.compare(0, 7, "http://") == 0)
         result.replace(0, 7, "https://");
 
+    // A PDF link names the same paper as its abstract page: store one form.
+    static const std::regex pdf(R"(^(https://arxiv\.org)/pdf/(.+?)(?:\.pdf)?$)");
+    std::smatch pm;
+    if (std::regex_match(result, pm, pdf))
+        result = pm[1].str() + "/abs/" + pm[2].str();
+
     // Strip the version suffix of a real arXiv identifier only — new style
     // (2401.12345v2) or old style (hep-ph/0101001v3). Stripping any trailing
     // "v<digits>" made the result depend on how often it was applied.
@@ -140,12 +146,16 @@ std::string Fetcher::NormalizeLink(const std::string& link) {
     return result;
 }
 
-bool Fetcher::IsArxivAbsLink(const std::string& link) {
-    constexpr std::string_view prefix = "https://arxiv.org/abs/";
-    if (link.size() <= prefix.size() || link.compare(0, prefix.size(), prefix) != 0)
+bool Fetcher::IsArxivLink(const std::string& link) {
+    constexpr std::string_view host = "https://arxiv.org/";
+    if (link.compare(0, host.size(), host) != 0)
         return false;
-    const std::string_view id(link.c_str() + prefix.size());
-    if (id.front() == '/' || id.find("..") != std::string_view::npos)
+    const std::string_view path(link.c_str() + host.size());
+    std::string_view id;
+    for (std::string_view kind : {"abs/", "pdf/"})
+        if (path.substr(0, kind.size()) == kind)
+            id = path.substr(kind.size());
+    if (id.empty() || id.front() == '/' || id.find("..") != std::string_view::npos)
         return false;
     return std::all_of(id.begin(), id.end(), [](char c) {
         return std::isalnum(static_cast<unsigned char>(c)) || c == '.' || c == '-' || c == '/' ||
@@ -204,7 +214,7 @@ std::vector<Article> Fetcher::ParseFeed(const std::string& xml_content) const {
             // Extract basic fields using node values
             article.title = LatexToMarkdown(item.child_value("title"));
             article.link = NormalizeLink(item.child_value("link"));
-            if (!IsArxivAbsLink(article.link)) {
+            if (!IsArxivLink(article.link)) {
                 spdlog::warn("[Fetcher]: Skipping RSS item with invalid link '{}'", article.link);
                 continue;
             }
@@ -717,7 +727,7 @@ std::vector<Article> Fetcher::ParseAtomFeed(const std::string& xml_content) cons
         std::string raw_link = entry.child_value("id");
         article.link = NormalizeLink(raw_link);
         // The API reports errors as an <entry> whose id is an errors URL.
-        if (!IsArxivAbsLink(article.link)) {
+        if (!IsArxivLink(article.link)) {
             spdlog::warn("[Fetcher]: Skipping Atom entry with id '{}'", raw_link);
             continue;
         }

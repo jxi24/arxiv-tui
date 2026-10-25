@@ -28,7 +28,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         const std::string link = in.rest();
         const std::string once = Arxiv::Fetcher::NormalizeLink(link);
         FUZZ_CHECK(Arxiv::Fetcher::NormalizeLink(once) == once);
-        if (Arxiv::Fetcher::IsArxivAbsLink(once)) {
+        if (Arxiv::Fetcher::IsArxivLink(once)) {
             Arxiv::Article a;
             a.link = once;
             FUZZ_CHECK(!a.id().empty());

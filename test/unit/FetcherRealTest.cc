@@ -525,3 +525,43 @@ TEST_CASE("Fetcher regression: dates outside the representable range are rejecte
     SECTION("ISO 8601") { REQUIRE_FALSE(fetcher.ParseDate("0001-01-01T00:00:00Z")); }
     SECTION("Atom") { REQUIRE_FALSE(fetcher.ParseAtomDate("0001-01-01T00:00:00Z")); }
 }
+
+// ---------------------------------------------------------------------------
+// /pdf/ links are accepted as well as /abs/ ones, and normalised to /abs/ so
+// the same paper is never stored twice.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Fetcher: /pdf/ links are recognised and normalised to /abs/", "[fetcher][links]") {
+    SECTION("accepted as an arXiv link") {
+        REQUIRE(Fetcher::IsArxivLink("https://arxiv.org/pdf/2401.12345"));
+    }
+    SECTION("abs links still accepted") {
+        REQUIRE(Fetcher::IsArxivLink("https://arxiv.org/abs/2401.12345"));
+    }
+    SECTION("other paths rejected") {
+        REQUIRE_FALSE(Fetcher::IsArxivLink("https://arxiv.org/list/hep-ph/new"));
+    }
+    SECTION("pdf with version and extension") {
+        REQUIRE(Fetcher::NormalizeLink("http://arxiv.org/pdf/2401.12345v2.pdf") ==
+                "https://arxiv.org/abs/2401.12345");
+    }
+    SECTION("old-style pdf") {
+        REQUIRE(Fetcher::NormalizeLink("https://arxiv.org/pdf/hep-ph/0101001v1") ==
+                "https://arxiv.org/abs/hep-ph/0101001");
+    }
+}
+
+TEST_CASE("Fetcher: an RSS item with a /pdf/ link is kept", "[fetcher][links]") {
+    auto tmp = std::filesystem::temp_directory_path() / "arxiv_fetcher_regression";
+    Fetcher fetcher({"hep-ph"}, tmp.string());
+    const std::string feed = R"(<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel><item>
+  <title>T</title><link>https://arxiv.org/pdf/2403.12345v1</link>
+  <description>Abstract: A</description>
+  <pubDate>Mon, 25 Mar 2024 12:00:00 -0400</pubDate>
+</item></channel></rss>)";
+
+    auto articles = fetcher.ParseFeed(feed);
+    REQUIRE(articles.size() == 1);
+    REQUIRE(articles[0].link == "https://arxiv.org/abs/2403.12345");
+}

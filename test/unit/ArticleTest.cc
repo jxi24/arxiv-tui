@@ -26,3 +26,15 @@ TEST_CASE("Article::id keeps the archive prefix of old-style identifiers",
         REQUIRE(article.id() == "math.AG/0601001");
     }
 }
+
+TEST_CASE("Article::id works for /pdf/ links too", "[article]") {
+    Article article;
+    SECTION("new style with extension") {
+        article.link = "https://arxiv.org/pdf/2401.12345.pdf";
+        REQUIRE(article.id() == "2401.12345");
+    }
+    SECTION("old style") {
+        article.link = "https://arxiv.org/pdf/hep-ph/0101001";
+        REQUIRE(article.id() == "hep-ph/0101001");
+    }
+}

@@ -54,13 +54,21 @@ struct Article {
                bookmarked == other.bookmarked;
     }
 
-    /// arXiv identifier: everything after "/abs/". Old-style identifiers keep
-    /// their archive prefix ("hep-ph/0101001"), which a last-slash split lost.
+    /// arXiv identifier: everything after "/abs/" or "/pdf/" (minus a ".pdf"
+    /// extension). Old-style identifiers keep their archive prefix
+    /// ("hep-ph/0101001"), which a last-slash split lost.
     std::string id() const {
-        constexpr std::string_view abs = "/abs/";
-        auto pos = link.find(abs);
-        if (pos != std::string::npos)
-            return link.substr(pos + abs.size());
+        for (std::string_view kind : {"/abs/", "/pdf/"}) {
+            auto pos = link.find(kind);
+            if (pos == std::string::npos)
+                continue;
+            std::string result = link.substr(pos + kind.size());
+            constexpr std::string_view ext = ".pdf";
+            if (result.size() > ext.size() &&
+                result.compare(result.size() - ext.size(), ext.size(), ext) == 0)
+                result.erase(result.size() - ext.size());
+            return result;
+        }
         auto last_slash = link.find_last_of('/');
         return last_slash == std::string::npos ? std::string() : link.substr(last_slash + 1);
     }

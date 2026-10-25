@@ -17,7 +17,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     const std::string xml(reinterpret_cast<const char*>(data) + 1, size - 1);
     const auto articles = (data[0] & 1) ? fetcher.ParseAtomFeed(xml) : fetcher.ParseFeed(xml);
     for (const auto& a : articles) {
-        FUZZ_CHECK(Arxiv::Fetcher::IsArxivAbsLink(a.link));
+        FUZZ_CHECK(Arxiv::Fetcher::IsArxivLink(a.link));
         FUZZ_CHECK(a.file_stem().find('/') == std::string::npos);
     }
     return 0;
