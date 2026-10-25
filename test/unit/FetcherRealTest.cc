@@ -665,7 +665,9 @@ TEST_CASE("PdfWriter: rejects a body that is not a PDF", "[fetcher][pdf][regress
 TEST_CASE("PdfWriter: a failed download keeps the previous file", "[fetcher][pdf][regression]") {
     auto dir = pdf_dir();
     auto target = dir / "paper.pdf";
-    { std::ofstream(target) << "%PDF-old"; }
+    {
+        std::ofstream(target) << "%PDF-old";
+    }
     {
         PdfWriter out(target);
         REQUIRE(out.Write("%PDF-1.7 trunc")); // connection drops: no Commit

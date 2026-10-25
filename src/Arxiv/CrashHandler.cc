@@ -131,7 +131,7 @@ void copy_tail(int out, const char* path) {
     int in = ::open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
     if (in < 0)
         return;
-    struct stat st {};
+    struct stat st{};
     if (::fstat(in, &st) == 0 && S_ISREG(st.st_mode)) {
         if (st.st_size > kReplayTailBytes) {
             ::lseek(in, st.st_size - kReplayTailBytes, SEEK_SET);
@@ -242,7 +242,7 @@ void InstallCrashHandler(ReplayRecorder* recorder, const std::string& crash_dir)
     ::backtrace(frame, 1);
 #endif
 
-    struct sigaction sa {};
+    struct sigaction sa{};
     sa.sa_handler = SignalHandler;
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = static_cast<int>(SA_RESETHAND);

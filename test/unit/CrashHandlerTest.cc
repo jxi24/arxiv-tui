@@ -93,7 +93,7 @@ TEST_CASE("Crash handler: SIGTERM is left to its default action", "[crashhandler
     auto r = run_child([&] {
         ::signal(SIGTERM, SIG_DFL); // Catch2 installs its own; start clean
         Arxiv::InstallCrashHandler(nullptr, dir.string());
-        struct sigaction current {};
+        struct sigaction current{};
         ::sigaction(SIGTERM, nullptr, &current);
         ::_exit(current.sa_handler == SIG_DFL ? 0 : 1);
     });
