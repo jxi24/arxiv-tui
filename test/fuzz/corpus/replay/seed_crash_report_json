@@ -1,0 +1,33 @@
+{"arxiv_tui_crash_report":1,"version":"1.1.0","signal":"SIGSEGV","signum":11,"time":"2026-10-26T05:09:35Z","pid":2745,"replay_log":"/home/user/.local/state/arxiv-tui/replay.jsonl"}
+=== arxiv-tui Crash Report ===
+Timestamp : 20261026_050935
+Signal    : SIGSEGV (11)
+
+--- Backtrace ---
+/usr/local/bin/arxiv-tui(+0x1234)[0x55d0c0de1234]
+
+--- Replay Log (/home/user/.local/state/arxiv-tui/replay.jsonl) ---
+{"ts":1,"action":"add_project","name":"E2E"}
+{"ts":2,"action":"set_filter_index","index":1}
+{"action":"event","detail":"id=20261026-050931-2745","name":"session_start","ts":1792991371642}
+{"action":"event","name":"appcore/ctor_begin","ts":1792991371661}
+{"action":"event","detail":"prev_fetch= anchor=","name":"appcore/metadata_loaded","ts":1792991371661}
+{"action":"event","detail":"view=7","name":"appcore/fetcharticles_begin","ts":1792991371661}
+{"action":"event","detail":"count=0","name":"appcore/fetcharticles_end","ts":1792991371661}
+{"action":"event","detail":"count=0","name":"appcore/initial_fetcharticles_done","ts":1792991371661}
+{"action":"event","detail":"trained=0","name":"appcore/ranker_loaded","ts":1792991371661}
+{"action":"event","name":"appcore/fetch_thread_spawning","ts":1792991371661}
+{"action":"event","name":"appcore/ctor_end","ts":1792991371661}
+{"action":"event","name":"app/ctor_after_appcore","ts":1792991371661}
+{"action":"event","name":"app/setup_ui_begin","ts":1792991371661}
+{"action":"event","detail":"mode=async","name":"appcore/bg_fetch_begin","ts":1792991371661}
+{"action":"event","name":"app/setup_ui_end","ts":1792991371661}
+{"action":"event","name":"main/run_loop_start","ts":1792991371661}
+{"action":"event","name":"app/refresh_thread_started","ts":1792991371662}
+{"action":"event","detail":"fetching=1","name":"app/refresh_tick","ts":1792991371712}
+{"action":"event","detail":"arXiv RSS feed could not be fetched","name":"appcore/bg_fetch_failed","ts":1792991371912}
+{"action":"event","detail":"fetching=0","name":"app/refresh_tick","ts":1792991372716}
+{"action":"event","detail":"fetching=0","name":"app/refresh_tick","ts":1792991373721}
+{"action":"event","detail":"fetching=0","name":"app/refresh_tick","ts":1792991374725}
+
+=== End of Report ===

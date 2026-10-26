@@ -168,7 +168,7 @@ Followed-author matching: whole last names (particles included), first initial (
 Starts external programs (`xdg-open`, `tar`, the clipboard backend) via `posix_spawnp` with an argument vector and stdio on `/dev/null` (`RunWithInput` feeds stdin through a socket, so no SIGPIPE). Never build shell command strings from article data or config.
 
 **Replay** (`Replay.hh/cc`, `--replay`)
-`ReplayPlayer` takes a JSONL log or a crash report (it replays the report's Replay Log section) and skips file/download actions unless `Options::file_actions`; `main.cc` replays on `DatabaseManager::InMemoryCopyOf` with ranker/keywords copied to a scratch dir. The crash handler (`CrashHandler.cc`) is async-signal-safe: it copies the tail of the replay *file*, never touches the recorder's lock.
+Logs and crash reports take one path: `ReplayLog::Parse` turns either into entries (a report also gives `CrashInfo` from its first-line JSON header, control characters stripped; pre-header reports are still read), `ReplayPlayer::Run` is the only replay loop, and `ReplayPlayer::RunSandboxed` (what `--replay` calls) replays on `DatabaseManager::InMemoryCopyOf` with the ranker/keywords copied to a `mkdtemp` scratch dir. File/download actions are skipped unless `Options::file_actions`. The crash handler (`CrashHandler.cc`) is async-signal-safe: it copies the tail of the replay *file*, never touches the recorder's lock.
 
 ### Database Schema
 

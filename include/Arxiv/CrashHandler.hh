@@ -19,6 +19,9 @@ class ReplayRecorder;
 // async-signal-safe calls; everything it needs is prepared at install time.
 //
 // The crash report contains:
+//   - A one-line JSON header: {"arxiv_tui_crash_report":1,"version",
+//     "signal","signum","time" (UTC ISO 8601),"pid","replay_log"}, read by
+//     ReplayLog::Parse
 //   - Timestamp
 //   - Signal name and number
 //   - Backtrace (via execinfo.h backtrace_symbols_fd)

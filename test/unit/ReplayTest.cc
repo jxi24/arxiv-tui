@@ -8,6 +8,7 @@
 #include "Arxiv/Config.hh"
 #include "Arxiv/CrashHandler.hh"
 #include "Arxiv/DatabaseManager.hh"
+#include "Arxiv/Version.hh"
 
 #include <algorithm>
 #include <catch2/catch_test_macros.hpp>
@@ -703,4 +704,142 @@ TEST_CASE("ReplayRecorder keeps appending to a small replay file", "[replay][rec
     REQUIRE_THAT(read_file(file.string()), ContainsSubstring("first"));
     REQUIRE_FALSE(fs::exists(dir / "replay.jsonl.1"));
     fs::remove_all(dir);
+}
+
+// ---------------------------------------------------------------------------
+// One path for both inputs: a crash report and a replay.jsonl are parsed into
+// the same ReplayLog and replayed by the same code.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("ReplayLog reads a crash report and a plain log the same way", "[replay][crashhandler]") {
+    fs::path dir = fs::temp_directory_path() / ("replaylog_" + std::to_string(::getpid()));
+    fs::create_directories(dir);
+    Arxiv::ReplayRecorder recorder;
+    recorder.RecordAddProject("A");
+    recorder.RecordEvent("diagnostic");
+    recorder.RecordSetFilterIndex(1);
+    const auto report = read_file(Arxiv::WriteCrashReport(SIGABRT, &recorder, dir.string()));
+
+    const auto from_log = Arxiv::ReplayLog::Parse(recorder.GetJSONL());
+    const auto from_report = Arxiv::ReplayLog::Parse(report);
+
+    SECTION("same entries") {
+        REQUIRE(from_log.entries.size() == 3);
+        REQUIRE(from_report.entries == from_log.entries);
+    }
+    SECTION("a plain log has no crash") { REQUIRE_FALSE(from_log.crash.has_value()); }
+    SECTION("a report carries its header") {
+        REQUIRE(from_report.crash.has_value());
+        REQUIRE(from_report.crash->signal == "SIGABRT");
+        REQUIRE(from_report.crash->version == std::string(Arxiv::kVersion));
+    }
+    fs::remove_all(dir);
+}
+
+TEST_CASE("ReplayLog still reads reports written before the JSON header",
+          "[replay][crashhandler]") {
+    const std::string legacy = "=== arxiv-tui Crash Report ===\n"
+                               "Timestamp : 20261001_120000\n"
+                               "Signal    : SIGSEGV (11)\n\n"
+                               "--- Backtrace ---\n  frame\n\n"
+                               "--- Replay Log (in memory) ---\n"
+                               "{\"action\":\"add_project\",\"name\":\"Old\"}\n"
+                               "\n=== End of Report ===\n";
+
+    const auto log = Arxiv::ReplayLog::Parse(legacy);
+
+    REQUIRE(log.crash.has_value());
+    REQUIRE(log.crash->signal == "SIGSEGV");
+    REQUIRE(log.entries.size() == 1);
+}
+
+TEST_CASE("Replaying a crash report says what crashed", "[replay][crashhandler]") {
+    fs::path dir = fs::temp_directory_path() / ("replaycrash_" + std::to_string(::getpid()));
+    fs::create_directories(dir);
+    Arxiv::ReplayRecorder recorder;
+    recorder.RecordAddProject("A");
+    const auto report = Arxiv::WriteCrashReport(SIGFPE, &recorder, dir.string());
+    auto core = make_real_replay_core();
+
+    const auto result = Arxiv::ReplayPlayer::FromFile(report, *core);
+
+    REQUIRE(result.replayed == 1);
+    REQUIRE(result.crash.has_value());
+    REQUIRE(result.crash->signal == "SIGFPE");
+    fs::remove_all(dir);
+}
+
+TEST_CASE("RunSandboxed replays a log or a report without touching the user's files",
+          "[replay][sandbox]") {
+    // What --replay runs: an in-memory copy of the database, the ranker and
+    // keywords copied to a scratch directory, file actions skipped.
+    fs::path dir = fs::temp_directory_path() / ("sandbox_" + std::to_string(::getpid()));
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+    Arxiv::Config cfg;
+    cfg.set_topics({"cs.AI"});
+    cfg.set_db_file((dir / "articles.db").string());
+    cfg.set_ranker_file((dir / "ranker.bin").string());
+    cfg.set_keywords_file((dir / "keywords.txt").string());
+    cfg.set_download_dir((dir / "downloads").string());
+    cfg.set_export_dir((dir / "exports").string());
+    {
+        Arxiv::DatabaseManager db(cfg.get_db_file());
+        db.AddArticle(arxiv_tui::test::fixtures::sample_articles[0]);
+    }
+    {
+        std::ofstream(dir / "keywords.txt") << "neutrino\n";
+    }
+    Arxiv::ReplayRecorder recorder;
+    recorder.RecordAddProject("FromReplay");
+    recorder.RecordToggleBookmark(arxiv_tui::test::fixtures::sample_articles[0].link);
+    recorder.RecordSaveKeywords({"changed"});
+    recorder.RecordExportProjectMarkdown("FromReplay", (dir / "out.md").string());
+    const auto log_file = dir / "replay.jsonl";
+    {
+        std::ofstream(log_file) << recorder.GetJSONL();
+    }
+    const auto report = Arxiv::WriteCrashReport(SIGSEGV, &recorder, dir.string());
+
+    const auto from_log = Arxiv::ReplayPlayer::RunSandboxed(cfg, log_file.string());
+    const auto from_report = Arxiv::ReplayPlayer::RunSandboxed(cfg, report);
+
+    SECTION("both inputs replay the same actions") {
+        REQUIRE(from_log.error.empty());
+        REQUIRE(from_log.total == 4);
+        REQUIRE(from_report.replayed == from_log.replayed);
+        REQUIRE(from_report.skipped == from_log.skipped);
+    }
+    SECTION("file actions are skipped") {
+        REQUIRE(from_log.skipped == 2); // save_keywords and the export
+        REQUIRE_FALSE(fs::exists(dir / "out.md"));
+    }
+    SECTION("the database is unchanged") {
+        Arxiv::DatabaseManager db(cfg.get_db_file());
+        REQUIRE(db.GetProjects().empty());
+        REQUIRE(db.ListBookmarked().empty());
+    }
+    SECTION("the keywords file is unchanged") {
+        REQUIRE(read_file((dir / "keywords.txt").string()) == "neutrino\n");
+    }
+    SECTION("a missing file is an error") {
+        REQUIRE_FALSE(
+            Arxiv::ReplayPlayer::RunSandboxed(cfg, (dir / "nope.jsonl").string()).error.empty());
+    }
+    fs::remove_all(dir);
+}
+
+TEST_CASE("ReplayLog strips control characters from a crash header", "[replay][crashhandler]") {
+    // --replay prints the header; a crafted report must not send escape
+    // sequences to the terminal.
+    const std::string report =
+        "{\"arxiv_tui_crash_report\":1,\"signal\":\"SIG\\u001b]0;pwned\\u0007SEGV\","
+        "\"version\":\"1\\u001b[2J\",\"time\":\"t\\r\\n\"}\n";
+
+    const auto log = Arxiv::ReplayLog::Parse(report);
+
+    REQUIRE(log.crash.has_value());
+    REQUIRE(log.crash->signal == "SIG]0;pwnedSEGV");
+    REQUIRE(log.crash->version == "1[2J");
+    REQUIRE(log.crash->time == "t");
 }

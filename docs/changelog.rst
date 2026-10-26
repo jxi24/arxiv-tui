@@ -7,6 +7,17 @@ Changelog
 Unreleased
 ----------
 
+- **Crash reports start with a JSON header** — one line with the format
+  marker, version, signal, UTC time, pid and replay-log path, written from
+  the signal handler. ``--replay`` prints it and warns when the report came
+  from another version. Reports from earlier versions still replay.
+
+- **One replay path** — replay logs and crash reports are parsed into the
+  same entries and replayed by the same loop, and the sandbox ``--replay``
+  uses moved from ``main`` into the library (``ReplayPlayer::RunSandboxed``)
+  where it is tested. Its scratch directory now has an unpredictable,
+  private name (``mkdtemp``) instead of ``/tmp/arxiv-tui-replay-<pid>``.
+
 - **GUI uses the TUI's files** — ``arxiv-gui`` read ``.arxiv-tui.yml`` and
   ``articles.db`` from the working directory (and logged there), so it never
   saw the TUI's papers. It now resolves config, database, ranker, keywords and

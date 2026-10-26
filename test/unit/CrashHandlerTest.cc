@@ -9,6 +9,9 @@
 #include "Arxiv/CrashHandler.hh"
 
 #include "Arxiv/Replay.hh"
+#include "Arxiv/Version.hh"
+
+#include <nlohmann/json.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
@@ -17,6 +20,7 @@
 #include <fcntl.h>
 #include <filesystem>
 #include <fstream>
+#include <regex>
 #include <sstream>
 #include <string>
 #include <sys/resource.h>
@@ -192,4 +196,34 @@ TEST_CASE("Crash handler: restores the terminal mode it found at install",
     REQUIRE(WIFSIGNALED(r.status));
     REQUIRE((after.c_lflag & ICANON) != 0);
     REQUIRE((after.c_lflag & ECHO) != 0);
+}
+
+TEST_CASE("Crash handler: a report starts with a one-line JSON header", "[crashhandler]") {
+    // Tools (and --replay) read the first line instead of scraping the text.
+    // The replay path has a quote and a backslash, which must be escaped.
+    auto dir = fresh_dir("crash_json");
+    auto replay = dir / "re\"play\\.jsonl";
+
+    run_child([&] {
+        Arxiv::ReplayRecorder recorder(replay.string());
+        Arxiv::InstallCrashHandler(&recorder, dir.string());
+        ::raise(SIGSEGV);
+    });
+    const auto report = only_report(dir);
+    const auto header = nlohmann::json::parse(report.substr(0, report.find('\n')), nullptr, false);
+
+    REQUIRE_FALSE(header.is_discarded());
+    SECTION("format marker") { REQUIRE(header.value("arxiv_tui_crash_report", 0) == 1); }
+    SECTION("signal") {
+        REQUIRE(header.value("signal", "") == "SIGSEGV");
+        REQUIRE(header.value("signum", 0) == SIGSEGV);
+    }
+    SECTION("version") { REQUIRE(header.value("version", "") == std::string(Arxiv::kVersion)); }
+    SECTION("UTC time") {
+        REQUIRE(std::regex_match(header.value("time", ""),
+                                 std::regex(R"(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ)")));
+    }
+    SECTION("pid") { REQUIRE(header.value("pid", 0) > 0); }
+    SECTION("replay log path") { REQUIRE(header.value("replay_log", "") == replay.string()); }
+    fs::remove_all(dir);
 }
