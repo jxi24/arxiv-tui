@@ -188,11 +188,22 @@ CREATE TABLE projects (
 );
 
 CREATE TABLE project_articles (
-    project_name TEXT REFERENCES projects(name),
-    article_link TEXT REFERENCES articles(link),
+    project_name TEXT REFERENCES projects(name) ON DELETE CASCADE ON UPDATE CASCADE,
+    article_link TEXT REFERENCES articles(link) ON DELETE CASCADE ON UPDATE CASCADE,
     PRIMARY KEY (project_name, article_link)
 );
+-- article_ratings, project_notes and article_tags cascade the same way
+-- (kLinkTables in DatabaseManager.cc).
 ```
+
+`PRAGMA foreign_keys` is on for every connection, and `PRAGMA user_version`
+holds `DatabaseManager::kSchemaVersion`. `MigrateSchema` runs the numbered
+migrations once each (1: rebuild the link tables with cascading keys,
+dropping orphan rows); a database with a higher version is refused. Inserts
+into link tables are guarded (`WHERE EXISTS`), so linking/rating/noting a
+paper or project that is not stored is a no-op rather than a constraint
+error. Add a new migration as the next version, not as another
+`AddColumnIfMissing` call.
 
 ### UI Layout
 

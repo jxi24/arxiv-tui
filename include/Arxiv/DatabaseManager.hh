@@ -21,6 +21,10 @@ class DatabaseManager {
   public:
     // Type alias to avoid comma issues when used in trompeloeil MAKE_MOCK macros
     using RatedArticleList = std::vector<std::pair<Article, int>>;
+    /// Schema version written to PRAGMA user_version (see MigrateSchema).
+    /// 1: link tables cascade on delete/update and foreign keys are enforced.
+    static constexpr int kSchemaVersion = 1;
+
     explicit DatabaseManager(const std::string& path);
     /// An in-memory database holding a copy of the file at `path` (opened
     /// read-only). Throws if the file cannot be opened or copied.
@@ -143,6 +147,11 @@ class DatabaseManager {
     void MigrateAddFTS5();
     void MigrateAddProjectBibPath();
     void CreateTagTables();
+    // Refuse a database written by a newer arxiv-tui (user_version too high).
+    void CheckSchemaVersion();
+    // Run the numbered migrations up to kSchemaVersion, then enforce keys.
+    void MigrateSchema();
+    void MigrateToCascadingLinks(); // version 1
 
     static int TraceCallback(unsigned type, void*, void* p, void*);
 };

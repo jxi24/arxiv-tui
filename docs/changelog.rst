@@ -23,6 +23,12 @@ Unreleased
   was started. They now go to the new ``export_dir`` (default
   ``~/.local/share/arxiv-tui/exports``, editable in Settings), and project
   names containing ``/`` no longer break the file name.
+- **Database integrity** — the database now has a schema version and enforces
+  its foreign keys: deleting a paper or project removes its memberships,
+  ratings, notes and tags in the database itself. On first start the link
+  tables are rebuilt once and leftover rows for papers that no longer exist
+  are dropped. A database written by a newer arxiv-tui is refused instead of
+  being modified.
 
 - **Polite to arXiv** — every request identifies itself
   (``arxiv-tui/<version> (+https://github.com/jxi24/arxiv-tui)``), and the
