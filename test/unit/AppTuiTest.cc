@@ -1153,3 +1153,35 @@ TEST_CASE("Filter pane shows counts and section headers", "[tui][filters]") {
         REQUIRE(core.CurrentTag() == "qcd");
     }
 }
+
+// ---------------------------------------------------------------------------
+// The detail pane shows what is known about the paper, not just its text.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Detail pane shows id, category, rating, tags and projects", "[tui][detail]") {
+    RealDbApp t;
+    auto& core = t.app->GetCore();
+    const auto focused = core.GetCurrentArticles().front();
+    t.db->SetRating(focused.link, 4);
+    core.LinkArticleToTag(focused.link, "qcd");
+    core.AddProject("thesis");
+    core.LinkArticleToProject(focused.link, "thesis");
+    core.SetFilterIndex(Arxiv::AppCore::FilterView::All);
+    t.app->GetEventHandler()->OnEvent(Event::Character("a")); // open the detail pane
+    const auto lines = plain_lines(*t.app);
+
+    SECTION("arXiv id") { REQUIRE(any_line_matches(lines, "arXiv:" + focused.id())); }
+    SECTION("category") { REQUIRE(any_line_matches(lines, "Category: " + focused.category)); }
+    SECTION("rating") { REQUIRE(any_line_matches(lines, "Rating: ★★★★☆")); }
+    SECTION("tags") { REQUIRE(any_line_matches(lines, "Tags: #qcd")); }
+    SECTION("projects") { REQUIRE(any_line_matches(lines, "Projects: thesis")); }
+}
+
+TEST_CASE("Detail pane leaves out what a paper does not have", "[tui][detail]") {
+    RealDbApp t;
+    t.app->GetEventHandler()->OnEvent(Event::Character("a"));
+    const auto lines = plain_lines(*t.app);
+    REQUIRE_FALSE(any_line_matches(lines, "Tags:"));
+    REQUIRE_FALSE(any_line_matches(lines, "Projects:"));
+    REQUIRE(any_line_matches(lines, "Rating: not rated"));
+}

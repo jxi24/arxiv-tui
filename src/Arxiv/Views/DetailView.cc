@@ -32,13 +32,40 @@ void ArxivApp::SetupDetailView() {
             }
         }
 
+        std::string meta = "arXiv:" + article.id();
+        if (!article.category.empty())
+            meta += "   Category: " + article.category;
+        const int rating = core.GetArticleRating(article.link);
+        std::string stars = "not rated";
+        if (rating > 0) {
+            stars.clear();
+            for (int i = 1; i <= 5; ++i)
+                stars += i <= rating ? "★" : "☆";
+        }
+        meta += "   Rating: " + stars;
+
         Elements detail_elements = {
             text("Title: " + article.title) | bold | color(TextColors::primary()),
             paragraph("Authors: " + authors_display) | color(TextColors::text()),
             text("Link: " + article.link) | color(TextColors::secondary()),
-            separator() | color(TextColors::border()),
-            paragraph("Abstract: \n" + article.abstract) | color(TextColors::text()),
+            paragraph(meta) | color(TextColors::subtext()),
         };
+        // Tags and projects only when the paper has some.
+        auto joined = [](const std::vector<std::string>& names, const std::string& prefix) {
+            std::string out;
+            for (const auto& name : names)
+                out += (out.empty() ? "" : ", ") + prefix + name;
+            return out;
+        };
+        if (const auto tags = core.GetTagsForArticle(article.link); !tags.empty())
+            detail_elements.push_back(paragraph("Tags: " + joined(tags, "#")) |
+                                      color(TextColors::subtext()));
+        if (const auto projects = core.GetProjectsForArticle(article.link); !projects.empty())
+            detail_elements.push_back(paragraph("Projects: " + joined(projects, "")) |
+                                      color(TextColors::subtext()));
+        detail_elements.push_back(separator() | color(TextColors::border()));
+        detail_elements.push_back(paragraph("Abstract: \n" + article.abstract) |
+                                  color(TextColors::text()));
 
         if (const std::string proj = core.CurrentProject(); !proj.empty()) {
             std::string note = core.GetProjectNote(proj, article.link);

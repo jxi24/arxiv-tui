@@ -7,6 +7,10 @@ Changelog
 Unreleased
 ----------
 
+- **Richer detail pane** — under the link the detail pane shows the arXiv id,
+  category and your star rating, and the paper's tags and projects when it
+  has any.
+
 - **Filter pane counts and sections** — Bookmarks, Unread, every tag and
   every project show how many papers they hold, and tags and projects sit
   under **Tags** / **Projects** headings instead of running on from the
