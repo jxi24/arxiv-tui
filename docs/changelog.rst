@@ -7,6 +7,11 @@ Changelog
 Unreleased
 ----------
 
+- **GUI uses the TUI's files** — ``arxiv-gui`` read ``.arxiv-tui.yml`` and
+  ``articles.db`` from the working directory (and logged there), so it never
+  saw the TUI's papers. It now resolves config, database, ranker, keywords and
+  log exactly like the TUI (``Paths::ApplyTo``), and CI builds it.
+
 - **Mouse support** — click a view or an article to select it, and scroll
   views or articles with the wheel. The article list draws its own rows, so
   clicks there never selected anything, and clicks only reached the focused

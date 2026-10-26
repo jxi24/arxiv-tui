@@ -65,3 +65,37 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build --output-on-failure -j8
+
+  # The ImGui/GLFW companion is off by default; build it so library changes
+  # that break it are caught here rather than by the next person to enable it.
+  build-gui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y libsqlite3-dev libcurl4-openssl-dev ccache \
+            libgl-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev \
+            libxi-dev libxkbcommon-dev
+
+      - name: Cache CPM packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/CPM
+          key: cpm-gui-${{ hashFiles('Dependencies.txt') }}
+          restore-keys: cpm-
+
+      - name: Configure
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DARXIV_TUI_BUILD_GUI=ON \
+            -DCPM_SOURCE_CACHE=~/.cache/CPM
+
+      - name: Build
+        run: cmake --build build -j8 --target arxiv-gui

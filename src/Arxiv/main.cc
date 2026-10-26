@@ -85,16 +85,8 @@ int main(int argc, char* argv[]) {
         for (const auto& w : config.get_warnings())
             std::cerr << "config: " << w << "\n";
 
-    // Apply resolved defaults for any path that was not explicitly set in the
-    // config file (empty string is the sentinel for "not configured").
-    if (config.get_download_dir().empty())
-        config.set_download_dir((paths.data_dir / "downloads").string());
-    config.set_db_file((paths.data_dir / "articles.db").string());
-    config.set_ranker_file((paths.data_dir / "ranker.bin").string());
-    if (config.get_export_dir().empty())
-        config.set_export_dir((paths.data_dir / "exports").string());
-    if (config.get_keywords_file().empty())
-        config.set_keywords_file((paths.data_dir / "keywords.txt").string());
+    // Resolved defaults for any path config.yml leaves unset.
+    paths.ApplyTo(config);
 
     // Headless feed fetch: update the DB and exit without opening the TUI.
     // Suitable for use in a cron job to keep the database current.

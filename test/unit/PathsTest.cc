@@ -4,6 +4,8 @@
 
 #include "Arxiv/Paths.hh"
 
+#include "Arxiv/Config.hh"
+
 #include <catch2/catch_test_macros.hpp>
 #include <map>
 #include <string>
@@ -35,4 +37,30 @@ TEST_CASE("Paths regression: an unwritable install prefix falls back to the XDG 
 
     SECTION("data") { REQUIRE(p.data_dir == fs::path("/home/alice/.local/share/arxiv-tui")); }
     SECTION("state") { REQUIRE(p.state_dir == fs::path("/home/alice/.local/state/arxiv-tui")); }
+}
+
+TEST_CASE("Paths::ApplyTo fills in the runtime files of a config", "[paths]") {
+    Paths p;
+    p.config_file = "/cfg/arxiv-tui/config.yml";
+    p.data_dir = "/data/arxiv-tui";
+    p.state_dir = "/state/arxiv-tui";
+    Arxiv::Config config;
+
+    SECTION("unset paths default under the data directory") {
+        p.ApplyTo(config);
+        REQUIRE(config.get_db_file() == "/data/arxiv-tui/articles.db");
+        REQUIRE(config.get_ranker_file() == "/data/arxiv-tui/ranker.bin");
+        REQUIRE(config.get_download_dir() == "/data/arxiv-tui/downloads");
+        REQUIRE(config.get_export_dir() == "/data/arxiv-tui/exports");
+        REQUIRE(config.get_keywords_file() == "/data/arxiv-tui/keywords.txt");
+    }
+    SECTION("paths set in config.yml are kept") {
+        config.set_download_dir("/papers");
+        config.set_export_dir("/exports");
+        config.set_keywords_file("/shared/keywords.txt");
+        p.ApplyTo(config);
+        REQUIRE(config.get_download_dir() == "/papers");
+        REQUIRE(config.get_export_dir() == "/exports");
+        REQUIRE(config.get_keywords_file() == "/shared/keywords.txt");
+    }
 }

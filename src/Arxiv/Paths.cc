@@ -4,6 +4,7 @@
 
 #include "Arxiv/Paths.hh"
 
+#include "Arxiv/Config.hh"
 #include "Arxiv/InstallPaths.hh"
 
 #include <cstdlib>
@@ -69,6 +70,18 @@ Paths Paths::Resolve(const std::function<const char*(const char*)>& getenv,
     p.data_dir = resolve_dir(getenv, "XDG_DATA_HOME", install_data_dir, ".local/share", usable);
     p.state_dir = resolve_dir(getenv, "XDG_STATE_HOME", install_state_dir, ".local/state", usable);
     return p;
+}
+
+void Paths::ApplyTo(Config& config) const {
+    // Empty is the sentinel for "not configured".
+    if (config.get_download_dir().empty())
+        config.set_download_dir((data_dir / "downloads").string());
+    config.set_db_file((data_dir / "articles.db").string());
+    config.set_ranker_file((data_dir / "ranker.bin").string());
+    if (config.get_export_dir().empty())
+        config.set_export_dir((data_dir / "exports").string());
+    if (config.get_keywords_file().empty())
+        config.set_keywords_file((data_dir / "keywords.txt").string());
 }
 
 } // namespace Arxiv

@@ -10,6 +10,8 @@
 
 namespace Arxiv {
 
+class Config;
+
 // Resolved filesystem paths following the XDG Base Directory Specification.
 // All paths are absolute and platform-specific; callers should create the
 // directories they need before opening files inside them.
@@ -30,6 +32,11 @@ struct Paths {
                          std::string_view install_data_dir,
                          std::string_view install_state_dir,
                          const std::function<bool(const std::filesystem::path&)>& usable);
+
+    // Point `config` at this layout: the database and ranker always live in
+    // data_dir; download_dir, export_dir and keywords_file only when
+    // config.yml leaves them unset. Shared by the TUI and the GUI.
+    void ApplyTo(Config& config) const;
 };
 
 } // namespace Arxiv
