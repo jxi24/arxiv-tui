@@ -29,6 +29,8 @@ Unreleased
   tables are rebuilt once and leftover rows for papers that no longer exist
   are dropped. A database written by a newer arxiv-tui is refused instead of
   being modified.
+- **``replay.jsonl`` no longer grows forever** — when it is over 5 MiB at
+  start-up it is moved to ``replay.jsonl.1`` and a new log is started.
 
 - **Polite to arXiv** — every request identifies itself
   (``arxiv-tui/<version> (+https://github.com/jxi24/arxiv-tui)``), and the

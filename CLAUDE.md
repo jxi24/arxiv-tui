@@ -255,7 +255,7 @@ precedence over the compiled-in values at runtime.
 | `$XDG_DATA_HOME/arxiv-tui/downloads/` | Default PDF download dir | `XDG_DATA_HOME` |
 | `$XDG_DATA_HOME/arxiv-tui/exports/` | Default `export_dir` (TUI exports, via `AppCore::ExportPath`) | `XDG_DATA_HOME` |
 | `$XDG_STATE_HOME/arxiv-tui/arxiv_tui.log` | Rotating spdlog output | `XDG_STATE_HOME` |
-| `$XDG_STATE_HOME/arxiv-tui/replay.jsonl` | UI action replay log | `XDG_STATE_HOME` |
+| `$XDG_STATE_HOME/arxiv-tui/replay.jsonl` | UI action replay log (rotated to `.1` at start-up when over 5 MiB) | `XDG_STATE_HOME` |
 | `$XDG_STATE_HOME/arxiv-tui/crash_*.txt` | Crash reports | `XDG_STATE_HOME` |
 
 XDG defaults (when variables are unset): `~/.config`, `~/.local/share`,

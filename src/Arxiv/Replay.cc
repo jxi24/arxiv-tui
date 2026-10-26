@@ -9,6 +9,7 @@
 #include <nlohmann/json.hpp>
 
 #include <chrono>
+#include <filesystem>
 #include <fstream>
 #include <functional>
 #include <set>
@@ -230,8 +231,18 @@ bool touches_files(const std::string& action) {
 
 ReplayRecorder::ReplayRecorder() = default;
 
+namespace {
+// Keep one previous log; the current one starts over once it is too big.
+const std::string& rotate_if_large(const std::string& path, std::uintmax_t max_bytes) {
+    std::error_code ec;
+    if (std::filesystem::file_size(path, ec) > max_bytes && !ec)
+        std::filesystem::rename(path, path + ".1", ec);
+    return path;
+}
+} // namespace
+
 ReplayRecorder::ReplayRecorder(const std::string& file_path)
-    : m_file(file_path, std::ios::out | std::ios::app) {
+    : m_file(rotate_if_large(file_path, kMaxFileBytes), std::ios::out | std::ios::app) {
     // If the file cannot be opened the recorder stays in-memory only.
     if (m_file.is_open())
         m_file_path = file_path;
