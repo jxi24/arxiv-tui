@@ -16,6 +16,7 @@
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/screen.hpp>
 
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <chrono>
@@ -720,4 +721,59 @@ TEST_CASE("TUI exports go to export_dir, not the working directory", "[tui][expo
     REQUIRE(std::distance(std::filesystem::directory_iterator("."),
                           std::filesystem::directory_iterator()) == cwd_before);
     std::filesystem::remove_all(dir);
+}
+
+// ---------------------------------------------------------------------------
+// The filter and article menus used to write AppCore's indices directly, so
+// a selection changed by the menu itself (arrow keys, mouse) skipped
+// SetFilterIndex / SetArticleIndex.
+// ---------------------------------------------------------------------------
+
+namespace {
+struct RealDbApp {
+    Arxiv::DatabaseManager* db = nullptr;
+    std::unique_ptr<ArxivApp> app;
+    RealDbApp() {
+        auto owned = std::make_unique<Arxiv::DatabaseManager>(":memory:");
+        db = owned.get();
+        for (const auto& a : arxiv_tui::test::fixtures::sample_articles)
+            db->AddArticle(a);
+        KeyBindings kb{std::vector<Config::KeyMapping>{}};
+        app = std::make_unique<ArxivApp>(
+            make_test_config(), std::move(owned), std::make_unique<FetcherMock>(), std::move(kb));
+        app->GetCore().SetFilterIndex(Arxiv::AppCore::FilterView::All);
+    }
+};
+} // namespace
+
+TEST_CASE("Moving the filter menu with the arrow keys loads that view", "[tui][regression]") {
+    RealDbApp expected;
+    expected.app->GetCore().SetFilterIndex(Arxiv::AppCore::FilterView::Bookmarks);
+    RealDbApp t;
+    REQUIRE(t.app->GetCore().GetCurrentArticles().size() !=
+            expected.app->GetCore().GetCurrentArticles().size());
+
+    t.app->GetEventHandler()->OnEvent(Event::ArrowDown); // All -> Bookmarks (filter pane)
+
+    REQUIRE(t.app->GetCore().GetFilterView() == Arxiv::AppCore::FilterView::Bookmarks);
+    REQUIRE(t.app->GetCore().GetCurrentArticles().size() ==
+            expected.app->GetCore().GetCurrentArticles().size());
+}
+
+TEST_CASE("Moving the article menu with the arrow keys marks the article read",
+          "[tui][regression]") {
+    RealDbApp t;
+    auto handler = t.app->GetEventHandler();
+    handler->OnEvent(Event::Character("l")); // focus the article list
+    handler->OnEvent(Event::Character("a")); // open the detail pane
+    const int before = t.app->GetCore().GetArticleIndex();
+
+    handler->OnEvent(Event::ArrowDown);
+
+    const auto& articles = t.app->GetCore().GetCurrentArticles();
+    REQUIRE(t.app->GetCore().GetArticleIndex() == before + 1);
+    const auto& now = articles[static_cast<size_t>(before + 1)];
+    auto unread = t.db->GetUnreadArticles();
+    REQUIRE(std::none_of(
+        unread.begin(), unread.end(), [&](const Article& a) { return a.link == now.link; }));
 }

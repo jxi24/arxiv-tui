@@ -416,7 +416,7 @@ void AppCore::FetchArticles() {
     case FilterView::Unread:
         m_current_articles = m_db->GetUnreadArticles();
         break;
-    case FilterView::TagBase:
+    case FilterView::Tag:
         m_current_articles = m_db->GetArticlesForTag(GetTagNameForFilter(m_filter_index));
         break;
     case FilterView::Project:
@@ -496,7 +496,7 @@ std::string AppCore::GetBibtex(const Article& article) {
 
 const std::vector<Article>& AppCore::GetCurrentArticles() const { return m_current_articles; }
 
-std::vector<std::string>& AppCore::GetCurrentTitles() { return m_current_titles; }
+const std::vector<std::string>& AppCore::GetCurrentTitles() const { return m_current_titles; }
 
 void AppCore::AddProject(const std::string& project_name) {
     // Trim leading/trailing whitespace; reject if result is empty.
@@ -597,7 +597,7 @@ void AppCore::UnlinkArticleFromTag(const std::string& link, const std::string& t
 }
 
 std::string AppCore::GetTagNameForFilter(int index) const {
-    int tag_idx = index - static_cast<int>(FilterView::TagBase);
+    int tag_idx = index - kFirstTagIndex;
     if (tag_idx >= 0 && static_cast<size_t>(tag_idx) < m_filter_tag_names.size())
         return m_filter_tag_names[static_cast<size_t>(tag_idx)];
     return "";
@@ -607,7 +607,7 @@ std::vector<Article> AppCore::GetArticlesForProject(const std::string& project_n
     return m_db->GetArticlesForProject(project_name);
 }
 
-std::vector<std::string>& AppCore::GetFilterOptions() { return m_filter_options; }
+const std::vector<std::string>& AppCore::GetFilterOptions() const { return m_filter_options; }
 
 void AppCore::SetFilterIndex(int index) {
     // Clamp to the valid range so callers cannot reach an unhandled branch.
@@ -625,13 +625,19 @@ void AppCore::SetFilterIndex(int index) {
 
 int AppCore::GetFilterIndex() const { return m_filter_index; }
 
-int& AppCore::GetFilterIndex() { return m_filter_index; }
+std::string AppCore::CurrentTag() const {
+    return GetFilterView() == FilterView::Tag ? GetTagNameForFilter(m_filter_index) : "";
+}
+
+std::string AppCore::CurrentProject() const {
+    return GetFilterView() == FilterView::Project ? GetProjectNameForFilter(m_filter_index) : "";
+}
 
 AppCore::FilterView AppCore::GetFilterView() const {
     if (m_filter_index >= m_project_start_index)
         return FilterView::Project;
-    if (m_filter_index >= static_cast<int>(FilterView::TagBase) && !m_filter_tag_names.empty())
-        return FilterView::TagBase;
+    if (m_filter_index >= kFirstTagIndex && !m_filter_tag_names.empty())
+        return FilterView::Tag;
     return static_cast<FilterView>(m_filter_index);
 }
 
@@ -658,8 +664,6 @@ void AppCore::SetArticleIndex(int index) {
 }
 
 int AppCore::GetArticleIndex() const { return m_article_index; }
-
-int& AppCore::GetArticleIndex() { return m_article_index; }
 
 bool AppCore::IsArticleBookmarked(const std::string& article_link) const {
     auto it = std::find_if(m_current_articles.begin(),
@@ -695,7 +699,7 @@ void AppCore::RefreshFilterOptions() {
     // re-select it once the list is rebuilt.
     const FilterView view_before = GetFilterView();
     const std::string tag_before =
-        view_before == FilterView::TagBase ? GetTagNameForFilter(m_filter_index) : "";
+        view_before == FilterView::Tag ? GetTagNameForFilter(m_filter_index) : "";
     const std::string project_before =
         view_before == FilterView::Project ? GetProjectNameForFilter(m_filter_index) : "";
 
@@ -712,13 +716,12 @@ void AppCore::RefreshFilterOptions() {
     m_filter_tag_names.clear();
     m_filter_project_names.clear();
 
-    // Add tags (indices FilterView::TagBase, +1, ...)
+    // Add tags (indices kFirstTagIndex, +1, ...)
     for (const auto& tag : m_db->GetTags()) {
         m_filter_options.push_back("#" + tag);
         m_filter_tag_names.push_back(tag);
     }
-    m_project_start_index =
-        static_cast<int>(FilterView::TagBase) + static_cast<int>(m_filter_tag_names.size());
+    m_project_start_index = kFirstTagIndex + static_cast<int>(m_filter_tag_names.size());
 
     // Projects as a tree, depth-first, children indented two spaces per
     // level. A project whose parent no longer exists is shown at the top
@@ -759,7 +762,7 @@ void AppCore::RefreshFilterOptions() {
                                            : base + static_cast<int>(it - names.begin());
     };
     if (!tag_before.empty())
-        reselect(m_filter_tag_names, tag_before, static_cast<int>(FilterView::TagBase));
+        reselect(m_filter_tag_names, tag_before, kFirstTagIndex);
     else if (!project_before.empty())
         reselect(m_filter_project_names, project_before, m_project_start_index);
 }

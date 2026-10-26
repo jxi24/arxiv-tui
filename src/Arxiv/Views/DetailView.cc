@@ -40,8 +40,7 @@ void ArxivApp::SetupDetailView() {
             paragraph("Abstract: \n" + article.abstract) | color(TextColors::text()),
         };
 
-        if (core.GetFilterView() == AppCore::FilterView::Project) {
-            std::string proj = core.GetProjectNameForFilter(core.GetFilterIndex());
+        if (const std::string proj = core.CurrentProject(); !proj.empty()) {
             std::string note = core.GetProjectNote(proj, article.link);
             if (!note.empty()) {
                 detail_elements.push_back(separator() | color(TextColors::border()));

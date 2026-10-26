@@ -201,6 +201,13 @@ class ArxivApp {
     // View setup (called from SetupUI)
     void SetupFilterPane();
     void SetupArticlePane();
+    // Every change of view or article goes through these (keys, menus,
+    // mouse), so AppCore's setters, the replay log and read-marking always
+    // run. The menus edit UI-owned copies of the indices and call them.
+    void SelectFilter(int index);
+    void SelectArticle(int index);
+    int filter_menu_index = 0;
+    int article_menu_index = 0;
     void SetupDetailView();
     void SetupHelpDialog();
     void SetupAssignProjectDialog();

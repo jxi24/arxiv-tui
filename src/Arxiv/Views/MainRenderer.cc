@@ -77,11 +77,11 @@ void ArxivApp::SetupMainRenderer() {
         case AppCore::FilterView::Unread:
             filter_label = "Unread";
             break;
-        case AppCore::FilterView::TagBase:
-            filter_label = "#" + core.GetTagNameForFilter(core.GetFilterIndex());
+        case AppCore::FilterView::Tag:
+            filter_label = "#" + core.CurrentTag();
             break;
         case AppCore::FilterView::Project:
-            filter_label = core.GetProjectNameForFilter(core.GetFilterIndex());
+            filter_label = core.CurrentProject();
             break;
         }
 
@@ -369,7 +369,7 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
         if (core.GetFilterView() == AppCore::FilterView::Project) {
             const auto& articles = core.GetCurrentArticles();
             if (!articles.empty()) {
-                note_project_name = core.GetProjectNameForFilter(core.GetFilterIndex());
+                note_project_name = core.CurrentProject();
                 note_article_link = articles[static_cast<size_t>(core.GetArticleIndex())].link;
                 note_edit_text = core.GetProjectNote(note_project_name, note_article_link);
                 dialog_depth = Dialog::Notes;
@@ -521,7 +521,7 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
     // Open export dialog (only when viewing a project)
     if (key_bindings.matches(event, KeyBindings::Action::ExportProject)) {
         if (core.GetFilterView() == AppCore::FilterView::Project) {
-            export_project_name = core.GetProjectNameForFilter(core.GetFilterIndex());
+            export_project_name = core.CurrentProject();
             export_format_index = 0;
             dialog_depth = Dialog::Export;
         }

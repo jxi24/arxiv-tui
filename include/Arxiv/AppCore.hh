@@ -71,13 +71,18 @@ class AppCore {
         // last session is reachable from exactly one view.
         Updated = 8,
         Unread = 9,
-        // Filter indices [TagBase, m_project_start_index) are tags.
-        // Filter indices [m_project_start_index, ...) are projects.
-        // GetFilterView() uses those runtime boundaries — TagBase and Project
-        // are used only as return-value tags in switch statements.
-        TagBase = 10,
-        Project = 100, // sentinel returned by GetFilterView() for project indices
+        // The values above are also the filter indices of the fixed views.
+        // Tag and Project are kinds, not indices: tags occupy indices
+        // [kFirstTagIndex, m_project_start_index), projects the rest. Use
+        // CurrentTag() / CurrentProject() for the selected name.
+        Tag = 100,
+        Project = 101,
     };
+    static constexpr int kFirstTagIndex = 10; // right after Unread
+
+    /// Name of the selected tag / project, or "" when another view is shown.
+    std::string CurrentTag() const;
+    std::string CurrentProject() const;
 
     // Article management
     void FetchArticles();
@@ -86,7 +91,7 @@ class AppCore {
     bool DownloadArticle(const std::string& article_id);
     std::string GetBibtex(const Article& article);
     const std::vector<Article>& GetCurrentArticles() const;
-    std::vector<std::string>& GetCurrentTitles();
+    const std::vector<std::string>& GetCurrentTitles() const;
 
     // Rating and ranking
     void RateArticle(const std::string& article_link, int rating);
@@ -166,17 +171,15 @@ class AppCore {
     std::string GetProjectNameForFilter(int index) const;
 
     // Filter management
-    std::vector<std::string>& GetFilterOptions();
+    const std::vector<std::string>& GetFilterOptions() const;
     void SetFilterIndex(int index);
     void SetFilterIndex(FilterView view);
     int GetFilterIndex() const;
-    int& GetFilterIndex();
     FilterView GetFilterView() const;
 
     // State management
     void SetArticleIndex(int index);
     int GetArticleIndex() const;
-    int& GetArticleIndex();
     bool IsArticleBookmarked(const std::string& article_link) const;
 
     // Callbacks for UI updates
@@ -393,7 +396,7 @@ class AppCore {
     std::vector<std::string> m_current_titles;
     std::vector<std::string> m_filter_options;
     std::vector<std::string> m_filter_tag_names;
-    int m_project_start_index{static_cast<int>(FilterView::TagBase)};
+    int m_project_start_index{kFirstTagIndex};
     // Actual project names parallel to filter_options[6+] (display may be indented for
     // sub-projects)
     std::vector<std::string> m_filter_project_names;

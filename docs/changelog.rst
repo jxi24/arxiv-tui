@@ -29,6 +29,11 @@ Unreleased
   tables are rebuilt once and leftover rows for papers that no longer exist
   are dropped. A database written by a newer arxiv-tui is refused instead of
   being modified.
+- **Arrow keys in the filter and article lists** — moving the filter list
+  with ``↑``/``↓`` changed the highlighted view without loading it (the old
+  view's papers stayed on screen), and moving the article list that way did
+  not mark papers read with the detail pane open or record the move for
+  replay. Both lists now behave exactly like ``j``/``k``.
 - **``replay.jsonl`` no longer grows forever** — when it is over 5 MiB at
   start-up it is moved to ``replay.jsonl.1`` and a new log is started.
 

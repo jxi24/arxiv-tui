@@ -2130,3 +2130,34 @@ TEST_CASE("Nothing is written to the working directory by default", "[app][regre
         REQUIRE(cwd.Empty());
     }
 }
+
+TEST_CASE("AppCore::CurrentProject / CurrentTag name the selected view", "[app][filter]") {
+    auto article = make_article("2607.00020", "J. Doe", "hep-ph");
+    auto core = make_memory_core({article});
+    core->AddProject("Thesis");
+    core->AddTag("flavour");
+    core->LinkArticleToTag(article.link, "flavour");
+    const auto& options = core->GetFilterOptions();
+    auto index_of = [&](const std::string& label) {
+        return static_cast<int>(
+            std::distance(options.begin(), std::find(options.begin(), options.end(), label)));
+    };
+
+    SECTION("a fixed view has neither") {
+        core->SetFilterIndex(AppCore::FilterView::All);
+        REQUIRE(core->CurrentProject().empty());
+        REQUIRE(core->CurrentTag().empty());
+    }
+    SECTION("a project view names the project") {
+        core->SetFilterIndex(index_of("Thesis"));
+        REQUIRE(core->GetFilterView() == AppCore::FilterView::Project);
+        REQUIRE(core->CurrentProject() == "Thesis");
+        REQUIRE(core->CurrentTag().empty());
+    }
+    SECTION("a tag view names the tag") {
+        core->SetFilterIndex(index_of("#flavour"));
+        REQUIRE(core->GetFilterView() == AppCore::FilterView::Tag);
+        REQUIRE(core->CurrentTag() == "flavour");
+        REQUIRE(core->CurrentProject().empty());
+    }
+}

@@ -143,12 +143,6 @@ TEST_CASE("AppCore: filter options contain 'New Articles'", "[newart][appcore]")
     REQUIRE(found);
 }
 
-TEST_CASE("AppCore: FilterView::NewArticles value is less than FilterView::Project",
-          "[newart][appcore]") {
-    REQUIRE(static_cast<int>(Arxiv::AppCore::FilterView::NewArticles) <
-            static_cast<int>(Arxiv::AppCore::FilterView::Project));
-}
-
 // ---------------------------------------------------------------------------
 // AppCore: NewArticles filter dispatches to GetArticlesSince
 // ---------------------------------------------------------------------------
