@@ -303,7 +303,7 @@ arxiv-tui/
 | [fmt](https://github.com/fmtlib/fmt) | 11.0.0 | String formatting |
 | [spdlog](https://github.com/gabime/spdlog) | v1.14.1 | Structured logging |
 | [cpr](https://github.com/libcpr/cpr) | 1.10.4 | HTTP client |
-| [FTXUI](https://github.com/ArthurSonzogni/FTXUI) | main | Terminal UI framework |
+| [FTXUI](https://github.com/ArthurSonzogni/FTXUI) | v7.0.3 | Terminal UI framework |
 | [pugixml](https://github.com/zeux/pugixml) | 1.15.0 | XML/RSS parsing |
 | [yaml-cpp](https://github.com/jbeder/yaml-cpp) | 0.7.0 | YAML configuration |
 | [nlohmann/json](https://github.com/nlohmann/json) | 3.11.3 | JSON export/import and replay logs |

@@ -34,6 +34,8 @@ Unreleased
   view's papers stayed on screen), and moving the article list that way did
   not mark papers read with the detail pane open or record the move for
   replay. Both lists now behave exactly like ``j``/``k``.
+- **Reproducible builds** — FTXUI is pinned to the v7.0.3 release instead of
+  tracking its ``main`` branch.
 - **``replay.jsonl`` no longer grows forever** — when it is over 5 MiB at
   start-up it is moved to ``replay.jsonl.1`` and a new log is started.
 

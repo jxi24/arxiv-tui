@@ -60,7 +60,7 @@ arxiv-tui/
 | fmt | 11.0.0 | String formatting |
 | spdlog | v1.14.1 | Structured logging |
 | cpr | 1.10.4 | HTTP client (arXiv API) |
-| FTXUI | main | Terminal UI framework |
+| FTXUI | v7.0.3 | Terminal UI framework |
 | pugixml | 1.15.0 | XML/RSS feed parsing |
 | yaml-cpp | 0.7.0 | YAML config parsing |
 | SQLite3 | system | Article persistence |

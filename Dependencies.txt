@@ -35,9 +35,11 @@ add_library(cpr::cpr ALIAS cpr)
 # std::result_of trips -Wdeprecated-declarations. Not our code to fix.
 target_compile_options(cpr PRIVATE -Wno-error=deprecated-declarations)
 
+# Pinned to a release: tracking main let any upstream commit change or break
+# the build. Bump deliberately (and run the TUI tests) when upgrading.
 CPMAddPackage(
-    Name ftxui
-    GIT_TAG main
+    NAME ftxui
+    GIT_TAG v7.0.3
     GITHUB_REPOSITORY ArthurSonzogni/FTXUI
     OPTIONS
         "FTXUI_BUILD_TESTS OFF"
