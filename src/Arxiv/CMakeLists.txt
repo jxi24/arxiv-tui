@@ -14,6 +14,7 @@ add_library(libarxiv-tui
     AtomicFile.cc
     Cli.cc
     RankingService.cc
+    ProjectService.cc
     Fetcher.cc
     DatabaseManager.cc
     Config.cc

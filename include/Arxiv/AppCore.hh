@@ -9,6 +9,7 @@
 #include "Arxiv/Config.hh"
 #include "Arxiv/DatabaseManager.hh"
 #include "Arxiv/Fetcher.hh"
+#include "Arxiv/ProjectService.hh"
 #include "Arxiv/RankingService.hh"
 
 #include <atomic>
@@ -33,7 +34,7 @@ class ReplayRecorder; // forward decl — included only by users that pass one
 class AppCore {
   public:
     /// Project import files larger than this are refused unread.
-    static constexpr std::uintmax_t kMaxImportBytes = std::uintmax_t{64} << 20;
+    static constexpr std::uintmax_t kMaxImportBytes = ProjectService::kMaxImportBytes;
 
     // Whether the initial network fetch runs on the constructor thread (Sync,
     // the default — chosen so existing tests with mocked fetchers see the
@@ -361,7 +362,8 @@ class AppCore {
     std::vector<std::string> m_topics;
     std::unique_ptr<DatabaseManager> m_db;
     std::unique_ptr<Fetcher> m_fetcher;
-    RankingService m_ranking; // model, training thread, keywords
+    ProjectService m_projects; // project data; AppCore refreshes the views
+    RankingService m_ranking;  // model, training thread, keywords
     std::atomic<bool> m_needs_refetch{false};
     int m_ratings_since_train{0};
     int m_retrain_interval{5};
@@ -383,7 +385,6 @@ class AppCore {
     bool MatchesActiveCategory(const std::string& categories) const;
 
     // Project notes as a lookup for Export::Project*.
-    std::function<std::string(const std::string&)> NotesFor(const std::string& project) const;
 
     struct TaskOutcome {
         std::string result, error, message;

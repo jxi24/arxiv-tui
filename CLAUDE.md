@@ -149,6 +149,9 @@ Obsidian export, selected digest (and archive) and PDF download run on one worke
 **`RankingService`** (`RankingService.hh/cc`)
 First piece split out of `AppCore`: owns the `Ranker`, its lock, the training thread, the model file (`LoadOrTrain`, `StartTraining(snapshot, warm_start, on_done)`) and the interest keywords, which it refits onto every model it installs. `Score`/`ScoreAll`/`Rank` are the only way views score papers. `AppCore` keeps the policy (retrain after `retrain_interval` ratings, the Recommended threshold) and must `WaitForTraining()` in its destructor because `on_done` touches it.
 
+**`ProjectService`** (`ProjectService.hh/cc`)
+Second piece split out of `AppCore`: projects as data — create (trimmed), remove, parent, membership (`Link` appends new papers to a previously exported project `.bib`), notes, Markdown/text/JSON/BibTeX export and JSON import (size cap, untrusted entries skipped, stored papers keep their metadata). No view state: `AppCore` wraps each call with the filter-list refresh and callbacks.
+
 **`Export`** (`Export.hh/cc`)
 File formats for every export (project Markdown/text/JSON, daily digest Markdown/YAML, selected digest, Obsidian notes, BibTeX file, tar archive). Pure functions over articles passed in — no DB, selection or UI state; `AppCore` gathers the data and delegates. Writes are checked after the fact (a full disk reports failure).
 

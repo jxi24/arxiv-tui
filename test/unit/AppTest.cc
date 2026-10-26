@@ -2243,3 +2243,30 @@ TEST_CASE("AppCore::LinkArticleToTag lists a new tag in the filters", "[app][tag
     const auto& options = t.core->GetFilterOptions();
     REQUIRE(std::find(options.begin(), options.end(), "#lattice") != options.end());
 }
+
+TEST_CASE("AppCore: adding a selection to a project updates the project's .bib",
+          "[app][bibtex][regression]") {
+    // Single assignment appended to the exported .bib; bulk assignment did not.
+    auto a = make_article("2401.00051", "J. Doe", "hep-ph");
+    auto b = make_article("2401.00052", "R. Roe", "hep-ph");
+    auto db = std::make_unique<DatabaseManager>(":memory:");
+    db->AddArticle(a);
+    db->AddArticle(b);
+    auto fetcher = std::make_unique<FetcherMock>();
+    ALLOW_CALL(*fetcher, FetchBibTeX(ANY(std::string))).RETURN(std::string{});
+    AppCore core(regression_config(), std::move(db), std::move(fetcher));
+    core.AddProject("p");
+    auto bib = std::filesystem::temp_directory_path() /
+               ("arxiv_bulk_bib_" + std::to_string(::getpid()) + ".bib");
+    REQUIRE(core.ExportProjectBibTeX("p", bib.string()));
+
+    core.ToggleSelection(a.link);
+    core.ToggleSelection(b.link);
+    core.AddSelectedToProject("p");
+
+    std::ifstream in(bib);
+    std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    std::filesystem::remove(bib);
+    REQUIRE_THAT(content, ContainsSubstring(a.id()));
+    REQUIRE_THAT(content, ContainsSubstring(b.id()));
+}

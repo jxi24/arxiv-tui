@@ -7,6 +7,11 @@ Changelog
 Unreleased
 ----------
 
+- **Bulk project assignment updates the project's BibTeX file** — assigning a
+  selection to a project skipped the auto-update of an exported ``.bib`` that
+  single assignment does, and single assignment only found papers shown in
+  the current view.
+
 - **Tagging from the TUI** — ``#`` opens a Tags dialog for the focused
   article or the selection: toggle tags, add new ones, delete one from every
   paper. Tags existed in the database and filter pane, but nothing in the TUI

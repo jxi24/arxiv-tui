@@ -12,15 +12,12 @@
 #include "Arxiv/Process.hh"
 #include "Arxiv/Replay.hh"
 
-#include <nlohmann/json.hpp>
-
 #include <algorithm>
 #include <chrono>
 #include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <functional>
-#include <iterator>
 #include <map>
 #include <string_view>
 
@@ -64,6 +61,11 @@ AppCore::AppCore(const Config& config,
     , m_topics(config.get_topics())
     , m_db(std::move(db))
     , m_fetcher(std::move(fetcher))
+    , m_projects(*m_db,
+                 [this](const Article& a) {
+                     std::string bib = a.id().empty() ? "" : m_fetcher->FetchBibTeX(a.id());
+                     return bib.empty() ? BibTeX::Build(a) : bib;
+                 })
     , m_ranking(config.get_ranker_file())
     , m_retrain_interval(config.get_retrain_interval())
     , m_recommend_threshold(config.get_recommend_threshold())
@@ -458,32 +460,20 @@ const std::vector<Article>& AppCore::GetCurrentArticles() const { return m_curre
 const std::vector<std::string>& AppCore::GetCurrentTitles() const { return m_current_titles; }
 
 void AppCore::AddProject(const std::string& project_name) {
-    // Trim leading/trailing whitespace; reject if result is empty.
-    std::string trimmed = project_name;
-    trimmed.erase(0, trimmed.find_first_not_of(" \t\n\r"));
-    auto last = trimmed.find_last_not_of(" \t\n\r");
-    if (last == std::string::npos)
-        trimmed.clear();
-    else
-        trimmed.erase(last + 1);
-
-    if (!trimmed.empty()) {
-        m_db->AddProject(trimmed);
-        RefreshFilterOptions();
-        if (m_project_update_callback) {
-            m_project_update_callback();
-        }
-        NotifyArticleUpdate();
-    }
+    if (!m_projects.Add(project_name))
+        return; // nothing left after trimming
+    RefreshFilterOptions();
+    if (m_project_update_callback)
+        m_project_update_callback();
+    NotifyArticleUpdate();
 }
 
 void AppCore::RemoveProject(const std::string& project_name) {
-    m_db->RemoveProject(project_name);
+    m_projects.Remove(project_name);
     const int index_before = m_filter_index;
     RefreshFilterOptions();
-    if (m_project_update_callback) {
+    if (m_project_update_callback)
         m_project_update_callback();
-    }
     // The viewed project is gone (or moved): show what the filter now says.
     if (m_filter_index != index_before)
         FetchArticles();
@@ -493,35 +483,17 @@ void AppCore::RemoveProject(const std::string& project_name) {
 
 void AppCore::LinkArticleToProject(const std::string& article_link,
                                    const std::string& project_name) {
-    m_db->LinkArticleToProject(article_link, project_name);
-
-    // Auto-append to the project's .bib file if one has been exported before,
-    // unless the paper is already in it (re-linking used to add it again).
-    std::string bib_path = m_db->GetProjectBibPath(project_name);
-    if (!bib_path.empty() && std::filesystem::exists(bib_path)) {
-        if (auto article = FindArticle(article_link)) {
-            std::ifstream existing(bib_path);
-            const std::string content((std::istreambuf_iterator<char>(existing)),
-                                      std::istreambuf_iterator<char>());
-            const bool present = content.find("{" + article->id() + "}") != std::string::npos ||
-                                 content.find("\"" + article->id() + "\"") != std::string::npos;
-            if (!present) {
-                if (WriteFileAtomically(bib_path, content + "\n" + GetBibtex(*article)))
-                    spdlog::info("[AppCore]: Appended BibTeX for {} to {}", article_link, bib_path);
-            }
-        }
-    }
-
+    m_projects.Link(project_name, {article_link});
     NotifyArticleUpdate();
 }
 
 void AppCore::UnlinkArticleFromProject(const std::string& article_link,
                                        const std::string& project_name) {
-    m_db->UnlinkArticleFromProject(article_link, project_name);
+    m_projects.Unlink(project_name, article_link);
     NotifyArticleUpdate();
 }
 
-std::vector<std::string> AppCore::GetProjects() const { return m_db->GetProjects(); }
+std::vector<std::string> AppCore::GetProjects() const { return m_projects.All(); }
 
 // ---------------------------------------------------------------------------
 // Tag management
@@ -597,7 +569,7 @@ std::string AppCore::GetTagNameForFilter(int index) const {
 }
 
 std::vector<Article> AppCore::GetArticlesForProject(const std::string& project_name) const {
-    return m_db->GetArticlesForProject(project_name);
+    return m_projects.Articles(project_name);
 }
 
 const std::vector<std::string>& AppCore::GetFilterOptions() const { return m_filter_options; }
@@ -928,11 +900,11 @@ void AppCore::NotifyArticleUpdate() {
 }
 
 std::vector<std::string> AppCore::GetProjectsForArticle(const std::string& article_link) const {
-    return m_db->GetProjectsForArticle(article_link);
+    return m_projects.ProjectsFor(article_link);
 }
 
 void AppCore::SetProjectParent(const std::string& project_name, const std::string& parent) {
-    m_db->SetProjectParent(project_name, parent);
+    m_projects.SetParent(project_name, parent);
     RefreshFilterOptions();
     if (m_project_update_callback)
         m_project_update_callback();
@@ -942,13 +914,13 @@ void AppCore::SetProjectParent(const std::string& project_name, const std::strin
 void AppCore::SetProjectNote(const std::string& project_name,
                              const std::string& article_link,
                              const std::string& note) {
-    m_db->SetProjectNote(project_name, article_link, note);
+    m_projects.SetNote(project_name, article_link, note);
     NotifyArticleUpdate();
 }
 
 std::string AppCore::GetProjectNote(const std::string& project_name,
                                     const std::string& article_link) const {
-    return m_db->GetProjectNote(project_name, article_link);
+    return m_projects.Note(project_name, article_link);
 }
 
 std::string AppCore::GetProjectNameForFilter(int index) const {
@@ -970,130 +942,35 @@ std::string AppCore::GetProjectNameForFilter(int index) const {
 // Exports — data gathering here, file formats in Export.cc
 // ---------------------------------------------------------------------------
 
-std::function<std::string(const std::string&)> AppCore::NotesFor(const std::string& project) const {
-    return [this, project](const std::string& link) { return m_db->GetProjectNote(project, link); };
-}
-
 bool AppCore::ExportProjectMarkdown(const std::string& project_name,
                                     const std::string& output_path) const {
-    return Export::ProjectMarkdown(output_path,
-                                   project_name,
-                                   m_db->GetArticlesForProject(project_name),
-                                   NotesFor(project_name));
+    return m_projects.ExportMarkdown(project_name, output_path);
 }
 
 bool AppCore::ExportProjectText(const std::string& project_name,
                                 const std::string& output_path) const {
-    return Export::ProjectText(output_path,
-                               project_name,
-                               m_db->GetArticlesForProject(project_name),
-                               NotesFor(project_name));
+    return m_projects.ExportText(project_name, output_path);
 }
 
 bool AppCore::ExportProjectJSON(const std::string& project_name,
                                 const std::string& output_path) const {
-    return Export::ProjectJSON(output_path,
-                               project_name,
-                               m_db->GetArticlesForProject(project_name),
-                               NotesFor(project_name));
+    return m_projects.ExportJSON(project_name, output_path);
 }
 
 bool AppCore::ImportProjectJSON(const std::string& input_path) {
-    std::error_code size_error;
-    auto size = std::filesystem::file_size(input_path, size_error);
-    if (!size_error && size > kMaxImportBytes) {
-        spdlog::error(
-            "[AppCore]: Import file {} is larger than {} bytes", input_path, kMaxImportBytes);
+    if (!m_projects.ImportJSON(input_path))
         return false;
-    }
-    std::ifstream file(input_path);
-    if (!file.is_open()) {
-        spdlog::error("[AppCore]: Cannot open import file: {}", input_path);
-        return false;
-    }
-
-    nlohmann::json j;
-    try {
-        file >> j;
-    } catch (const nlohmann::json::exception& e) {
-        // parse_error, or out_of_range for numbers like 1e70000
-        spdlog::error("[AppCore]: JSON parse error: {}", e.what());
-        return false;
-    }
-
-    if (!j.contains("name") || !j["name"].is_string()) {
-        spdlog::error("[AppCore]: Import JSON missing 'name' field");
-        return false;
-    }
-
-    std::string project_name = j["name"].get<std::string>();
-    m_db->AddProject(project_name);
-
-    // The file is untrusted: skip entries that are not objects, ignore fields
-    // of the wrong type, and only accept canonical arXiv abstract links (they
-    // end up in file names and are handed to xdg-open).
-    auto string_field = [](const nlohmann::json& entry, const char* key) {
-        auto it = entry.find(key);
-        return (it != entry.end() && it->is_string()) ? it->get<std::string>() : std::string();
-    };
-    std::size_t skipped = 0;
-    if (j.contains("articles") && j["articles"].is_array()) {
-        for (const auto& entry : j["articles"]) {
-            if (!entry.is_object()) {
-                ++skipped;
-                continue;
-            }
-            const std::string link = Fetcher::NormalizeLink(string_field(entry, "link"));
-            if (!Fetcher::IsArxivLink(link)) {
-                ++skipped;
-                continue;
-            }
-
-            // A paper already in the database keeps its stored metadata (the
-            // file has no category and may be old or hand-edited).
-            if (!m_db->GetArticle(link)) {
-                Article article;
-                article.link = link;
-                article.title = string_field(entry, "title");
-                article.authors = string_field(entry, "authors");
-                article.abstract = string_field(entry, "abstract");
-                article.bookmarked = false;
-                std::time_t ts = 0;
-                auto date = entry.find("date");
-                if (date != entry.end() && date->is_number_integer())
-                    ts = date->get<std::time_t>();
-                article.date = std::chrono::system_clock::from_time_t(ts);
-                m_db->AddArticle(article);
-            }
-            m_db->LinkArticleToProject(link, project_name);
-
-            std::string note = string_field(entry, "note");
-            if (!note.empty()) {
-                m_db->SetProjectNote(project_name, link, note);
-            }
-        }
-    }
-    if (skipped > 0)
-        spdlog::warn("[AppCore]: Import skipped {} malformed article entr(y/ies)", skipped);
-
     RefreshFilterOptions();
     if (m_project_update_callback)
         m_project_update_callback();
     NotifyArticleUpdate();
-    spdlog::info("[AppCore]: Imported project '{}' from JSON: {}", project_name, input_path);
     return true;
 }
 
-// ---------------------------------------------------------------------------
-// BibTeX export — InspireHEP when it has the paper, else BibTeX::Build
-// ---------------------------------------------------------------------------
-
+// BibTeX: InspireHEP when it has the paper, else BibTeX::Build.
 bool AppCore::ExportArticlesBibTeX(const std::vector<Article>& articles,
                                    const std::string& output_path) const {
-    return Export::BibTeXFile(output_path, articles, [this](const Article& a) {
-        std::string bib = a.id().empty() ? "" : m_fetcher->FetchBibTeX(a.id());
-        return bib.empty() ? BibTeX::Build(a) : bib;
-    });
+    return m_projects.ExportArticlesBibTeX(articles, output_path);
 }
 
 bool AppCore::ExportArticleBibTeX(const Article& article, const std::string& output_path) const {
@@ -1101,10 +978,7 @@ bool AppCore::ExportArticleBibTeX(const Article& article, const std::string& out
 }
 
 bool AppCore::ExportProjectBibTeX(const std::string& project_name, const std::string& output_path) {
-    bool ok = ExportArticlesBibTeX(m_db->GetArticlesForProject(project_name), output_path);
-    if (ok)
-        m_db->SetProjectBibPath(project_name, output_path);
-    return ok;
+    return m_projects.ExportBibTeX(project_name, output_path);
 }
 
 // ---------------------------------------------------------------------------
@@ -1273,9 +1147,7 @@ void AppCore::BookmarkSelected(bool bookmarked) {
 }
 
 void AppCore::AddSelectedToProject(const std::string& project_name) {
-    const std::vector<std::string> targets = TargetLinks();
-    for (const auto& link : targets)
-        m_db->LinkArticleToProject(link, project_name);
+    m_projects.Link(project_name, TargetLinks()); // keeps the project's .bib current too
     NotifyArticleUpdate();
 }
 
