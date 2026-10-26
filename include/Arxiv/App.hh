@@ -80,6 +80,7 @@ class ArxivApp {
     KeyBindings key_bindings;
     std::string m_config_path;
     Config m_config;
+    Config m_settings_on_open; // what q in the Settings dialog restores
 
     // UI handling
     ftxui::ScreenInteractive screen;

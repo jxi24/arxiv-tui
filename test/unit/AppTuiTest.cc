@@ -777,3 +777,52 @@ TEST_CASE("Moving the article menu with the arrow keys marks the article read",
     REQUIRE(std::none_of(
         unread.begin(), unread.end(), [&](const Article& a) { return a.link == now.link; }));
 }
+
+// ---------------------------------------------------------------------------
+// Settings can be left without saving: q discards, Esc in a field discards
+// that edit, Esc otherwise saves (as before).
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Settings: q closes without saving", "[tui][settings]") {
+    auto app = make_app(); // download_dir "/tmp"
+    auto handler = app->GetEventHandler();
+    handler->OnEvent(Event::Character("S"));
+    handler->OnEvent(Event::Return);         // edit "Download dir"
+    handler->OnEvent(Event::Character("X")); // "/tmpX"
+    handler->OnEvent(Event::Return);         // commit the field
+
+    handler->OnEvent(Event::Character("q")); // discard and close
+
+    SECTION("nothing applied") { REQUIRE(app->GetCore().GetConfig().get_download_dir() == "/tmp"); }
+    SECTION("reopening shows the old value") {
+        handler->OnEvent(Event::Character("S"));
+        REQUIRE_THAT(render(*app), !Catch::Matchers::ContainsSubstring("/tmpX"));
+    }
+}
+
+TEST_CASE("Settings: Esc while editing a field discards the edit", "[tui][settings]") {
+    auto app = make_app();
+    auto handler = app->GetEventHandler();
+    handler->OnEvent(Event::Character("S"));
+    handler->OnEvent(Event::Return);
+    handler->OnEvent(Event::Character("X"));
+    handler->OnEvent(Event::Escape); // abandon the field edit
+    handler->OnEvent(Event::Escape); // save and close
+
+    REQUIRE(app->GetCore().GetConfig().get_download_dir() == "/tmp");
+}
+
+TEST_CASE("Settings: q undoes a theme preview", "[tui][settings][theme]") {
+    auto app = make_app();
+    auto handler = app->GetEventHandler();
+    const auto before = Arxiv::CurrentTheme().primary;
+    handler->OnEvent(Event::Character("S"));
+    for (int i = 0; i < 3; ++i)
+        handler->OnEvent(Event::Character("j")); // General -> Theme
+    handler->OnEvent(Event::Return);             // previews the next preset
+    REQUIRE_FALSE(Arxiv::CurrentTheme().primary == before);
+
+    handler->OnEvent(Event::Character("q"));
+
+    REQUIRE(Arxiv::CurrentTheme().primary == before);
+}

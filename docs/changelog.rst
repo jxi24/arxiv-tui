@@ -7,6 +7,10 @@ Changelog
 Unreleased
 ----------
 
+- **Settings can be cancelled** — ``q`` closes the Settings dialog without
+  saving (and undoes a theme preview); ``Esc`` while editing a field now
+  abandons that edit instead of keeping it. ``Esc`` still saves and closes.
+
 - **Dates are arXiv days everywhere** — the article list and exports showed
   dates in local time, so west of UTC a paper announced on 4 July showed as
   3 July; the date-range filter (``r``) used local midnights with DST off,

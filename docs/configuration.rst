@@ -6,7 +6,10 @@ Configuration
 
 On first launch, arxiv-tui creates ``~/.config/arxiv-tui/config.yml`` with
 default values. Edit this file to customise topics, key bindings, and
-behaviour.
+behaviour, or press ``S`` for the Settings dialog: ``Tab`` moves between
+sections, ``Enter`` edits a field (``Enter`` again keeps the edit, ``Esc``
+abandons it), ``Esc`` saves everything and closes, and ``q`` closes without
+saving (undoing a theme preview).
 
 Example config
 --------------

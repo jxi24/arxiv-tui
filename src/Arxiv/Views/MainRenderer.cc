@@ -440,6 +440,7 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
         settings_edit_buffer.clear();
         // m_config already holds the last saved settings; resetting it from
         // the core's startup copy used to discard them.
+        m_settings_on_open = m_config;
         dialog_depth = Dialog::Settings;
         return true;
     }
