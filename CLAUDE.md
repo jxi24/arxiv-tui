@@ -146,6 +146,9 @@ Plain data struct: `link`, `title`, `authors`, `abstract`, `date` (Unix timestam
 **Background tasks** (`AppCore::Start*`)
 Obsidian export, selected digest (and archive) and PDF download run on one worker thread (`StartTask`). Inputs are captured on the UI thread; the worker only uses the fetcher, the filesystem and the DB, and reports via `GetBackgroundTaskStatus()`, which the main renderer shows as a badge. Worker threads (fetch, auto-refresh, training, tasks) never touch `m_current_articles` or invoke the update callback — they set `m_needs_refetch` / `m_pending_read` for the UI thread's `TryRefetchIfNeeded()`.
 
+**`RankingService`** (`RankingService.hh/cc`)
+First piece split out of `AppCore`: owns the `Ranker`, its lock, the training thread, the model file (`LoadOrTrain`, `StartTraining(snapshot, warm_start, on_done)`) and the interest keywords, which it refits onto every model it installs. `Score`/`ScoreAll`/`Rank` are the only way views score papers. `AppCore` keeps the policy (retrain after `retrain_interval` ratings, the Recommended threshold) and must `WaitForTraining()` in its destructor because `on_done` touches it.
+
 **`Export`** (`Export.hh/cc`)
 File formats for every export (project Markdown/text/JSON, daily digest Markdown/YAML, selected digest, Obsidian notes, BibTeX file, tar archive). Pure functions over articles passed in — no DB, selection or UI state; `AppCore` gathers the data and delegates. Writes are checked after the fact (a full disk reports failure).
 

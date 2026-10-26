@@ -13,6 +13,7 @@ add_library(libarxiv-tui
     Process.cc
     AtomicFile.cc
     Cli.cc
+    RankingService.cc
     Fetcher.cc
     DatabaseManager.cc
     Config.cc

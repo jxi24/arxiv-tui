@@ -34,6 +34,8 @@ Unreleased
   view's papers stayed on screen), and moving the article list that way did
   not mark papers read with the detail pane open or record the move for
   replay. Both lists now behave exactly like ``j``/``k``.
+- **Retraining keeps keywords** — a full retrain (``R``) dropped the interest
+  keywords until the next start, so keyword boosts silently stopped working.
 - **``--help`` and ``--version``** — and unknown options, a missing file name
   or two modes at once (``--fetch`` with an export, say) are now errors
   instead of being silently ignored.

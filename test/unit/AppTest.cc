@@ -17,6 +17,7 @@
 #include <mocks/DatabaseManagerMock.hh>
 #include <mocks/FetcherMock.hh>
 #include <sstream>
+#include <thread>
 #include <unistd.h>
 
 using namespace Arxiv;
@@ -2160,4 +2161,17 @@ TEST_CASE("AppCore::CurrentProject / CurrentTag name the selected view", "[app][
         REQUIRE(core->CurrentTag() == "flavour");
         REQUIRE(core->CurrentProject().empty());
     }
+}
+
+TEST_CASE("A full retrain keeps the interest keywords", "[app][keywords][regression]") {
+    // ForceRetrain swapped in a fresh Ranker, dropping the fitted keywords.
+    KeywordCore t;
+    REQUIRE(t.core->GetPredictedScore(t.match) > t.core->GetPredictedScore(t.other));
+
+    t.core->ForceRetrain();
+    for (int i = 0; i < 500 && t.core->IsTraining(); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    REQUIRE_FALSE(t.core->IsTraining());
+
+    REQUIRE(t.core->GetPredictedScore(t.match) > t.core->GetPredictedScore(t.other));
 }

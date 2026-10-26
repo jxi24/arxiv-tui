@@ -9,7 +9,7 @@
 #include "Arxiv/Config.hh"
 #include "Arxiv/DatabaseManager.hh"
 #include "Arxiv/Fetcher.hh"
-#include "Arxiv/Ranker.hh"
+#include "Arxiv/RankingService.hh"
 
 #include <atomic>
 #include <chrono>
@@ -101,7 +101,7 @@ class AppCore {
     int GetArticleRating(const std::string& article_link) const;
     float GetPredictedScore(const Article& article) const;
     bool IsRankerTrained() const;
-    bool IsTraining() const { return m_training.load(); }
+    bool IsTraining() const { return m_ranking.IsTraining(); }
     int PendingRatings() const { return m_ratings_since_train; }
     // Called from the UI refresh loop to re-fetch articles after background
     // training completes. Must be called on the main thread.
@@ -353,15 +353,11 @@ class AppCore {
     std::vector<std::string> m_topics;
     std::unique_ptr<DatabaseManager> m_db;
     std::unique_ptr<Fetcher> m_fetcher;
-    Ranker m_ranker;
-    mutable std::mutex m_ranker_mutex;
-    std::thread m_train_thread;
-    std::atomic<bool> m_training{false};
+    RankingService m_ranking; // model, training thread, keywords
     std::atomic<bool> m_needs_refetch{false};
     int m_ratings_since_train{0};
     int m_retrain_interval{5};
     float m_recommend_threshold{3.5f};
-    std::string m_ranker_path; // empty: the model is not persisted
 
     // Snapshot training data and spawn a background thread.
     // warm_start=true: keep existing vocab and weights as starting point.
@@ -467,9 +463,6 @@ class AppCore {
     // Article links the user has tagged for the next digest export.
     // Session-scoped only.
     std::set<std::string> m_selected_links;
-
-    // Keyword cold-start
-    std::vector<std::string> m_keywords;
 
     // New-articles tracking: UTC date ("YYYY-MM-DD") that seeds the NewArticles view.
     // Set from the previous session's last_fetch_date on construction.
