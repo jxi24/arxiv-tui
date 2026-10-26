@@ -76,6 +76,6 @@ void ArxivApp::SetupFilterPane() {
                      separator() | color(TextColors::border()),
                      filter_menu->Render() | vscroll_indicator | frame |
                          color(TextColors::text())}) |
-               borderStyled(ROUNDED, TextColors::border());
+               borderStyled(ROUNDED, TextColors::border()) | reflect(m_filter_box);
     });
 }

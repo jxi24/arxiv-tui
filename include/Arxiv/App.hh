@@ -190,6 +190,7 @@ class ArxivApp {
     // (FTXUI reflect): layout follows the real drawing area, which is not
     // Terminal::Size() when rendering to a smaller or test screen.
     ftxui::Box m_article_box;
+    ftxui::Box m_filter_box;
     ftxui::Box m_screen_box;
     // Size of the drawing area last frame (the terminal before the first).
     int ScreenWidth() const;
@@ -268,6 +269,8 @@ class ArxivApp {
     bool HandleCategoryFilterEvent(ftxui::Event event);
     bool HandleSettingsEvent(ftxui::Event event);
     bool HandleGlobalEvent(ftxui::Event event);
+    // Clicks and the wheel over the filter pane and the article list.
+    bool HandleMouseEvent(ftxui::Event event);
 };
 
 } // namespace Arxiv

@@ -1185,3 +1185,67 @@ TEST_CASE("Detail pane leaves out what a paper does not have", "[tui][detail]") 
     REQUIRE_FALSE(any_line_matches(lines, "Projects:"));
     REQUIRE(any_line_matches(lines, "Rating: not rated"));
 }
+
+// ---------------------------------------------------------------------------
+// Mouse: click a view or an article to select it, wheel to move.
+// ---------------------------------------------------------------------------
+
+namespace {
+// Screen position of the first cell of `needle`, after a 160x30 render.
+std::pair<int, int> where(ArxivApp& app, const std::string& needle) {
+    const auto lines = plain_lines(app);
+    for (int y = 0; y < static_cast<int>(lines.size()); ++y)
+        if (auto x = display_col(lines[static_cast<std::size_t>(y)], needle);
+            x != std::string::npos)
+            return {static_cast<int>(x), y};
+    return {-1, -1};
+}
+
+Event mouse(ftxui::Mouse::Button button, int x, int y) {
+    ftxui::Mouse m;
+    m.button = button;
+    m.motion = ftxui::Mouse::Pressed;
+    m.x = x;
+    m.y = y;
+    return Event::Mouse("", m);
+}
+} // namespace
+
+TEST_CASE("Mouse selects views and articles", "[tui][mouse]") {
+    RealDbApp t;
+    auto& core = t.app->GetCore();
+    auto handler = t.app->GetEventHandler();
+    const auto second = core.GetCurrentArticles().at(1);
+
+    SECTION("clicking a view selects it and focuses the filter pane") {
+        handler->OnEvent(Event::Character("l")); // focus the article list first
+        auto [x, y] = where(*t.app, "Bookmarks");
+        REQUIRE(x >= 0);
+        handler->OnEvent(mouse(ftxui::Mouse::Left, x + 1, y));
+        REQUIRE(core.GetFilterView() == Arxiv::AppCore::FilterView::Bookmarks);
+        REQUIRE_THAT(footer_of(*t.app), Catch::Matchers::ContainsSubstring("new project"));
+    }
+    SECTION("clicking an article selects it and focuses the list") {
+        auto [x, y] = where(*t.app, second.title.substr(0, 15));
+        REQUIRE(x >= 0);
+        handler->OnEvent(mouse(ftxui::Mouse::Left, x + 1, y));
+        REQUIRE(core.GetArticleIndex() == 1);
+        REQUIRE_THAT(footer_of(*t.app), Catch::Matchers::ContainsSubstring("bookmark"));
+    }
+    SECTION("the wheel over the list moves the cursor") {
+        auto [x, y] = where(*t.app, second.title.substr(0, 15));
+        handler->OnEvent(mouse(ftxui::Mouse::WheelDown, x + 1, y));
+        REQUIRE(core.GetArticleIndex() == 1);
+    }
+    SECTION("the wheel over the filters changes view") {
+        auto [x, y] = where(*t.app, "Bookmarks");
+        handler->OnEvent(mouse(ftxui::Mouse::WheelDown, x + 1, y));
+        REQUIRE(core.GetFilterView() == Arxiv::AppCore::FilterView::Bookmarks);
+    }
+    SECTION("an open dialog keeps clicks from reaching the panes") {
+        auto [x, y] = where(*t.app, second.title.substr(0, 15));
+        handler->OnEvent(Event::Character("/")); // search dialog
+        handler->OnEvent(mouse(ftxui::Mouse::Left, x + 1, y));
+        REQUIRE(core.GetArticleIndex() == 0);
+    }
+}

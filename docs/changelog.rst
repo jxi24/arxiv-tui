@@ -7,6 +7,11 @@ Changelog
 Unreleased
 ----------
 
+- **Mouse support** — click a view or an article to select it, and scroll
+  views or articles with the wheel. The article list draws its own rows, so
+  clicks there never selected anything, and clicks only reached the focused
+  pane.
+
 - **Richer detail pane** — under the link the detail pane shows the arXiv id,
   category and your star rating, and the paper's tags and projects when it
   has any.

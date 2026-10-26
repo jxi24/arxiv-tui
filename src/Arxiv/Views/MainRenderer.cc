@@ -292,6 +292,11 @@ void ArxivApp::SetupMainRenderer() {
 
 void ArxivApp::SetupEventHandler() {
     event_handler = CatchEvent(main_renderer, [&](Event event) {
+        // The mouse only reaches the panes: a dialog or the help overlay
+        // takes keys, and a click behind it must not change the view.
+        if (event.is_mouse())
+            return show_help || dialog_depth != Dialog::None || HandleMouseEvent(event);
+
         // Help overlay takes priority: block or close
         if (show_help)
             return HandleHelpEvent(event);
@@ -364,6 +369,38 @@ void ArxivApp::SetupEventHandler() {
 
         return HandleGlobalEvent(event);
     });
+}
+
+bool ArxivApp::HandleMouseEvent(ftxui::Event event) {
+    const auto& m = event.mouse();
+    const bool wheel = m.button == Mouse::WheelUp || m.button == Mouse::WheelDown;
+    const bool press = m.button == Mouse::Left && m.motion == Mouse::Pressed;
+    if (m_filter_box.Contain(m.x, m.y)) {
+        if (press)
+            focused_pane = 0;
+        // The menu maps the click (or wheel) to an entry and calls SelectFilter.
+        filter_menu->OnEvent(event);
+        return true;
+    }
+    if (m_article_box.Contain(m.x, m.y)) {
+        if (wheel) {
+            const int step = m.button == Mouse::WheelDown ? 1 : -1;
+            SelectArticle(std::max(core.GetArticleIndex() + step, 0));
+            return true;
+        }
+        if (!press)
+            return true;
+        focused_pane = 1;
+        // Rows start below the border, pane header, separator, column
+        // header and separator (see SetupArticlePane).
+        const int row = m.y - m_article_box.y_min - 5;
+        const int index = top_article_index + row;
+        if (row >= 0 && row < visible_rows &&
+            index < static_cast<int>(core.GetCurrentArticles().size()))
+            SelectArticle(index);
+        return true;
+    }
+    return false;
 }
 
 bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {

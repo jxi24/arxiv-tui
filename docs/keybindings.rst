@@ -224,3 +224,10 @@ Add or override an entry in the ``key_mappings`` section of
 Keys are single characters and case-sensitive. If two actions end up on the
 same key only one of them fires; the help overlay (``?``) lists any such
 conflict.
+
+Mouse
+-----
+
+Click a view in the filter pane or an article in the list to select it (and
+move the focus there); the wheel moves through views or articles. Clicks are
+ignored while a dialog or the help overlay is open.
