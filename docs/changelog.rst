@@ -7,6 +7,10 @@ Changelog
 Unreleased
 ----------
 
+- **Status column** — selection (``+``) and bookmark (``★``) markers have
+  their own column in the article list instead of being prefixed to titles,
+  where the double-width ``⭐`` pushed titles out of line.
+
 - **Layout follows the window** — pane widths and the number of article rows
   come from the area the TUI is drawn in rather than a separate terminal-size
   query, and the article list no longer lays out two rows more than fit (the

@@ -66,6 +66,10 @@ void ArxivApp::SelectArticle(int index) {
         core.MarkArticleRead(articles[static_cast<size_t>(idx)].link);
 }
 
+namespace {
+constexpr int kStatusWidth = 2;
+} // namespace
+
 void ArxivApp::SetupArticlePane() {
     MenuOption option;
     option.on_change = [&] { SelectArticle(article_menu_index); };
@@ -203,7 +207,8 @@ void ArxivApp::SetupArticlePane() {
         std::vector<std::string> configured_cols = core.GetConfig().get_article_columns();
         const bool has_title = std::find(configured_cols.begin(), configured_cols.end(), "title") !=
                                configured_cols.end();
-        const int usable = articles_width - 3; // 2 border + 1 scroll indicator
+        // 2 border + 1 scroll indicator + the 2-cell status column.
+        const int usable = articles_width - 3 - kStatusWidth;
         const int min_title = std::max(24, usable * 45 / 100);
         auto title_width = [&] {
             int fixed = 0;
@@ -240,8 +245,9 @@ void ArxivApp::SetupArticlePane() {
             return s.substr(0, static_cast<size_t>(w - 1)) + "…";
         };
 
-        // Build column header row.
-        Elements header_cells;
+        // Build column header row (blank over the status column).
+        Elements header_cells = {text(std::string(kStatusWidth, ' ')) |
+                                 size(WIDTH, EQUAL, kStatusWidth)};
         for (size_t ci = 0; ci < configured_cols.size(); ++ci) {
             const auto& col = configured_cols[ci];
             int w = (col == "title") ? title_w : col_width(col);
@@ -275,11 +281,6 @@ void ArxivApp::SetupArticlePane() {
             std::string title_cell;
             if (has_title) {
                 std::string title = article.title;
-                if (is_selected) {
-                    title = "[*] " + title;
-                } else if (article.bookmarked) {
-                    title = "⭐ " + title;
-                }
                 if (is_current) {
                     size_t start_pos = static_cast<size_t>(std::floor(title_start_position)) %
                                        article.title.length();
@@ -292,8 +293,12 @@ void ArxivApp::SetupArticlePane() {
                 }
             }
 
-            // Build the row as an hbox of column cells.
-            Elements cells;
+            // Build the row as an hbox of column cells, after a status column:
+            // "+" selected, "★" bookmarked (single-width, so titles line up).
+            Elements cells = {
+                hbox({text(is_selected ? "+" : " ") | color(TextColors::secondary()),
+                      text(article.bookmarked ? "★" : " ") | color(TextColors::secondary())}) |
+                size(WIDTH, EQUAL, kStatusWidth)};
             for (size_t ci = 0; ci < configured_cols.size(); ++ci) {
                 const auto& col = configured_cols[ci];
                 int w = (col == "title") ? title_w : col_width(col);

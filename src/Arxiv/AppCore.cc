@@ -647,15 +647,9 @@ void AppCore::SetProjectUpdateCallback(ArticleUpdateCallback callback) {
 
 void AppCore::RefreshTitles() {
     m_current_titles.clear();
-    for (const auto& article : m_current_articles) {
-        std::string display_title = article.title;
-        if (m_selected_links.count(article.link)) {
-            display_title = "[*] " + display_title;
-        } else if (article.bookmarked) {
-            display_title = "⭐ " + display_title;
-        }
-        m_current_titles.push_back(display_title);
-    }
+    // Plain titles: selection and bookmark markers are drawn by the view.
+    for (const auto& article : m_current_articles)
+        m_current_titles.push_back(article.title);
 }
 
 void AppCore::RefreshFilterOptions() {

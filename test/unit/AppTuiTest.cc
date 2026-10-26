@@ -956,3 +956,42 @@ TEST_CASE("Layout splits the width evenly with the detail pane open", "[tui][lay
     REQUIRE(articles + 2 >= detail);
     REQUIRE(detail + 2 >= articles);
 }
+
+// ---------------------------------------------------------------------------
+// Status markers live in their own column: as title prefixes ("[*] ", a
+// double-width emoji) they pushed titles out of line.
+// ---------------------------------------------------------------------------
+
+namespace {
+// Display column (not byte offset) of `needle` in `line`.
+std::size_t display_col(const std::string& line, const std::string& needle) {
+    const auto at = line.find(needle);
+    if (at == std::string::npos)
+        return std::string::npos;
+    std::size_t col = 0;
+    for (std::size_t i = 0; i < at; ++i)
+        if ((static_cast<unsigned char>(line[i]) & 0xC0) != 0x80)
+            ++col;
+    return col;
+}
+} // namespace
+
+TEST_CASE("Article titles line up whatever their markers", "[tui][layout]") {
+    RealDbApp t; // sample_articles[1] is bookmarked
+    const auto& fx = arxiv_tui::test::fixtures::sample_articles;
+    t.app->GetCore().ToggleSelection(fx[0].link);
+    auto lines = render_lines(*t.app, 160, 30);
+    std::size_t col0 = std::string::npos, col1 = std::string::npos;
+    std::string row1;
+    for (const auto& line : lines) {
+        if (line.find(fx[0].title.substr(0, 20)) != std::string::npos)
+            col0 = display_col(line, fx[0].title.substr(0, 20));
+        if (line.find(fx[1].title.substr(0, 20)) != std::string::npos) {
+            col1 = display_col(line, fx[1].title.substr(0, 20));
+            row1 = line;
+        }
+    }
+    REQUIRE(col0 != std::string::npos);
+    REQUIRE(col0 == col1);
+    REQUIRE_THAT(row1, !Catch::Matchers::ContainsSubstring("⭐"));
+}
