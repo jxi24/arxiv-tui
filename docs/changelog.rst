@@ -34,6 +34,9 @@ Unreleased
   view's papers stayed on screen), and moving the article list that way did
   not mark papers read with the detail pane open or record the move for
   replay. Both lists now behave exactly like ``j``/``k``.
+- **``--help`` and ``--version``** — and unknown options, a missing file name
+  or two modes at once (``--fetch`` with an export, say) are now errors
+  instead of being silently ignored.
 - **Reproducible builds** — FTXUI is pinned to the v7.0.3 release instead of
   tracking its ``main`` branch.
 - **``replay.jsonl`` no longer grows forever** — when it is over 5 MiB at

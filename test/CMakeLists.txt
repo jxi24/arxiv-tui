@@ -54,6 +54,7 @@ add_executable(unit_tests
     unit/AuthorMatchTest.cc
     unit/CrashHandlerTest.cc
     unit/AtomicFileTest.cc
+    unit/CliTest.cc
 )
 
 # Link against Catch2 and our library

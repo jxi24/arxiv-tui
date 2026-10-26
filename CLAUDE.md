@@ -317,6 +317,7 @@ object programmatically.
 | `test/unit/BackgroundTaskTest.cc` | Non-blocking exports/downloads: `AppCore` background task API and TUI progress |
 | `test/unit/ProcessTest.cc` | `Process::RunAndWait` / `SpawnDetached` (no-shell process launching) |
 | `test/unit/PathsTest.cc` | `Paths::Resolve` fallback when the install prefix is not writable |
+| `test/unit/CliTest.cc` | `Cli::Parse` (modes, errors for unknown options / missing values / combined modes), `--help`, `--version` |
 | `test/unit/AtomicFileTest.cc` | Atomic writes: a write failing half way (RLIMIT_FSIZE in a forked child) keeps the old config / ranker / keywords |
 | `test/unit/CrashHandlerTest.cc` | Crash handler in forked children: report, no hang on a busy recorder, terminal restored, SIGTERM untouched |
 
