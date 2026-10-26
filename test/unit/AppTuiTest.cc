@@ -826,3 +826,49 @@ TEST_CASE("Settings: q undoes a theme preview", "[tui][settings][theme]") {
 
     REQUIRE(Arxiv::CurrentTheme().primary == before);
 }
+
+// ---------------------------------------------------------------------------
+// Tags dialog (#): there was no way to create or apply tags from the TUI.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Tags dialog", "[tui][tags]") {
+    RealDbApp t;
+    auto handler = t.app->GetEventHandler();
+    auto& core = t.app->GetCore();
+    const auto focused = core.GetCurrentArticles()[0].link;
+    auto type = [&](const std::string& text) {
+        for (char c : text)
+            handler->OnEvent(Event::Character(std::string(1, c)));
+    };
+    auto has_tag = [&](const std::string& tag) {
+        auto tags = core.GetTagsForArticle(focused);
+        return std::find(tags.begin(), tags.end(), tag) != tags.end();
+    };
+
+    handler->OnEvent(Event::Character("#"));
+    REQUIRE_THAT(render(*t.app), Catch::Matchers::ContainsSubstring("Tags"));
+
+    handler->OnEvent(Event::Character("+"));
+    type("dark jets"); // letters such as d, j and k are text here
+    handler->OnEvent(Event::Return);
+
+    SECTION("a typed tag is created and applied") {
+        REQUIRE(has_tag("dark jets"));
+        REQUIRE_THAT(render(*t.app), Catch::Matchers::ContainsSubstring("[x] dark jets"));
+    }
+    SECTION("Enter on a tag toggles it") {
+        handler->OnEvent(Event::Return);
+        REQUIRE_FALSE(has_tag("dark jets"));
+    }
+    SECTION("Delete asks, then removes the tag everywhere") {
+        handler->OnEvent(Event::Delete);
+        REQUIRE(has_tag("dark jets")); // not yet: waiting for confirmation
+        handler->OnEvent(Event::Return);
+        const auto tags = core.GetTags();
+        REQUIRE(std::find(tags.begin(), tags.end(), "dark jets") == tags.end());
+    }
+    SECTION("Esc closes the dialog") {
+        handler->OnEvent(Event::Escape);
+        REQUIRE_THAT(render(*t.app), !Catch::Matchers::ContainsSubstring("[x] dark jets"));
+    }
+}

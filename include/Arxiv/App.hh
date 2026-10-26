@@ -48,6 +48,7 @@ enum class Dialog {
     ConfirmDelete = 15,
     ConfigWarning = 16,
     FollowAuthors = 17,
+    Tags = 18,
 };
 
 class ArxivApp {
@@ -160,6 +161,11 @@ class ArxivApp {
     std::string follow_new_name;     // the name being typed
     std::string follow_pending_name; // awaiting confirmation (no first initial)
     Component follow_dialog;
+    int tag_selected_index = 0;
+    bool tag_adding = false;        // typing a new tag
+    std::string tag_new_name;       // the tag being typed
+    std::string tag_pending_delete; // awaiting confirmation
+    Component tags_dialog;
 
     // Category filter dialog
     int category_selected_index = 0;
@@ -220,6 +226,7 @@ class ArxivApp {
     void SetupImportDialog();
     void SetupKeywordEditorDialog();
     void SetupFollowAuthorsDialog();
+    void SetupTagsDialog();
     void SetupCategoryFilterDialog();
     void SetupSettingsDialog();
     void SetupMainRenderer();
@@ -243,6 +250,7 @@ class ArxivApp {
     bool HandleImportEvent(ftxui::Event event);
     bool HandleKeywordEditorEvent(ftxui::Event event);
     bool HandleFollowAuthorsEvent(ftxui::Event event);
+    bool HandleTagsEvent(ftxui::Event event);
     bool HandleCategoryFilterEvent(ftxui::Event event);
     bool HandleSettingsEvent(ftxui::Event event);
     bool HandleGlobalEvent(ftxui::Event event);

@@ -205,6 +205,16 @@ articles on startup. Articles are exempt from pruning if they are bookmarked,
 rated, or assigned to a project. Set the value to ``0`` (the default) to
 disable pruning entirely.
 
+Tags
+----
+
+Press ``#`` to tag the focused article, or every selected article. The dialog
+lists your tags with ``[x]`` (all targets have it), ``[-]`` (some do) or
+``[ ]``; ``Enter`` or ``Space`` adds the tag to all targets, or removes it
+when they all have it. ``+`` creates a new tag and applies it; ``Del`` deletes
+a tag from every paper after asking. Each tag gets a ``#name`` entry in the
+filter pane.
+
 Undo delete
 -----------
 

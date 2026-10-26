@@ -138,6 +138,14 @@ class AppCore {
     void UnlinkArticleFromTag(const std::string& article_link, const std::string& tag_name);
     std::string GetTagNameForFilter(int filter_index) const;
 
+    /// How many of the target articles (selection, else the focused one)
+    /// carry `tag`.
+    enum class Coverage { None, Some, All };
+    Coverage TagCoverage(const std::string& tag) const;
+    /// Remove `tag` from the targets if all of them carry it, otherwise add
+    /// it to all of them (creating the tag if new).
+    void ToggleTagOnTargets(const std::string& tag);
+
     // Project notes
     void SetProjectNote(const std::string& project_name,
                         const std::string& article_link,

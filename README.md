@@ -201,6 +201,7 @@ article_columns:
 | `c` | Copy the article's BibTeX to the clipboard (saves `<id>.bib` when no clipboard tool is available) |
 | `X` | Write today's articles to `digest-YYYY-MM-DD.md` |
 | `f` | Follow / unfollow authors (the article's authors, your followed list, or a typed name) |
+| `#` | Tags: toggle a tag on the article or selection, add (`+`) or delete (`Del`) tags |
 | `N` | Edit per-article note (within a project) |
 
 ### Selection and bulk actions

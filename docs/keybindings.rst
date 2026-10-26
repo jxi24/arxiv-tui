@@ -77,6 +77,9 @@ Articles
    * - ``f``
      - ``follow_authors``
      - Follow or unfollow authors: the focused article's authors, your followed list, or a typed name (``+``)
+   * - ``#``
+     - ``tag_article``
+     - Tags for the article (or every selected article): toggle a tag, add a new one (``+``), delete one everywhere (``Del``)
 
 Selection
 ---------

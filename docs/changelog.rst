@@ -7,6 +7,12 @@ Changelog
 Unreleased
 ----------
 
+- **Tagging from the TUI** — ``#`` opens a Tags dialog for the focused
+  article or the selection: toggle tags, add new ones, delete one from every
+  paper. Tags existed in the database and filter pane, but nothing in the TUI
+  could create or apply them; a newly created tag now also appears in the
+  filter pane at once.
+
 - **Settings can be cancelled** — ``q`` closes the Settings dialog without
   saving (and undoes a theme preview); ``Esc`` while editing a field now
   abandons that edit instead of keeping it. ``Esc`` still saves and closes.

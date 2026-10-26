@@ -115,6 +115,7 @@ void ArxivApp::SetupUI() {
     SetupImportDialog();
     SetupKeywordEditorDialog();
     SetupFollowAuthorsDialog();
+    SetupTagsDialog();
     SetupCategoryFilterDialog();
     SetupSettingsDialog();
     SetupMainRenderer();

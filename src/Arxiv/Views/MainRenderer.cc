@@ -204,6 +204,8 @@ void ArxivApp::SetupMainRenderer() {
             document = dbox({document, keyword_dialog->Render()});
         } else if (dialog_depth == Dialog::FollowAuthors) {
             document = dbox({document, follow_dialog->Render()});
+        } else if (dialog_depth == Dialog::Tags) {
+            document = dbox({document, tags_dialog->Render()});
         } else if (dialog_depth == Dialog::CategoryFilter) {
             document = dbox({document, category_dialog->Render()});
         } else if (dialog_depth == Dialog::Settings) {
@@ -356,6 +358,8 @@ void ArxivApp::SetupEventHandler() {
             return HandleKeywordEditorEvent(event);
         if (dialog_depth == Dialog::FollowAuthors)
             return HandleFollowAuthorsEvent(event);
+        if (dialog_depth == Dialog::Tags)
+            return HandleTagsEvent(event);
         if (dialog_depth == Dialog::Settings)
             return HandleSettingsEvent(event);
 
@@ -422,6 +426,18 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
         follow_new_name.clear();
         follow_pending_name.clear();
         dialog_depth = Dialog::FollowAuthors;
+        return true;
+    }
+
+    // Open the tags dialog for the selection or the focused article
+    if (key_bindings.matches(event, KeyBindings::Action::TagArticle)) {
+        if (!core.GetCurrentArticles().empty()) {
+            tag_selected_index = 0;
+            tag_adding = false;
+            tag_new_name.clear();
+            tag_pending_delete.clear();
+            dialog_depth = Dialog::Tags;
+        }
         return true;
     }
 

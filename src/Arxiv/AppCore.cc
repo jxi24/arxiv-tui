@@ -546,13 +546,47 @@ std::vector<std::string> AppCore::GetTagsForArticle(const std::string& link) con
 }
 
 void AppCore::LinkArticleToTag(const std::string& link, const std::string& tag) {
-    m_db->LinkArticleToTag(link, tag);
+    const auto tags_before = m_db->GetTags();
+    m_db->LinkArticleToTag(link, tag); // creates the tag if new
+    if (std::find(tags_before.begin(), tags_before.end(), tag) == tags_before.end())
+        RefreshFilterOptions();
     NotifyArticleUpdate();
 }
 
 void AppCore::UnlinkArticleFromTag(const std::string& link, const std::string& tag) {
     m_db->UnlinkArticleFromTag(link, tag);
     NotifyArticleUpdate();
+}
+
+AppCore::Coverage AppCore::TagCoverage(const std::string& tag) const {
+    std::size_t tagged = 0;
+    const auto targets = TargetLinks();
+    for (const auto& link : targets) {
+        const auto tags = m_db->GetTagsForArticle(link);
+        if (std::find(tags.begin(), tags.end(), tag) != tags.end())
+            ++tagged;
+    }
+    if (tagged == 0)
+        return Coverage::None;
+    return tagged == targets.size() ? Coverage::All : Coverage::Some;
+}
+
+void AppCore::ToggleTagOnTargets(const std::string& tag) {
+    const bool remove = TagCoverage(tag) == Coverage::All;
+    const auto tags_before = m_db->GetTags();
+    for (const auto& link : TargetLinks()) {
+        if (remove)
+            m_db->UnlinkArticleFromTag(link, tag);
+        else
+            m_db->LinkArticleToTag(link, tag);
+    }
+    if (std::find(tags_before.begin(), tags_before.end(), tag) == tags_before.end())
+        RefreshFilterOptions(); // a new tag gets its filter entry now
+    // The tag's own view changes when its articles do.
+    if (CurrentTag() == tag)
+        FetchArticles();
+    else
+        NotifyArticleUpdate();
 }
 
 std::string AppCore::GetTagNameForFilter(int index) const {
