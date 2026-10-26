@@ -517,6 +517,15 @@ A brief record of what has been implemented. Consult `README.md` for user-facing
   anchor's second; with `>=` those papers (dozens to hundreds per day) were replayed as
   new the following day.
 
+### Unreleased — TUI polish (claude/next-steps)
+- **Settings cancel** — `q` restores the config snapshot taken on open (`m_settings_on_open`) and the theme; Esc in a field discards the edit.
+- **Tags dialog** — `#` (`TagArticle`): toggle/add/delete tags on the focused article or selection (`AppCore::TagCoverage`, `ToggleTagOnTargets`).
+- **Layout** — pane widths/rows from `reflect`ed boxes (`m_screen_box`, `m_article_box`, `m_filter_box`), not `Terminal::Size()`; status column (`+` selected, `★` bookmarked).
+- **Toasts** — `ShowToast` replaces the blocking success dialog; footer hints (`FooterHints()`) follow the focused pane.
+- **Filter pane** — counts from `DatabaseManager::CountFilters` (cached in `AppCore`, `GetFilterCount`), `Tags`/`Projects` headings (`GetFilterSection`) drawn in the menu transform, so navigation skips them.
+- **Detail pane** — arXiv id, category, star rating, tags, projects.
+- **Mouse** — `HandleMouseEvent`: clicks/wheel on the filter pane (forwarded to the menu) and article list (row from `m_article_box`); ignored while a dialog is open.
+
 ### v1.0 — Settings dialog, category filter, Obsidian export, keyword boosts
 - **Settings dialog** — `S` opens a five-section in-app settings editor (General, Topics, Ranker, Export, Keys); all config values editable without touching YAML; Escape saves to `config.yml` and closes. Implemented in `src/Arxiv/Views/SettingsDialog.cc`.
 - **Category filter** — `t` opens a dialog to toggle individual arXiv categories; only articles matching an active category are shown; articles with no category always pass through; `AppCore::ToggleCategory` / `SetActiveCategories` / `IsCategoryActive`. Implemented in `src/Arxiv/Views/CategoryFilterDialog.cc` and `src/Arxiv/AppCore.cc`.
