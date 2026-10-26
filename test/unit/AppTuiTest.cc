@@ -22,6 +22,7 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <regex>
 #include <sstream>
 #include <unistd.h>
 
@@ -1080,5 +1081,75 @@ TEST_CASE("Footer hints follow the focus", "[tui][footer]") {
         app.GetCore().SetFilterIndex(Arxiv::AppCore::FilterView::All);
         app.GetEventHandler()->OnEvent(Event::Character("l"));
         REQUIRE_THAT(footer_of(app), Catch::Matchers::ContainsSubstring("B bookmark"));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The filter pane says how many papers each view holds and labels the tag and
+// project sections.
+// ---------------------------------------------------------------------------
+
+namespace {
+std::vector<std::string> plain_lines(ArxivApp& app) {
+    std::vector<std::string> out;
+    for (const auto& line : render_lines(app, 160, 30)) {
+        std::string plain;
+        for (std::size_t i = 0; i < line.size(); ++i) {
+            if (line[i] == '\x1b') {
+                while (i < line.size() && line[i] != 'm')
+                    ++i;
+                continue;
+            }
+            plain += line[i];
+        }
+        out.push_back(plain);
+    }
+    return out;
+}
+
+bool any_line_matches(const std::vector<std::string>& lines, const std::string& pattern) {
+    const std::regex re(pattern);
+    return std::any_of(
+        lines.begin(), lines.end(), [&](const auto& l) { return std::regex_search(l, re); });
+}
+} // namespace
+
+TEST_CASE("Filter pane shows counts and section headers", "[tui][filters]") {
+    RealDbApp t; // sample_articles[1] is bookmarked, nothing is read
+    const auto& fx = arxiv_tui::test::fixtures::sample_articles;
+    auto& core = t.app->GetCore();
+    const auto all = std::to_string(fx.size());
+
+    SECTION("Bookmarks has its count") {
+        REQUIRE(any_line_matches(plain_lines(*t.app), "Bookmarks +1 "));
+    }
+    SECTION("Unread has its count") {
+        REQUIRE(any_line_matches(plain_lines(*t.app), "Unread +" + all + " "));
+    }
+    SECTION("counts follow changes") {
+        core.ToggleBookmark(fx[0].link);
+        REQUIRE(any_line_matches(plain_lines(*t.app), "Bookmarks +2 "));
+    }
+    SECTION("no section headers without tags or projects") {
+        const auto lines = plain_lines(*t.app);
+        REQUIRE_FALSE(any_line_matches(lines, "│ *Tags *│"));
+        REQUIRE_FALSE(any_line_matches(lines, "│ *Projects *│"));
+    }
+    SECTION("tags and projects get headers and counts") {
+        core.LinkArticleToTag(fx[0].link, "qcd");
+        core.AddProject("thesis");
+        core.LinkArticleToProject(fx[0].link, "thesis");
+        core.LinkArticleToProject(fx[1].link, "thesis");
+        const auto lines = plain_lines(*t.app);
+        REQUIRE(any_line_matches(lines, "│ *Tags *│"));
+        REQUIRE(any_line_matches(lines, "│ *Projects *│"));
+        REQUIRE(any_line_matches(lines, "#qcd +1 "));
+        REQUIRE(any_line_matches(lines, "thesis +2 "));
+    }
+    SECTION("headers are skipped by navigation") {
+        core.LinkArticleToTag(fx[0].link, "qcd");
+        core.SetFilterIndex(Arxiv::AppCore::FilterView::Unread);
+        t.app->GetEventHandler()->OnEvent(Event::Character("j"));
+        REQUIRE(core.CurrentTag() == "qcd");
     }
 }

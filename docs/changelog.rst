@@ -7,6 +7,11 @@ Changelog
 Unreleased
 ----------
 
+- **Filter pane counts and sections** — Bookmarks, Unread, every tag and
+  every project show how many papers they hold, and tags and projects sit
+  under **Tags** / **Projects** headings instead of running on from the
+  fixed views.
+
 - **Footer hints** — the footer lists the keys that apply where you are: view
   and project keys in the filter pane, article actions in the list, selection
   actions when papers are selected — with your own key bindings.

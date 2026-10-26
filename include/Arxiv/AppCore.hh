@@ -185,6 +185,12 @@ class AppCore {
     void SetFilterIndex(FilterView view);
     int GetFilterIndex() const;
     FilterView GetFilterView() const;
+    // How many papers the filter entry at `index` holds (Bookmarks, Unread,
+    // each tag and project), or nothing for views without a stored count.
+    // Recounted after a change, not while a fetch is writing.
+    std::optional<int> GetFilterCount(int index) const;
+    // "Tags" / "Projects" for the first entry of that section, else "".
+    std::string GetFilterSection(int index) const;
 
     // State management
     void SetArticleIndex(int index);
@@ -402,6 +408,9 @@ class AppCore {
     std::vector<std::string> m_filter_options;
     std::vector<std::string> m_filter_tag_names;
     int m_project_start_index{kFirstTagIndex};
+    // Filter-pane counts, recounted lazily after anything marks them stale.
+    mutable DatabaseManager::FilterCounts m_filter_counts;
+    mutable bool m_filter_counts_stale{true};
     // Actual project names parallel to filter_options[6+] (display may be indented for
     // sub-projects)
     std::vector<std::string> m_filter_project_names;

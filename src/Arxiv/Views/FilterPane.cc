@@ -18,6 +18,23 @@ void ArxivApp::SelectFilter(int index) {
 void ArxivApp::SetupFilterPane() {
     MenuOption option;
     option.on_change = [&] { SelectFilter(filter_menu_index); };
+    // Each entry carries its count on the right; the first tag and the first
+    // project carry a section header above them (headers are not entries,
+    // so navigation never stops on one).
+    option.entries_option.transform = [&](const EntryState& state) {
+        Element label = text((state.active ? "> " : "  ") + state.label);
+        if (state.focused)
+            label |= inverted;
+        if (state.active)
+            label |= bold;
+        Element row = label;
+        if (auto count = core.GetFilterCount(state.index))
+            row = hbox({label, filler(), text(" " + std::to_string(*count) + " ") | dim});
+        const std::string section = core.GetFilterSection(state.index);
+        if (section.empty())
+            return row;
+        return vbox({text(" " + section) | bold | color(TextColors::subtext()), row});
+    };
     filter_menu =
         Menu(&core.GetFilterOptions(), &filter_menu_index, option) | CatchEvent([&](Event event) {
             filter_menu_index = core.GetFilterIndex(); // may have changed elsewhere

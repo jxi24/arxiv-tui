@@ -39,7 +39,10 @@ Filtering
 ---------
 
 The left pane lists all available filters. Switch between them with ``h``/``l``
-to move focus to the filter pane, then ``j``/``k`` to select:
+to move focus to the filter pane, then ``j``/``k`` to select. Bookmarks,
+Unread, each tag and each project show how many papers they hold (the whole
+database, before any category filter), and tags and projects are listed under
+their own **Tags** and **Projects** headings:
 
 .. list-table::
    :header-rows: 1

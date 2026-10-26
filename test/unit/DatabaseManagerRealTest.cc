@@ -1404,3 +1404,31 @@ TEST_CASE("Links to a paper or project that does not exist are ignored, not erro
         REQUIRE_NOTHROW(db.LinkArticleToProject(sample_articles[0].link, "No such project"));
     }
 }
+
+TEST_CASE("CountFilters counts bookmarks, unread papers, tags and projects",
+          "[database][real][filters]") {
+    DatabaseManager db(":memory:");
+    for (const auto& a : sample_articles)
+        db.AddArticle(a);
+    db.ToggleBookmark(sample_articles[0].link, true);
+    db.ToggleBookmark(sample_articles[1].link, true);
+    db.MarkArticleRead(sample_articles[0].link);
+    db.LinkArticleToTag(sample_articles[0].link, "qcd");
+    db.AddTag("empty");
+    db.AddProject("thesis");
+    db.LinkArticleToProject(sample_articles[1].link, "thesis");
+    db.AddProject("idle");
+
+    const auto counts = db.CountFilters();
+
+    SECTION("bookmarks") { REQUIRE(counts.bookmarked == 2); }
+    SECTION("unread") { REQUIRE(counts.unread == static_cast<int>(sample_articles.size()) - 1); }
+    SECTION("tags, including empty ones") {
+        REQUIRE(counts.tags.at("qcd") == 1);
+        REQUIRE(counts.tags.at("empty") == 0);
+    }
+    SECTION("projects, including empty ones") {
+        REQUIRE(counts.projects.at("thesis") == 1);
+        REQUIRE(counts.projects.at("idle") == 0);
+    }
+}

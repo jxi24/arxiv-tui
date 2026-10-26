@@ -213,8 +213,12 @@ int ArxivApp::ScreenHeight() const {
 
 int ArxivApp::FilterPaneWidth() {
     int max_length = 0;
-    for (const auto& option : core.GetFilterOptions()) {
-        max_length = std::max(max_length, static_cast<int>(option.size()));
+    const auto& options = core.GetFilterOptions();
+    for (int i = 0; i < static_cast<int>(options.size()); ++i) {
+        int length = static_cast<int>(options[static_cast<std::size_t>(i)].size());
+        if (auto count = core.GetFilterCount(i))
+            length += static_cast<int>(std::to_string(*count).size()) + 2;
+        max_length = std::max(max_length, length);
     }
     return max_length + padding + arrow_size;
 }

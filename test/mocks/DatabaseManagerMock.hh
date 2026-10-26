@@ -82,6 +82,8 @@ class DatabaseManagerMock : public Arxiv::DatabaseManager {
         // Tag defaults
         m_expectations.push_back(
             NAMED_ALLOW_CALL(*this, GetTags()).RETURN(std::vector<std::string>{}));
+        m_expectations.push_back(
+            NAMED_ALLOW_CALL(*this, CountFilters()).RETURN(Arxiv::DatabaseManager::FilterCounts{}));
         m_expectations.push_back(NAMED_ALLOW_CALL(*this, AddTag(ANY(std::string))));
         m_expectations.push_back(NAMED_ALLOW_CALL(*this, RemoveTag(ANY(std::string))));
         m_expectations.push_back(NAMED_ALLOW_CALL(*this, GetTagsForArticle(ANY(std::string)))
@@ -131,6 +133,7 @@ class DatabaseManagerMock : public Arxiv::DatabaseManager {
     MAKE_MOCK1(AddTag, void(const std::string&), override);
     MAKE_MOCK1(RemoveTag, void(const std::string&), override);
     MAKE_MOCK0(GetTags, std::vector<std::string>(), override);
+    MAKE_MOCK0(CountFilters, Arxiv::DatabaseManager::FilterCounts(), override);
     MAKE_MOCK1(GetTagsForArticle, std::vector<std::string>(const std::string&), override);
     MAKE_MOCK2(LinkArticleToTag, void(const std::string&, const std::string&), override);
     MAKE_MOCK2(UnlinkArticleFromTag, void(const std::string&, const std::string&), override);

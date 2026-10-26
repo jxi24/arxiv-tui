@@ -613,6 +613,7 @@ void AppCore::MarkArticleRead(const std::string& link) {
                            [&](const Article& a) { return a.link == link; });
     if (it != m_current_articles.end())
         it->read = true;
+    m_filter_counts_stale = true;
     RefreshTitles();
 }
 
@@ -652,7 +653,37 @@ void AppCore::RefreshTitles() {
         m_current_titles.push_back(article.title);
 }
 
+std::optional<int> AppCore::GetFilterCount(int index) const {
+    if (m_filter_counts_stale && !m_fetching.load()) {
+        m_filter_counts = m_db->CountFilters();
+        m_filter_counts_stale = false;
+    }
+    auto lookup = [](const std::map<std::string, int>& m, const std::string& name) {
+        auto it = m.find(name);
+        return it == m.end() ? 0 : it->second;
+    };
+    if (index == static_cast<int>(FilterView::Bookmarks))
+        return m_filter_counts.bookmarked;
+    if (index == static_cast<int>(FilterView::Unread))
+        return m_filter_counts.unread;
+    if (index >= m_project_start_index &&
+        index < m_project_start_index + static_cast<int>(m_filter_project_names.size()))
+        return lookup(m_filter_counts.projects, GetProjectNameForFilter(index));
+    if (index >= kFirstTagIndex && index < m_project_start_index)
+        return lookup(m_filter_counts.tags, GetTagNameForFilter(index));
+    return std::nullopt;
+}
+
+std::string AppCore::GetFilterSection(int index) const {
+    if (index == kFirstTagIndex && !m_filter_tag_names.empty())
+        return "Tags";
+    if (index == m_project_start_index && !m_filter_project_names.empty())
+        return "Projects";
+    return "";
+}
+
 void AppCore::RefreshFilterOptions() {
+    m_filter_counts_stale = true;
     // Tags and projects are addressed by position, and adding or removing one
     // shifts everything after it. Remember what is selected by name and
     // re-select it once the list is rebuilt.
@@ -853,6 +884,7 @@ bool AppCore::TryRefetchIfNeeded() {
         for (auto& a : m_current_articles)
             if (std::find(newly_read.begin(), newly_read.end(), a.link) != newly_read.end())
                 a.read = true;
+        m_filter_counts_stale = true;
         RefreshTitles();
         changed = true;
     }
@@ -888,6 +920,7 @@ void AppCore::SetRecommendThreshold(float threshold) {
 }
 
 void AppCore::NotifyArticleUpdate() {
+    m_filter_counts_stale = true;
     if (m_article_update_callback) {
         m_article_update_callback();
     }
