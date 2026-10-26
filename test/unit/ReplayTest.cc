@@ -843,3 +843,36 @@ TEST_CASE("ReplayLog strips control characters from a crash header", "[replay][c
     REQUIRE(log.crash->version == "1[2J");
     REQUIRE(log.crash->time == "t");
 }
+
+TEST_CASE("RunSandboxed leaves a project's exported .bib alone", "[replay][sandbox][regression]") {
+    // Linking a paper to a project appends it to the project's exported .bib
+    // (and looks it up on InspireHEP). The in-memory database copy still
+    // names the user's real file, so a replayed link rewrote it.
+    fs::path dir = fs::temp_directory_path() / ("sandbox_bib_" + std::to_string(::getpid()));
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+    Arxiv::Config cfg;
+    cfg.set_topics({"cs.AI"});
+    cfg.set_db_file((dir / "articles.db").string());
+    const auto& paper = arxiv_tui::test::fixtures::sample_articles[0];
+    const auto bib = dir / "P.bib";
+    {
+        std::ofstream(bib) << "% the user's bibliography\n";
+        Arxiv::DatabaseManager db(cfg.get_db_file());
+        db.AddArticle(paper);
+        db.AddProject("P");
+        db.SetProjectBibPath("P", bib.string());
+    }
+    const auto log = dir / "replay.jsonl";
+    {
+        Arxiv::ReplayRecorder recorder;
+        recorder.RecordLinkArticleToProject(paper.link, "P");
+        std::ofstream(log) << recorder.GetJSONL();
+    }
+
+    const auto result = Arxiv::ReplayPlayer::RunSandboxed(cfg, log.string());
+
+    REQUIRE(result.replayed == 1);
+    REQUIRE(read_file(bib.string()) == "% the user's bibliography\n");
+    fs::remove_all(dir);
+}

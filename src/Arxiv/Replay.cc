@@ -8,6 +8,7 @@
 #include "Arxiv/Config.hh"
 #include "Arxiv/DatabaseManager.hh"
 #include "Arxiv/Fetcher.hh"
+#include "Arxiv/HttpClient.hh"
 
 #include <nlohmann/json.hpp>
 
@@ -600,6 +601,20 @@ CrashInfo LegacyCrashInfo(std::istringstream& in) {
     return info;
 }
 
+// The sandbox's network: every request fails, as if offline. A replay must
+// not reach InspireHEP or arXiv (linking a paper looks up its BibTeX).
+class NoNetwork : public HttpClient {
+  public:
+    HttpResponse Get(const std::string&, std::chrono::milliseconds) override {
+        return {0, "", "network disabled during replay"};
+    }
+    HttpResponse Download(const std::string&,
+                          std::chrono::milliseconds,
+                          const std::function<bool(std::string_view)>&) override {
+        return {0, "", "network disabled during replay"};
+    }
+};
+
 } // namespace
 
 ReplayLog ReplayLog::Parse(const std::string& text) {
@@ -692,11 +707,17 @@ ReplayPlayer::RunSandboxed(const Config& config, const std::string& path, const 
     sandboxed.set_export_dir((scratch / "exports").string());
 
     try {
-        AppCore core(
-            sandboxed,
-            DatabaseManager::InMemoryCopyOf(config.get_db_file()),
-            std::make_unique<Fetcher>(sandboxed.get_topics(), sandboxed.get_download_dir()),
-            AppCore::FetchMode::Offline);
+        auto db = DatabaseManager::InMemoryCopyOf(config.get_db_file());
+        // The copy still names the user's exported project .bib files, which
+        // linking a paper appends to: detach them.
+        for (const auto& project : db->GetProjects())
+            db->SetProjectBibPath(project, "");
+        AppCore core(sandboxed,
+                     std::move(db),
+                     std::make_unique<Fetcher>(sandboxed.get_topics(),
+                                               sandboxed.get_download_dir(),
+                                               std::make_unique<NoNetwork>()),
+                     AppCore::FetchMode::Offline);
         result = Run(log, core, options);
     } catch (const std::exception& e) {
         result.error = e.what();

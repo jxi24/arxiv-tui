@@ -208,7 +208,8 @@ when the report came from a different version than the one replaying it.
 A replay never changes your data: it runs on an in-memory copy of the
 database (the ranker and keywords are copied to a scratch directory), and
 actions that write files or download — exports, imports, PDF downloads,
-saving keywords — are skipped and counted as such. A replay log from
+saving keywords — are skipped and counted as such. A replay makes no
+network requests and never touches a project's exported ``.bib`` file. A replay log from
 someone else's bug report is therefore safe to run.
 
 Database pruning

@@ -17,6 +17,9 @@ Unreleased
   uses moved from ``main`` into the library (``ReplayPlayer::RunSandboxed``)
   where it is tested. Its scratch directory now has an unpredictable,
   private name (``mkdtemp``) instead of ``/tmp/arxiv-tui-replay-<pid>``.
+  A replayed "link paper to project" no longer appends to the project's real
+  exported ``.bib`` file or looks the paper up on InspireHEP: the sandbox has
+  no network and no ``.bib`` paths.
 
 - **GUI uses the TUI's files** — ``arxiv-gui`` read ``.arxiv-tui.yml`` and
   ``articles.db`` from the working directory (and logged there), so it never
