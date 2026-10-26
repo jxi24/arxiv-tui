@@ -149,7 +149,11 @@ void ArxivApp::SetupUI() {
                     task.running ||
                     (!task.label.empty() &&
                      std::chrono::steady_clock::now() - task.finished_at < std::chrono::seconds(9));
-                if (dirty || badge_visible || core.IsFetching())
+                // Keep repainting a moment past a toast's end so it is cleared.
+                const bool toast_visible =
+                    !m_toast.empty() &&
+                    std::chrono::steady_clock::now() < m_toast_until + std::chrono::seconds(1);
+                if (dirty || badge_visible || toast_visible || core.IsFetching())
                     screen.PostEvent(Event::Custom);
             });
             if (m_recorder && (tick++ % 20) == 0) {
@@ -161,6 +165,15 @@ void ArxivApp::SetupUI() {
 }
 
 void ArxivApp::RefreshUI() { screen.PostEvent(Event::Custom); }
+
+void ArxivApp::ShowToast(std::string message) {
+    m_toast = std::move(message);
+    m_toast_until = std::chrono::steady_clock::now() + kToastDuration;
+}
+
+bool ArxivApp::ToastVisible() const {
+    return !m_toast.empty() && std::chrono::steady_clock::now() < m_toast_until;
+}
 
 int ArxivApp::ScreenWidth() const {
     return m_screen_box.x_max > m_screen_box.x_min ? m_screen_box.x_max - m_screen_box.x_min + 1

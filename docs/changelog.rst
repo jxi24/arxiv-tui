@@ -7,6 +7,11 @@ Changelog
 Unreleased
 ----------
 
+- **Success messages no longer block** — "BibTeX copied", "Exported to …"
+  and similar now appear for a few seconds in the bottom-right corner instead
+  of a dialog that had to be dismissed (and swallowed the next key). Errors
+  still open a dialog.
+
 - **Status column** — selection (``+``) and bookmark (``★``) markers have
   their own column in the article list instead of being prefixed to titles,
   where the double-width ``⭐`` pushed titles out of line.

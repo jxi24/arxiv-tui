@@ -995,3 +995,32 @@ TEST_CASE("Article titles line up whatever their markers", "[tui][layout]") {
     REQUIRE(col0 == col1);
     REQUIRE_THAT(row1, !Catch::Matchers::ContainsSubstring("⭐"));
 }
+
+// ---------------------------------------------------------------------------
+// Success messages are toasts: shown, but they do not take the next key.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Success messages do not block the next key", "[tui][toast]") {
+    auto db = std::make_unique<Arxiv::DatabaseManager>(":memory:");
+    for (const auto& a : arxiv_tui::test::fixtures::sample_articles)
+        db->AddArticle(a);
+    auto fetcher = std::make_unique<FetcherMock>();
+    ALLOW_CALL(*fetcher, FetchBibTeX(ANY(std::string))).RETURN(std::string{});
+    Config cfg = make_test_config();
+    cfg.set_clipboard_backend("true"); // a "clipboard" that always succeeds
+    KeyBindings kb{std::vector<Config::KeyMapping>{}};
+    ArxivApp app(std::move(cfg), std::move(db), std::move(fetcher), std::move(kb));
+    app.GetCore().SetFilterIndex(Arxiv::AppCore::FilterView::All);
+    auto handler = app.GetEventHandler();
+    handler->OnEvent(Event::Character("l")); // article list
+
+    handler->OnEvent(Event::Character("c")); // copy BibTeX
+
+    SECTION("the message is shown") {
+        REQUIRE_THAT(render(app), Catch::Matchers::ContainsSubstring("BibTeX copied"));
+    }
+    SECTION("the next key still works") {
+        handler->OnEvent(Event::Character("j"));
+        REQUIRE(app.GetCore().GetArticleIndex() == 1);
+    }
+}

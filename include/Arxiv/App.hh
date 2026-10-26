@@ -42,7 +42,6 @@ enum class Dialog {
     Import = 9,
     KeywordEditor = 10,
     CategoryFilter = 11,
-    Success = 12,
     Settings = 13,
     CitationBibtex = 14,
     ConfirmDelete = 15,
@@ -101,7 +100,13 @@ class ArxivApp {
     std::atomic<bool> refresh_ui_continue = true;
     std::thread refresh_ui;
     std::string err_msg = "";
-    std::string success_msg = "";
+    // A short notice in the bottom-right corner that goes away by itself
+    // and never takes a key (success messages; errors stay dialogs).
+    void ShowToast(std::string message);
+    bool ToastVisible() const;
+    std::string m_toast;
+    std::chrono::steady_clock::time_point m_toast_until{};
+    static constexpr std::chrono::seconds kToastDuration{5};
     std::string bibtex_content;
     static constexpr int arrow_size = 2;
     static constexpr int padding = 4;

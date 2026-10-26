@@ -177,17 +177,6 @@ void ArxivApp::SetupMainRenderer() {
                                   borderStyled(ROUNDED, TextColors::error()) |
                                   bgcolor(TextColors::surface()) | clear_under | center;
             document = dbox({document, warning_dialog});
-        } else if (dialog_depth == Dialog::Success) {
-            auto success_dialog =
-                vbox({
-                    text("OK") | bold | center | color(TextColors::primary()),
-                    separator() | color(TextColors::primary()),
-                    text(success_msg) | color(TextColors::text()),
-                    text("Press Enter or Esc to dismiss") | color(TextColors::subtext()),
-                }) |
-                borderStyled(ROUNDED, TextColors::primary()) | bgcolor(TextColors::surface()) |
-                clear_under | center;
-            document = dbox({document, success_dialog});
         } else if (dialog_depth == Dialog::DateRange) {
             document = dbox({document, date_range_dialog->Render()});
         } else if (dialog_depth == Dialog::Search) {
@@ -232,6 +221,16 @@ void ArxivApp::SetupMainRenderer() {
 
         if (show_help) {
             document = dbox({document, help_dialog->Render()});
+        }
+
+        if (ToastVisible()) {
+            auto toast = text(" ✓ " + m_toast + " ") | color(TextColors::primary()) |
+                         bgcolor(TextColors::surface());
+            document = dbox({document,
+                             vbox({filler(),
+                                   hbox({filler(), toast}),
+                                   text(""), // above the task badge row
+                                   text("")})});
         }
 
         auto task = core.GetBackgroundTaskStatus();
@@ -330,15 +329,6 @@ void ArxivApp::SetupEventHandler() {
             return true;
         }
 
-        // Success dialog dismiss
-        if (dialog_depth == Dialog::Success) {
-            if (event == Event::Return || event == Event::Escape) {
-                dialog_depth = Dialog::None;
-                success_msg = "";
-            }
-            return true;
-        }
-
         // Delete confirmation: y = confirm, anything else = cancel
         if (dialog_depth == Dialog::ConfirmDelete) {
             if (event == Event::Character('y') || event == Event::Character('Y')) {
@@ -391,16 +381,14 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
             std::string backend = Clipboard::DetectBackend(m_config.get_clipboard_backend());
             if (!backend.empty() && Clipboard::Copy(bibtex, backend)) {
                 spdlog::info("bibtex_to_clipboard link={} backend={}", art.link, backend);
-                success_msg = "BibTeX copied to clipboard";
-                dialog_depth = Dialog::Success;
+                ShowToast("BibTeX copied to clipboard");
             } else {
                 std::string path = core.ExportPath(art.file_stem() + ".bib");
                 bool ok = core.ExportArticleBibTeX(art, path);
                 if (m_recorder)
                     m_recorder->RecordExportArticleBibTeX(art.link, path);
                 if (ok) {
-                    success_msg = "BibTeX saved to " + path;
-                    dialog_depth = Dialog::Success;
+                    ShowToast("BibTeX saved to " + path);
                 } else {
                     err_msg = "BibTeX export failed: " + path;
                     dialog_depth = Dialog::Error;
@@ -525,8 +513,7 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
             if (m_recorder)
                 m_recorder->RecordExportDailyDigest(path);
             spdlog::info("export_daily_digest path={}", path);
-            success_msg = "Digest exported to " + path;
-            dialog_depth = Dialog::Success;
+            ShowToast("Digest exported to " + path);
         } else {
             spdlog::warn("export_daily_digest failed path={}", path);
             err_msg = "Digest export failed: " + path;
@@ -596,10 +583,9 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
             spdlog::info("open_in_browser url={}", url);
         }
         if (!links.empty()) {
-            success_msg = links.size() == 1
-                              ? "Opening in browser: " + links[0]
-                              : "Opening " + std::to_string(links.size()) + " articles in browser";
-            dialog_depth = Dialog::Success;
+            ShowToast(links.size() == 1
+                          ? "Opening in browser: " + links[0]
+                          : "Opening " + std::to_string(links.size()) + " articles in browser");
         }
         return true;
     }
