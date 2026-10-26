@@ -7,6 +7,10 @@ Changelog
 Unreleased
 ----------
 
+- **Footer hints** — the footer lists the keys that apply where you are: view
+  and project keys in the filter pane, article actions in the list, selection
+  actions when papers are selected — with your own key bindings.
+
 - **Success messages no longer block** — "BibTeX copied", "Exported to …"
   and similar now appear for a few seconds in the bottom-right corner instead
   of a dialog that had to be dismissed (and swallowed the next key). Errors

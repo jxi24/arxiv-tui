@@ -166,6 +166,32 @@ void ArxivApp::SetupUI() {
 
 void ArxivApp::RefreshUI() { screen.PostEvent(Event::Custom); }
 
+std::vector<std::pair<std::string, std::string>> ArxivApp::FooterHints() const {
+    using A = KeyBindings::Action;
+    std::vector<std::pair<A, const char*>> hints;
+    if (focused_pane == 0) {
+        hints = {{A::MoveRight, "articles"}, {A::CreateProject, "new project"}};
+        if (!core.CurrentProject().empty())
+            hints.push_back({A::DeleteProject, "delete project"});
+    } else if (core.GetSelectionCount() > 0) {
+        hints = {{A::ToggleSelection, "select"},
+                 {A::RateSelection, "rate selection"},
+                 {A::TagArticle, "tags"},
+                 {A::ExportSelectedDigest, "digest"},
+                 {A::ExportToObsidian, "obsidian"}};
+    } else {
+        hints = {{A::ShowDetail, "detail"},
+                 {A::Bookmark, "bookmark"},
+                 {A::RateArticle, "rate"},
+                 {A::TagArticle, "tags"},
+                 {A::ToggleSelection, "select"}};
+    }
+    std::vector<std::pair<std::string, std::string>> out;
+    for (const auto& [action, label] : hints)
+        out.emplace_back(KeyBindings::DisplayKey(key_bindings.get_key(action)), label);
+    return out;
+}
+
 void ArxivApp::ShowToast(std::string message) {
     m_toast = std::move(message);
     m_toast_until = std::chrono::steady_clock::now() + kToastDuration;

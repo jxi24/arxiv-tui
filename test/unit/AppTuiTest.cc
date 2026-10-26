@@ -1024,3 +1024,61 @@ TEST_CASE("Success messages do not block the next key", "[tui][toast]") {
         REQUIRE(app.GetCore().GetArticleIndex() == 1);
     }
 }
+
+// ---------------------------------------------------------------------------
+// The footer suggests the keys that make sense where the focus is.
+// ---------------------------------------------------------------------------
+
+namespace {
+// The footer line without colour codes.
+std::string footer_of(ArxivApp& app) {
+    auto lines = render_lines(app, 160, 30);
+    std::string plain;
+    const std::string& line = lines.back();
+    for (std::size_t i = 0; i < line.size(); ++i) {
+        if (line[i] == '\x1b') {
+            while (i < line.size() && line[i] != 'm')
+                ++i;
+            continue;
+        }
+        plain += line[i];
+    }
+    return plain;
+}
+} // namespace
+
+TEST_CASE("Footer hints follow the focus", "[tui][footer]") {
+    RealDbApp t;
+    auto handler = t.app->GetEventHandler();
+
+    SECTION("filter pane: views and projects") {
+        const auto footer = footer_of(*t.app);
+        REQUIRE_THAT(footer, Catch::Matchers::ContainsSubstring("new project"));
+        REQUIRE_THAT(footer, !Catch::Matchers::ContainsSubstring("bookmark"));
+    }
+    SECTION("article list: article actions") {
+        handler->OnEvent(Event::Character("l"));
+        const auto footer = footer_of(*t.app);
+        REQUIRE_THAT(footer, Catch::Matchers::ContainsSubstring("bookmark"));
+        REQUIRE_THAT(footer, Catch::Matchers::ContainsSubstring("tags"));
+    }
+    SECTION("with a selection: selection actions") {
+        handler->OnEvent(Event::Character("l"));
+        handler->OnEvent(Event::Character(" "));
+        REQUIRE_THAT(footer_of(*t.app), Catch::Matchers::ContainsSubstring("rate selection"));
+    }
+    SECTION("rebound keys are shown as bound") {
+        Config cfg = make_test_config();
+        cfg.set_key_mappings({{"bookmark", "B"}});
+        auto db = std::make_unique<Arxiv::DatabaseManager>(":memory:");
+        for (const auto& a : arxiv_tui::test::fixtures::sample_articles)
+            db->AddArticle(a);
+        ArxivApp app(cfg,
+                     std::move(db),
+                     std::make_unique<FetcherMock>(),
+                     KeyBindings{cfg.get_key_mappings()});
+        app.GetCore().SetFilterIndex(Arxiv::AppCore::FilterView::All);
+        app.GetEventHandler()->OnEvent(Event::Character("l"));
+        REQUIRE_THAT(footer_of(app), Catch::Matchers::ContainsSubstring("B bookmark"));
+    }
+}

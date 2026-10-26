@@ -115,16 +115,25 @@ void ArxivApp::SetupMainRenderer() {
             topics_str += topics[i];
         }
 
-        Elements footer_els = {
-            text(" "),
-            text(quit_key) | bold | color(TextColors::primary()),
-            text(" quit  ") | color(TextColors::subtext()),
-            text(help_key) | bold | color(TextColors::primary()),
-            text(" keybindings ") | color(TextColors::subtext()),
-            text("│") | color(TextColors::border()),
-            text(" filter: ") | color(TextColors::subtext()),
-            text(filter_label) | bold | color(TextColors::primary()),
-        };
+        Elements footer_els = {text(" "),
+                               text(quit_key) | bold | color(TextColors::primary()),
+                               text(" quit  ") | color(TextColors::subtext()),
+                               text(help_key) | bold | color(TextColors::primary()),
+                               text(" keybindings ") | color(TextColors::subtext()),
+                               text("│") | color(TextColors::border()),
+                               text(" ")};
+        std::size_t hints_width = 1;
+        for (const auto& [key, label] : FooterHints()) {
+            footer_els.push_back(text(key) | bold | color(TextColors::primary()));
+            footer_els.push_back(text(" " + label + "  ") | color(TextColors::subtext()));
+            hints_width += key.size() + label.size() + 3;
+        }
+        footer_els.insert(footer_els.end(),
+                          {
+                              text("│") | color(TextColors::border()),
+                              text(" filter: ") | color(TextColors::subtext()),
+                              text(filter_label) | bold | color(TextColors::primary()),
+                          });
         if (!filter_detail.empty()) {
             footer_els.push_back(text("  ") | color(TextColors::subtext()));
             footer_els.push_back(text(filter_detail) | color(TextColors::text()));
@@ -136,7 +145,7 @@ void ArxivApp::SetupMainRenderer() {
         // than let it run into the position counter on a narrow terminal.
         const std::size_t left_width = quit_key.size() + help_key.size() + filter_label.size() +
                                        (filter_detail.empty() ? 0 : filter_detail.size() + 2) +
-                                       position.size() + 34;
+                                       position.size() + hints_width + 34;
         if (left_width + topics_str.size() + 2 <= static_cast<std::size_t>(ScreenWidth()))
             footer_els.push_back(text(topics_str) | color(TextColors::subtext()));
         footer_els.push_back(text(" "));

@@ -103,6 +103,8 @@ class ArxivApp {
     // A short notice in the bottom-right corner that goes away by itself
     // and never takes a key (success messages; errors stay dialogs).
     void ShowToast(std::string message);
+    // (key, what it does) pairs for the footer, for where the focus is.
+    std::vector<std::pair<std::string, std::string>> FooterHints() const;
     bool ToastVisible() const;
     std::string m_toast;
     std::chrono::steady_clock::time_point m_toast_until{};
