@@ -105,7 +105,6 @@ class ArxivApp {
     std::string bibtex_content;
     static constexpr int arrow_size = 2;
     static constexpr int padding = 4;
-    static constexpr int border_size = 3;
     static constexpr float scroll_speed = 4.0f; // Scroll speed in characters per second
 
     // Date range dialog
@@ -179,7 +178,15 @@ class ArxivApp {
     Component settings_dialog;
 
     // Article pane scrolling
-    int visible_rows = 0;      // Number of rows visible in the article pane
+    int visible_rows = 0; // Number of rows visible in the article pane
+    // Where the article pane and the whole screen were drawn last frame
+    // (FTXUI reflect): layout follows the real drawing area, which is not
+    // Terminal::Size() when rendering to a smaller or test screen.
+    ftxui::Box m_article_box;
+    ftxui::Box m_screen_box;
+    // Size of the drawing area last frame (the terminal before the first).
+    int ScreenWidth() const;
+    int ScreenHeight() const;
     int top_article_index = 0; // Index of the article at the top of the visible area
 
     // Components

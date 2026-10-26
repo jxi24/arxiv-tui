@@ -162,6 +162,16 @@ void ArxivApp::SetupUI() {
 
 void ArxivApp::RefreshUI() { screen.PostEvent(Event::Custom); }
 
+int ArxivApp::ScreenWidth() const {
+    return m_screen_box.x_max > m_screen_box.x_min ? m_screen_box.x_max - m_screen_box.x_min + 1
+                                                   : Terminal::Size().dimx;
+}
+
+int ArxivApp::ScreenHeight() const {
+    return m_screen_box.y_max > m_screen_box.y_min ? m_screen_box.y_max - m_screen_box.y_min + 1
+                                                   : Terminal::Size().dimy;
+}
+
 int ArxivApp::FilterPaneWidth() {
     int max_length = 0;
     for (const auto& option : core.GetFilterOptions()) {

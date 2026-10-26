@@ -18,19 +18,19 @@ using namespace Arxiv;
 
 void ArxivApp::SetupMainRenderer() {
     main_renderer = Renderer(main_container, [&] {
-        int filter_width = FilterPaneWidth();
-        int remaining_width = Terminal::Size().dimx - filter_width - border_size;
-
-        int articles_width = show_detail ? remaining_width / 2 : remaining_width;
-        int detail_width = show_detail ? remaining_width / 2 : 0;
-
+        // The filter pane is as wide as its longest entry; the article and
+        // detail panes split the rest of the area this is drawn in (measured
+        // last frame). Explicit widths, not flex: the article rows are sized
+        // from the pane, so a flexible pane would grow a little every frame.
+        const int filter_width = FilterPaneWidth();
+        const int remaining = std::max(2, ScreenWidth() - filter_width);
+        const int articles_width = show_detail ? remaining / 2 : remaining;
         std::vector<Element> panes = {
             filter_pane->Render() | size(WIDTH, EQUAL, filter_width),
             article_pane->Render() | size(WIDTH, EQUAL, articles_width),
         };
-        if (show_detail) {
-            panes.push_back(detail_view->Render() | size(WIDTH, EQUAL, detail_width));
-        }
+        if (show_detail)
+            panes.push_back(detail_view->Render() | size(WIDTH, EQUAL, remaining - articles_width));
         Element body = hbox(std::move(panes)) | bgcolor(TextColors::base());
 
         auto fmt_key = [](std::string k) { return k == " " ? std::string("<space>") : k; };
@@ -137,14 +137,14 @@ void ArxivApp::SetupMainRenderer() {
         const std::size_t left_width = quit_key.size() + help_key.size() + filter_label.size() +
                                        (filter_detail.empty() ? 0 : filter_detail.size() + 2) +
                                        position.size() + 34;
-        if (left_width + topics_str.size() + 2 <= static_cast<std::size_t>(Terminal::Size().dimx))
+        if (left_width + topics_str.size() + 2 <= static_cast<std::size_t>(ScreenWidth()))
             footer_els.push_back(text(topics_str) | color(TextColors::subtext()));
         footer_els.push_back(text(" "));
 
         auto footer =
             hbox(std::move(footer_els)) | bgcolor(TextColors::surface()) | size(HEIGHT, EQUAL, 1);
 
-        Element document = vbox({body | flex, footer});
+        Element document = vbox({body | flex, footer}) | reflect(m_screen_box);
 
         if (dialog_depth == Dialog::NewProject) {
             document = dbox({document, RenderNewProjectDialog()});

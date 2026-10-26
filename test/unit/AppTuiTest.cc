@@ -22,6 +22,7 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <unistd.h>
 
 #include "fixtures/TimeZone.hh"
@@ -871,4 +872,87 @@ TEST_CASE("Tags dialog", "[tui][tags]") {
         handler->OnEvent(Event::Escape);
         REQUIRE_THAT(render(*t.app), !Catch::Matchers::ContainsSubstring("[x] dark jets"));
     }
+}
+
+// ---------------------------------------------------------------------------
+// The layout follows the area it is drawn in, not Terminal::Size() (which is
+// the 80x24 fallback when there is no terminal, e.g. in these tests).
+// ---------------------------------------------------------------------------
+
+namespace {
+std::vector<std::string> render_lines(ArxivApp& app, int w, int h) {
+    auto screen = Screen::Create(Dimension::Fixed(w), Dimension::Fixed(h));
+    for (int pass = 0; pass < 2; ++pass) // the second frame uses measured sizes
+        ftxui::Render(screen, app.GetEventHandler()->Render());
+    std::vector<std::string> lines;
+    std::istringstream in(screen.ToString());
+    std::string line;
+    while (std::getline(in, line))
+        lines.push_back(line);
+    return lines;
+}
+
+std::unique_ptr<ArxivApp> app_with_many_articles(int n) {
+    auto db = std::make_unique<Arxiv::DatabaseManager>(":memory:");
+    auto base = arxiv_tui::test::fixtures::sample_articles[0];
+    for (int i = 0; i < n; ++i) {
+        auto a = base;
+        a.link = "https://arxiv.org/abs/2607." + std::to_string(10000 + i);
+        a.title = "Paper number " + std::to_string(i);
+        db->AddArticle(a);
+    }
+    KeyBindings kb{std::vector<Config::KeyMapping>{}};
+    auto app = std::make_unique<ArxivApp>(
+        make_test_config(), std::move(db), std::make_unique<FetcherMock>(), std::move(kb));
+    app->GetCore().SetFilterIndex(Arxiv::AppCore::FilterView::All);
+    return app;
+}
+} // namespace
+
+TEST_CASE("Layout fills a wide screen", "[tui][layout][regression]") {
+    auto app = app_with_many_articles(5);
+    auto lines = render_lines(*app, 160, 30);
+    // The article pane's top-right corner sits at the right edge.
+    REQUIRE(lines[0].rfind("╮") != std::string::npos);
+    const std::string& top = lines[0];
+    // Count display columns up to the last corner (box-drawing chars are 3 bytes).
+    std::size_t cols = 0;
+    for (std::size_t i = 0; i < top.rfind("╮"); ++i)
+        if ((static_cast<unsigned char>(top[i]) & 0xC0) != 0x80)
+            ++cols;
+    REQUIRE(cols >= 150);
+}
+
+TEST_CASE("Layout shows as many rows as the screen is tall", "[tui][layout][regression]") {
+    auto app = app_with_many_articles(60);
+    auto lines = render_lines(*app, 120, 50);
+    int rows = 0;
+    for (const auto& line : lines)
+        if (line.find("Paper number") != std::string::npos)
+            ++rows;
+    REQUIRE(rows >= 40); // 24-line fallback gave 19
+}
+
+TEST_CASE("Layout splits the width evenly with the detail pane open", "[tui][layout]") {
+    auto app = app_with_many_articles(5);
+    app->GetEventHandler()->OnEvent(Event::Character("a")); // open the detail pane
+    std::vector<std::string> lines;
+    for (int frame = 0; frame < 5; ++frame) // stable over several frames
+        lines = render_lines(*app, 160, 30);
+    // Corners of the three panes on the top line, in display columns.
+    std::vector<std::size_t> corners;
+    std::size_t col = 0;
+    const std::string& top = lines[0];
+    for (std::size_t i = 0; i < top.size(); ++i) {
+        if ((static_cast<unsigned char>(top[i]) & 0xC0) == 0x80)
+            continue;
+        if (top.compare(i, 3, "╮") == 0)
+            corners.push_back(col);
+        ++col;
+    }
+    REQUIRE(corners.size() == 3);
+    const auto articles = corners[1] - corners[0];
+    const auto detail = corners[2] - corners[1];
+    REQUIRE(articles + 2 >= detail);
+    REQUIRE(detail + 2 >= articles);
 }

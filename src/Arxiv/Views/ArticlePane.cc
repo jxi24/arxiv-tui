@@ -162,10 +162,17 @@ void ArxivApp::SetupArticlePane() {
                    borderStyled(ROUNDED, TextColors::border());
         }
 
-        int filter_width = FilterPaneWidth();
-        int remaining_width = Terminal::Size().dimx - filter_width - border_size;
-        int articles_width = show_detail ? remaining_width / 2 : remaining_width;
-        visible_rows = Terminal::Size().dimy - 5;
+        // The pane's own size last frame; before the first frame, estimate
+        // it from the screen.
+        int articles_width = m_article_box.x_max - m_article_box.x_min + 1;
+        int pane_height = m_article_box.y_max - m_article_box.y_min + 1;
+        if (articles_width <= 1 || pane_height <= 1) {
+            const int remaining = ScreenWidth() - FilterPaneWidth();
+            articles_width = show_detail ? remaining / 2 : remaining;
+            pane_height = ScreenHeight() - 1; // footer
+        }
+        // Border (2), header, separator, column header, separator.
+        visible_rows = std::max(1, pane_height - 6);
 
         UpdateVisibleRange();
 
@@ -341,6 +348,6 @@ void ArxivApp::SetupArticlePane() {
                      col_header,
                      separator() | color(TextColors::border()),
                      vbox(menu_items) | vscroll_indicator | frame}) |
-               borderStyled(ROUNDED, TextColors::border());
+               borderStyled(ROUNDED, TextColors::border()) | reflect(m_article_box);
     });
 }

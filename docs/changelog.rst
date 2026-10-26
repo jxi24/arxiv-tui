@@ -7,6 +7,11 @@ Changelog
 Unreleased
 ----------
 
+- **Layout follows the window** — pane widths and the number of article rows
+  come from the area the TUI is drawn in rather than a separate terminal-size
+  query, and the article list no longer lays out two rows more than fit (the
+  cursor could sit on a hidden row at the bottom).
+
 - **Bulk project assignment updates the project's BibTeX file** — assigning a
   selection to a project skipped the auto-update of an exported ``.bib`` that
   single assignment does, and single assignment only found papers shown in
