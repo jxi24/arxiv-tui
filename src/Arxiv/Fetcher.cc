@@ -5,6 +5,7 @@
 #include "Arxiv/Fetcher.hh"
 
 #include "Arxiv/Article.hh"
+#include "Arxiv/HttpClient.hh"
 #include "Arxiv/Version.hh"
 
 #include <nlohmann/json.hpp>
@@ -27,7 +28,6 @@
 #include <utility>
 #include <vector>
 
-#include "cpr/cpr.h"
 #include "fmt/ranges.h"
 #include "pugixml.hpp"
 #include "spdlog/spdlog.h"
@@ -74,21 +74,13 @@ bool parse_ymd_prefix(const std::string& date, std::tm& out) {
     return true;
 }
 
-// Every request identifies the client (Fetcher::UserAgent) and has a
-// timeout. (cpr's variadic Get/Download with three options trips
-// -Wduplicated-branches inside cpr's own header, so set them on a Session.)
-cpr::Session session_for(const std::string& url, std::chrono::milliseconds timeout) {
-    cpr::Session session;
-    session.SetUrl(cpr::Url{url});
-    session.SetUserAgent(cpr::UserAgent{Fetcher::UserAgent()});
-    session.SetTimeout(cpr::Timeout{timeout});
-    return session;
-}
-
 } // namespace
 
-Fetcher::Fetcher(const std::vector<std::string>& topics, const std::string& _base_path)
-    : m_topics{topics} {
+Fetcher::Fetcher(const std::vector<std::string>& topics,
+                 const std::string& _base_path,
+                 std::unique_ptr<HttpClient> http)
+    : m_topics{topics}
+    , m_http(http ? std::move(http) : MakeCprHttpClient()) {
     base_path = _base_path;
     // Without a download directory, DownloadPaper needs absolute paths.
     if (base_path.empty())
@@ -204,6 +196,8 @@ void Arxiv::RequestPacer::Wait() {
     m_last = m_now();
 }
 
+Fetcher::~Fetcher() = default;
+
 std::string Fetcher::UserAgent() {
     return fmt::format("arxiv-tui/{} (+https://github.com/jxi24/arxiv-tui)", kVersion);
 }
@@ -217,13 +211,14 @@ bool Fetcher::DownloadPaper(const std::string& paper_id, const std::string& outp
         auto url = ConstructPaperUrl(paper_id, "pdf");
         // Stream to disk instead of holding the whole PDF in memory.
         PdfWriter out(base_path / output_path);
-        auto response = session_for(url, std::chrono::milliseconds(120000))
-                            .Download(cpr::WriteCallback{
-                                [&out](std::string data, intptr_t) { return out.Write(data); }});
+        auto response =
+            m_http->Download(url,
+                             std::chrono::milliseconds(120000),
+                             [&out](std::string_view chunk) { return out.Write(chunk); });
 
-        if (response.status_code != 200) {
+        if (response.status != 200) {
             spdlog::error(
-                "[Fetcher]: Failed to download paper {}: HTTP {}", paper_id, response.status_code);
+                "[Fetcher]: Failed to download paper {}: HTTP {}", paper_id, response.status);
             return false;
         }
         if (!out.Commit()) {
@@ -290,10 +285,10 @@ std::optional<std::string> Fetcher::FetchFeeds() {
     try {
         auto url = fmt::format("https://rss.arxiv.org/rss/{}", fmt::join(m_topics, "+"));
 
-        auto response = session_for(url, std::chrono::milliseconds(30000)).Get();
+        auto response = m_http->Get(url, std::chrono::milliseconds(30000));
 
-        if (response.status_code == 200) {
-            return response.text;
+        if (response.status == 200) {
+            return response.body;
         } else {
             spdlog::warn("[Fetcher]: Failed to fetch RSS");
             return std::nullopt;
@@ -785,17 +780,17 @@ std::vector<Article> Fetcher::FetchSince(const std::string& utc_date) {
         spdlog::info("[Fetcher]: FetchSince GET {}", url);
         // A failure part-way through paging must not look like a complete
         // (shorter) result: the caller would mark the missed days as fetched.
-        cpr::Response resp;
+        HttpResponse resp;
         try {
-            m_api_pacer.Wait();
-            resp = session_for(url, std::chrono::milliseconds(15000)).Get();
+            m_api_pacer->Wait();
+            resp = m_http->Get(url, std::chrono::milliseconds(15000));
         } catch (const std::exception& e) {
             throw FetchError(std::string("arXiv API network error: ") + e.what());
         }
-        if (resp.status_code != 200)
-            throw FetchError("arXiv API returned HTTP " + std::to_string(resp.status_code));
+        if (resp.status != 200)
+            throw FetchError("arXiv API returned HTTP " + std::to_string(resp.status));
 
-        auto batch = ParseAtomFeed(resp.text);
+        auto batch = ParseAtomFeed(resp.body);
         if (batch.empty())
             break;
         all_articles.insert(all_articles.end(), batch.begin(), batch.end());
@@ -941,10 +936,10 @@ std::string Fetcher::FetchBibTeX(const std::string& paper_id) {
         return {};
     }
     try {
-        auto search_resp = session_for(*inspire_search, std::chrono::milliseconds(5000)).Get();
+        auto search_resp = m_http->Get(*inspire_search, std::chrono::milliseconds(5000));
 
-        if (search_resp.status_code == 200) {
-            auto js = nlohmann::json::parse(search_resp.text);
+        if (search_resp.status == 200) {
+            auto js = nlohmann::json::parse(search_resp.body);
             auto& hits = js.at("hits").at("hits");
             if (!hits.empty()) {
                 // The hit object carries a links.bibtex URL
@@ -957,10 +952,10 @@ std::string Fetcher::FetchBibTeX(const std::string& paper_id) {
                     return {};
                 }
 
-                auto bib_resp = session_for(bibtex_url, std::chrono::milliseconds(5000)).Get();
-                if (bib_resp.status_code == 200 && !bib_resp.text.empty()) {
+                auto bib_resp = m_http->Get(bibtex_url, std::chrono::milliseconds(5000));
+                if (bib_resp.status == 200 && !bib_resp.body.empty()) {
                     spdlog::info("[Fetcher]: Got InspireHEP BibTeX for {}", paper_id);
-                    return bib_resp.text;
+                    return bib_resp.body;
                 }
             }
         }

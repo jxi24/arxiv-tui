@@ -16,6 +16,7 @@ add_library(libarxiv-tui
     RankingService.cc
     ProjectService.cc
     Fetcher.cc
+    HttpClient.cc
     DatabaseManager.cc
     Config.cc
     KeyBindings.cc
