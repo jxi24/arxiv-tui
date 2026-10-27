@@ -10,12 +10,15 @@
 #include <algorithm>
 #include <chrono>
 #include <ctime>
+#include <fcntl.h>
+#include <filesystem>
 #include <mutex>
 #include <sqlite3.h>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <unistd.h>
 
 #include "spdlog/spdlog.h"
 
@@ -117,6 +120,14 @@ class Stmt {
 
 DatabaseManager::DatabaseManager(const std::string& path) {
     spdlog::info("[Database]: Opening database at {}", path);
+    // A new database holds notes and ratings: create it mode 0600 (SQLite
+    // gives its -wal and -shm files the same mode).
+    if (!path.empty() && path != ":memory:" && path.rfind("file:", 0) != 0 &&
+        !std::filesystem::exists(path)) {
+        const int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+        if (fd >= 0)
+            ::close(fd);
+    }
     if (sqlite3_open(path.c_str(), &db) != SQLITE_OK) {
         std::string error = db ? sqlite3_errmsg(db) : "out of memory";
         sqlite3_close(db); // a handle is returned even on failure

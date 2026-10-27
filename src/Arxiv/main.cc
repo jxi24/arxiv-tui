@@ -8,6 +8,7 @@
 #include "Arxiv/CrashHandler.hh"
 #include "Arxiv/DatabaseManager.hh"
 #include "Arxiv/Fetcher.hh"
+#include "Arxiv/Logging.hh"
 #include "Arxiv/Paths.hh"
 #include "Arxiv/Replay.hh"
 #include "Arxiv/Version.hh"
@@ -20,7 +21,6 @@
 #include <unistd.h>
 #include <utility>
 
-#include "spdlog/sinks/rotating_file_sink.h"
 #include "spdlog/spdlog.h"
 
 // Timestamp + PID so a replay file and log from the same run can be matched
@@ -38,12 +38,7 @@ static std::string MakeSessionId() {
 // Rotating logger: up to 5 MB per file, keep 3 rotated files.
 // Default level is debug; --trace enables trace-level output.
 void CreateLogger(bool trace_mode, const std::filesystem::path& log_path) {
-    constexpr std::size_t kMaxBytes = 5 * 1024 * 1024;
-    constexpr std::size_t kMaxFiles = 3;
-    auto logger = spdlog::rotating_logger_mt("arxiv", log_path.string(), kMaxBytes, kMaxFiles);
-    logger->set_level(trace_mode ? spdlog::level::trace : spdlog::level::debug);
-    logger->flush_on(spdlog::level::warn);
-    spdlog::set_default_logger(logger);
+    spdlog::set_default_logger(Arxiv::MakeFileLogger("arxiv", log_path, trace_mode));
     spdlog::flush_every(std::chrono::seconds(5));
     spdlog::set_pattern("[%Y-%m-%d %H:%M:%S] [%^%l%$] %v");
 }
@@ -71,9 +66,7 @@ int main(int argc, char* argv[]) {
 
     // Resolve all runtime paths from XDG / install prefix before anything else.
     const Arxiv::Paths paths = Arxiv::Paths::Resolve();
-    std::filesystem::create_directories(paths.config_file.parent_path());
-    std::filesystem::create_directories(paths.data_dir);
-    std::filesystem::create_directories(paths.state_dir);
+    paths.CreateDirectories();
 
     CreateLogger(trace_mode, paths.state_dir / "arxiv_tui.log");
 

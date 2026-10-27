@@ -101,7 +101,7 @@ class ReplayRecorder {
 
   private:
     std::deque<std::string> m_entries; // newest kMaxEntries
-    std::ofstream m_file;
+    int m_fd = -1;                     // the replay file: mode 0600, close-on-exec
     std::string m_file_path;
     mutable std::mutex m_mutex;
 

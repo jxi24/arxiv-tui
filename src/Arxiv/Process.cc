@@ -40,6 +40,10 @@ pid_t spawn(const std::vector<std::string>& argv, int stdin_fd = -1) {
         posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0);
     posix_spawn_file_actions_addopen(&actions, STDOUT_FILENO, "/dev/null", O_WRONLY, 0);
     posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0);
+#if defined(__GLIBC__) && (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 34))
+    // Nothing else of ours (log, replay log, database) reaches the program.
+    posix_spawn_file_actions_addclosefrom_np(&actions, STDERR_FILENO + 1);
+#endif
 
     pid_t pid = -1;
     int rc = posix_spawnp(&pid, args[0], &actions, nullptr, args.data(), environ);

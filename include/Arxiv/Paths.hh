@@ -37,6 +37,10 @@ struct Paths {
     // data_dir; download_dir, export_dir and keywords_file only when
     // config.yml leaves them unset. Shared by the TUI and the GUI.
     void ApplyTo(Config& config) const;
+
+    // Create the config, data and state directories (data and state, which
+    // hold notes, ratings, searches and logs, are created mode 0700).
+    void CreateDirectories() const;
 };
 
 } // namespace Arxiv

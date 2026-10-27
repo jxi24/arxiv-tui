@@ -13,7 +13,9 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cerrno>
 #include <chrono>
+#include <fcntl.h>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -229,17 +231,19 @@ const std::string& rotate_if_large(const std::string& path, std::uintmax_t max_b
 } // namespace
 
 ReplayRecorder::ReplayRecorder(const std::string& file_path)
-    : m_file(rotate_if_large(file_path, kMaxFileBytes), std::ios::out | std::ios::app) {
+    // The log holds searches, notes, keywords and paths: only the user may
+    // read it (0600), and programs we start must not inherit it.
+    : m_fd(::open(rotate_if_large(file_path, kMaxFileBytes).c_str(),
+                  O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC,
+                  0600)) {
     // If the file cannot be opened the recorder stays in-memory only.
-    if (m_file.is_open())
+    if (m_fd >= 0)
         m_file_path = file_path;
 }
 
 ReplayRecorder::~ReplayRecorder() {
-    if (m_file.is_open()) {
-        m_file.flush();
-        m_file.close();
-    }
+    if (m_fd >= 0)
+        ::close(m_fd);
 }
 
 long long ReplayRecorder::NowMs() {
@@ -252,9 +256,19 @@ void ReplayRecorder::Record(const std::string& json_line) {
     m_entries.push_back(json_line);
     if (m_entries.size() > static_cast<std::size_t>(kMaxEntries))
         m_entries.pop_front();
-    if (m_file.is_open()) {
-        m_file << json_line << '\n';
-        m_file.flush();
+    if (m_fd >= 0) {
+        const std::string line = json_line + '\n';
+        const char* data = line.data();
+        std::size_t left = line.size();
+        while (left > 0) {
+            const ssize_t n = ::write(m_fd, data, left);
+            if (n < 0 && errno == EINTR)
+                continue;
+            if (n <= 0)
+                break; // keep the in-memory copy; the file is best effort
+            data += n;
+            left -= static_cast<std::size_t>(n);
+        }
     }
 }
 

@@ -7,6 +7,15 @@ Changelog
 Unreleased
 ----------
 
+- **Private files** — the replay log (searches, notes, keywords, paths), the
+  log file and a new database (notes, ratings) are created readable by you
+  only (mode 0600), and new data and state directories mode 0700; before
+  they followed the umask (usually world-readable). Programs arxiv-tui starts
+  (browser, ``tar``, the clipboard tool) no longer inherit its open files.
+  Existing files and directories keep their permissions:
+  ``chmod 600 ~/.local/share/arxiv-tui/articles.db ~/.local/state/arxiv-tui/*``
+  tightens them.
+
 - **The cursor stays where you were** — every reload of the list (auto
   refresh, a retrain finishing, tagging, deleting, undo) sent the cursor back
   to the first paper. It now stays on the same paper, or on the same row if

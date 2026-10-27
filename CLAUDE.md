@@ -165,7 +165,9 @@ The single fallback BibTeX builder (`BibTeX::Build`) used by the clipboard and f
 Followed-author matching: whole last names (particles included), first initial (and first name when both spelled out), middle initials only when both give one; last name alone matches that last name.
 
 **`Process`** (`Process.hh/cc`)
-Starts external programs (`xdg-open`, `tar`, the clipboard backend) via `posix_spawnp` with an argument vector and stdio on `/dev/null` (`RunWithInput` feeds stdin through a socket, so no SIGPIPE). Never build shell command strings from article data or config.
+Starts external programs (`xdg-open`, `tar`, the clipboard backend) via `posix_spawnp` with an argument vector and stdio on `/dev/null` (`RunWithInput` feeds stdin through a socket, so no SIGPIPE); every descriptor above stderr is closed in the child.
+
+**Private files**: the replay log, the log (`MakeFileLogger`, `Logging.hh`) and a new database are created 0600 and close-on-exec; `Paths::CreateDirectories` makes new data/state dirs 0700. Never build shell command strings from article data or config.
 
 **Replay** (`Replay.hh/cc`, `--replay`)
 Logs and crash reports take one path: `ReplayLog::Parse` turns either into entries (a report also gives `CrashInfo` from its first-line JSON header, control characters stripped; pre-header reports are still read), `ReplayPlayer::Run` is the only replay loop, and `ReplayPlayer::RunSandboxed` (what `--replay` calls) replays on `DatabaseManager::InMemoryCopyOf` with the ranker/keywords copied to a `mkdtemp` scratch dir. File/download actions are skipped unless `Options::file_actions`. The crash handler (`CrashHandler.cc`) is async-signal-safe: it copies the tail of the replay *file*, never touches the recorder's lock.

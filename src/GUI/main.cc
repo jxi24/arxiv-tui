@@ -6,6 +6,7 @@
 #include "Arxiv/Config.hh"
 #include "Arxiv/DatabaseManager.hh"
 #include "Arxiv/Fetcher.hh"
+#include "Arxiv/Logging.hh"
 #include "Arxiv/Paths.hh"
 
 #include <GLFW/glfw3.h>
@@ -19,7 +20,6 @@
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
-#include "spdlog/sinks/basic_file_sink.h"
 #include "spdlog/spdlog.h"
 
 // ---------------------------------------------------------------------------
@@ -332,14 +332,11 @@ int main(int /*argc*/, char** /*argv*/) {
     // Same files as the TUI: config.yml, database, ranker and keywords from
     // the XDG / install-prefix layout, never the working directory.
     const Arxiv::Paths paths = Arxiv::Paths::Resolve();
-    std::filesystem::create_directories(paths.config_file.parent_path());
-    std::filesystem::create_directories(paths.data_dir);
-    std::filesystem::create_directories(paths.state_dir);
+    paths.CreateDirectories();
 
     try {
-        auto logger =
-            spdlog::basic_logger_mt("arxiv_gui", (paths.state_dir / "arxiv_gui.log").string());
-        spdlog::set_default_logger(logger);
+        spdlog::set_default_logger(
+            Arxiv::MakeFileLogger("arxiv_gui", paths.state_dir / "arxiv_gui.log", false));
     } catch (...) {
     }
     spdlog::set_level(spdlog::level::info);

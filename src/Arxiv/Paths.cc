@@ -84,4 +84,17 @@ void Paths::ApplyTo(Config& config) const {
         config.set_keywords_file((data_dir / "keywords.txt").string());
 }
 
+void Paths::CreateDirectories() const {
+    namespace fs = std::filesystem;
+    fs::create_directories(config_file.parent_path());
+    for (const auto& dir : {data_dir, state_dir}) {
+        // Only a directory we create is tightened: an existing one keeps the
+        // permissions its owner chose.
+        if (fs::exists(dir))
+            continue;
+        fs::create_directories(dir);
+        fs::permissions(dir, fs::perms::owner_all, fs::perm_options::replace);
+    }
+}
+
 } // namespace Arxiv
