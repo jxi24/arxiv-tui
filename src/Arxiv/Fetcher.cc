@@ -6,6 +6,7 @@
 
 #include "Arxiv/Article.hh"
 #include "Arxiv/HttpClient.hh"
+#include "Arxiv/Logging.hh"
 #include "Arxiv/Version.hh"
 
 #include <nlohmann/json.hpp>
@@ -329,7 +330,8 @@ std::vector<Article> Fetcher::ParseFeed(const std::string& xml_content) const {
             article.title = LatexToMarkdown(item.child_value("title"));
             article.link = NormalizeLink(item.child_value("link"));
             if (!IsArxivLink(article.link)) {
-                spdlog::warn("[Fetcher]: Skipping RSS item with invalid link '{}'", article.link);
+                spdlog::warn("[Fetcher]: Skipping RSS item with invalid link '{}'",
+                             ForLog(article.link));
                 continue;
             }
             std::string abstract_text = item.child_value("description");
@@ -846,7 +848,7 @@ std::vector<Article> Fetcher::ParseAtomFeed(const std::string& xml_content) cons
         article.link = NormalizeLink(raw_link);
         // The API reports errors as an <entry> whose id is an errors URL.
         if (!IsArxivLink(article.link)) {
-            spdlog::warn("[Fetcher]: Skipping Atom entry with id '{}'", raw_link);
+            spdlog::warn("[Fetcher]: Skipping Atom entry with id '{}'", ForLog(raw_link));
             continue;
         }
 

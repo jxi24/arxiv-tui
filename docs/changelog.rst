@@ -7,6 +7,11 @@ Changelog
 Unreleased
 ----------
 
+- **Feed text in the log is escaped** — a rejected feed link was logged as
+  it came, so escape sequences in it ran in the terminal of anyone tailing
+  the log and newlines in it forged log lines. Control characters are now
+  shown as ``\xNN`` and long values are cut.
+
 - **Obsidian notes: feed text stays inside its values** — the category went
   into the frontmatter unquoted, so a category with a newline could add keys
   or end the frontmatter; control characters made the YAML invalid. Every

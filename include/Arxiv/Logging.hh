@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <string_view>
 
 #include "spdlog/logger.h"
 
@@ -16,5 +17,8 @@ namespace Arxiv {
 /// and close-on-exec: it holds search queries and paths.
 std::shared_ptr<spdlog::logger>
 MakeFileLogger(const std::string& name, const std::filesystem::path& path, bool trace);
+
+/// Text from a feed, a file or the network, made safe to log.
+std::string ForLog(std::string_view untrusted);
 
 } // namespace Arxiv
