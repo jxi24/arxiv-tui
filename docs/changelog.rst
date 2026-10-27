@@ -7,6 +7,11 @@ Changelog
 Unreleased
 ----------
 
+- **Obsidian notes: feed text stays inside its values** — the category went
+  into the frontmatter unquoted, so a category with a newline could add keys
+  or end the frontmatter; control characters made the YAML invalid. Every
+  value (and each tag) is now quoted and control characters are dropped.
+
 - **Network limits** — responses are capped at 64 MiB (a huge or endless
   answer no longer fills memory), redirects are followed at most five hops
   and only to ``https`` (the InspireHEP host check only saw the first URL),

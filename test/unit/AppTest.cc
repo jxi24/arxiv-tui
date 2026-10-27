@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
+#include <yaml-cpp/yaml.h>
+
 #include <Arxiv/AppCore.hh>
 #include <Arxiv/Config.hh>
 #include <Arxiv/DatabaseManager.hh>
@@ -2343,4 +2345,37 @@ TEST_CASE("Reloading a view keeps the cursor on the same paper", "[appcore][regr
         core->SetSearchQuery("Paper", true, false, false);
         REQUIRE(core->GetArticleIndex() == 0);
     }
+}
+
+TEST_CASE("Obsidian notes keep feed text inside its frontmatter values",
+          "[export][security][regression]") {
+    // The category went into the frontmatter unquoted: newlines in it added
+    // keys or closed the frontmatter early. Control bytes broke the YAML.
+    auto vault =
+        std::filesystem::temp_directory_path() / ("vault_yaml_" + std::to_string(::getpid()));
+    std::filesystem::remove_all(vault);
+    auto paper = arxiv_tui::test::fixtures::sample_articles[0];
+    paper.category = "hep-ph\nevil: injected\n---\n# Owned";
+    paper.title = "Title \x1b[2J with escape";
+    FetcherMock fetcher;
+
+    Arxiv::Export::ObsidianNotes(fetcher, {paper}, vault.string(), false, {});
+
+    std::filesystem::path note;
+    for (const auto& e : std::filesystem::recursive_directory_iterator(vault))
+        if (e.path().filename() == paper.file_stem() + ".md")
+            note = e.path();
+    std::ifstream in(note);
+    std::string line, front;
+    std::getline(in, line); // opening ---
+    while (std::getline(in, line) && line != "---")
+        front += line + "\n";
+    const YAML::Node yaml = YAML::Load(front);
+
+    SECTION("no injected key") { REQUIRE_FALSE(yaml["evil"]); }
+    SECTION("the category stays one value") {
+        REQUIRE(yaml["category"].as<std::string>().find("evil") != std::string::npos);
+    }
+    SECTION("no control characters") { REQUIRE(front.find('\x1b') == std::string::npos); }
+    std::filesystem::remove_all(vault);
 }
