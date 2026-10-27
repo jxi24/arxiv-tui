@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 #include "Arxiv/App.hh"
+#include "Arxiv/Utf8.hh"
 #include "Arxiv/Views/Colors.hh"
 
 using namespace ftxui;
@@ -47,7 +48,7 @@ bool ArxivApp::HandleNewProjectEvent(ftxui::Event event) {
     }
     if (event == Event::Backspace) {
         if (!new_project_name.empty()) {
-            new_project_name.pop_back();
+            Utf8::PopBack(new_project_name);
         }
         return true;
     }

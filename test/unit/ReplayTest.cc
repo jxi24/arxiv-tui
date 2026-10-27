@@ -876,3 +876,16 @@ TEST_CASE("RunSandboxed leaves a project's exported .bib alone", "[replay][sandb
     REQUIRE(read_file(bib.string()) == "% the user's bibliography\n");
     fs::remove_all(dir);
 }
+
+TEST_CASE("ReplayRecorder records invalid UTF-8 instead of throwing",
+          "[replay][recorder][regression]") {
+    // json::dump threw type_error 316 on a lone 0xC3 (typed "é", Backspace),
+    // which terminated the TUI.
+    Arxiv::ReplayRecorder recorder;
+    const std::string bad = "caf\xC3";
+
+    REQUIRE_NOTHROW(recorder.RecordAddProject(bad));
+    REQUIRE_NOTHROW(recorder.RecordSetSearchQuery(bad, true, false, false));
+    REQUIRE_NOTHROW(recorder.RecordSaveKeywords({bad}));
+    REQUIRE(Arxiv::ReplayLog::Parse(recorder.GetJSONL()).entries.size() == 3);
+}

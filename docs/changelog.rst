@@ -7,6 +7,13 @@ Changelog
 Unreleased
 ----------
 
+- **Invalid UTF-8 no longer crashes the app** — Backspace in every text field
+  removed one byte, so "é" then Backspace left half a character behind; the
+  replay recorder then threw on it and the TUI exited. The same happened when
+  exporting a project whose papers had invalid bytes from the feed. Backspace
+  now removes a whole character, and the JSON writers replace invalid bytes
+  with U+FFFD instead of throwing.
+
 - **A very long link no longer crashes the app** — links in feeds and project
   imports were matched with ``std::regex``, which recurses once per character
   and overflowed the stack on a link of a few hundred kilobytes. Links longer

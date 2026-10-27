@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 #include "Arxiv/App.hh"
+#include "Arxiv/Utf8.hh"
 #include "Arxiv/Views/Colors.hh"
 
 using namespace ftxui;
@@ -40,7 +41,7 @@ bool ArxivApp::HandleImportEvent(ftxui::Event event) {
     }
     if (event == Event::Backspace) {
         if (!import_path.empty())
-            import_path.pop_back();
+            Utf8::PopBack(import_path);
         return true;
     }
     if (event == Event::Escape) {

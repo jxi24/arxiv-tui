@@ -1249,3 +1249,15 @@ TEST_CASE("Mouse selects views and articles", "[tui][mouse]") {
         REQUIRE(core.GetArticleIndex() == 0);
     }
 }
+
+TEST_CASE("Backspace in a text field removes a whole character", "[tui][utf8][regression]") {
+    RealDbApp t;
+    auto handler = t.app->GetEventHandler();
+    handler->OnEvent(Event::Character("p")); // new project (filter pane)
+    handler->OnEvent(Event::Character("z"));
+    handler->OnEvent(Event::Character("\xC3\xA9")); // é
+    handler->OnEvent(Event::Backspace);
+    handler->OnEvent(Event::Return);
+
+    REQUIRE(t.app->GetCore().GetProjects() == std::vector<std::string>{"z"});
+}

@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 #include "Arxiv/App.hh"
+#include "Arxiv/Utf8.hh"
 #include "Arxiv/Views/Colors.hh"
 
 using namespace ftxui;
@@ -38,7 +39,7 @@ bool ArxivApp::HandleNotesEvent(ftxui::Event event) {
     }
     if (event == Event::Backspace) {
         if (!note_edit_text.empty())
-            note_edit_text.pop_back();
+            Utf8::PopBack(note_edit_text);
         return true;
     }
     if (event == Event::Escape) {

@@ -25,6 +25,12 @@
 
 using json = nlohmann::json;
 
+namespace {
+// Text from the feed or typed by the user may not be valid UTF-8; dump()
+// would throw (and end the program). Invalid bytes become U+FFFD instead.
+std::string Dump(const json& j) { return j.dump(-1, ' ', false, json::error_handler_t::replace); }
+} // namespace
+
 namespace Arxiv {
 
 // ---------------------------------------------------------------------------
@@ -284,44 +290,44 @@ json make_entry(std::string_view action, long long ts) {
 void ReplayRecorder::RecordSetFilterIndex(int index) {
     auto j = make_entry(ActionName::SetFilterIndex, NowMs());
     j["index"] = index;
-    Record(j.dump());
+    Record(Dump(j));
 }
 
 void ReplayRecorder::RecordSetArticleIndex(int index) {
     auto j = make_entry(ActionName::SetArticleIndex, NowMs());
     j["index"] = index;
-    Record(j.dump());
+    Record(Dump(j));
 }
 
 void ReplayRecorder::RecordToggleBookmark(const std::string& article_link) {
     auto j = make_entry(ActionName::ToggleBookmark, NowMs());
     j["article_link"] = article_link;
-    Record(j.dump());
+    Record(Dump(j));
 }
 
 void ReplayRecorder::RecordDownloadArticle(const std::string& article_id) {
     auto j = make_entry(ActionName::DownloadArticle, NowMs());
     j["article_id"] = article_id;
-    Record(j.dump());
+    Record(Dump(j));
 }
 
 void ReplayRecorder::RecordAddProject(const std::string& name) {
     auto j = make_entry(ActionName::AddProject, NowMs());
     j["name"] = name;
-    Record(j.dump());
+    Record(Dump(j));
 }
 
 void ReplayRecorder::RecordRemoveProject(const std::string& name) {
     auto j = make_entry(ActionName::RemoveProject, NowMs());
     j["name"] = name;
-    Record(j.dump());
+    Record(Dump(j));
 }
 
 void ReplayRecorder::RecordSetProjectParent(const std::string& project, const std::string& parent) {
     auto j = make_entry(ActionName::SetProjectParent, NowMs());
     j["project"] = project;
     j["parent"] = parent;
-    Record(j.dump());
+    Record(Dump(j));
 }
 
 void ReplayRecorder::RecordLinkArticleToProject(const std::string& article_link,
@@ -329,7 +335,7 @@ void ReplayRecorder::RecordLinkArticleToProject(const std::string& article_link,
     auto j = make_entry(ActionName::LinkArticleToProject, NowMs());
     j["article_link"] = article_link;
     j["project"] = project;
-    Record(j.dump());
+    Record(Dump(j));
 }
 
 void ReplayRecorder::RecordUnlinkArticleFromProject(const std::string& article_link,
@@ -337,14 +343,14 @@ void ReplayRecorder::RecordUnlinkArticleFromProject(const std::string& article_l
     auto j = make_entry(ActionName::UnlinkArticleFromProject, NowMs());
     j["article_link"] = article_link;
     j["project"] = project;
-    Record(j.dump());
+    Record(Dump(j));
 }
 
 void ReplayRecorder::RecordSetDateRange(const std::string& start, const std::string& end) {
     auto j = make_entry(ActionName::SetDateRange, NowMs());
     j["start"] = start;
     j["end"] = end;
-    Record(j.dump());
+    Record(Dump(j));
 }
 
 void ReplayRecorder::RecordSetSearchQuery(const std::string& query,
@@ -356,7 +362,7 @@ void ReplayRecorder::RecordSetSearchQuery(const std::string& query,
     j["title"] = title;
     j["authors"] = authors;
     j["abstract_field"] = abstract_field;
-    Record(j.dump());
+    Record(Dump(j));
 }
 
 void ReplayRecorder::RecordSetProjectNote(const std::string& project,
@@ -366,18 +372,18 @@ void ReplayRecorder::RecordSetProjectNote(const std::string& project,
     j["project"] = project;
     j["article_link"] = article_link;
     j["note"] = note;
-    Record(j.dump());
+    Record(Dump(j));
 }
 
 void ReplayRecorder::RecordRateArticle(const std::string& article_link, int rating) {
     auto j = make_entry(ActionName::RateArticle, NowMs());
     j["article_link"] = article_link;
     j["rating"] = rating;
-    Record(j.dump());
+    Record(Dump(j));
 }
 
 void ReplayRecorder::RecordForceRetrain() {
-    Record(make_entry(ActionName::ForceRetrain, NowMs()).dump());
+    Record(Dump(make_entry(ActionName::ForceRetrain, NowMs())));
 }
 
 void ReplayRecorder::RecordExportProjectMarkdown(const std::string& project,
@@ -385,27 +391,27 @@ void ReplayRecorder::RecordExportProjectMarkdown(const std::string& project,
     auto j = make_entry(ActionName::ExportProjectMarkdown, NowMs());
     j["project"] = project;
     j["path"] = path;
-    Record(j.dump());
+    Record(Dump(j));
 }
 
 void ReplayRecorder::RecordExportProjectText(const std::string& project, const std::string& path) {
     auto j = make_entry(ActionName::ExportProjectText, NowMs());
     j["project"] = project;
     j["path"] = path;
-    Record(j.dump());
+    Record(Dump(j));
 }
 
 void ReplayRecorder::RecordExportProjectJSON(const std::string& project, const std::string& path) {
     auto j = make_entry(ActionName::ExportProjectJSON, NowMs());
     j["project"] = project;
     j["path"] = path;
-    Record(j.dump());
+    Record(Dump(j));
 }
 
 void ReplayRecorder::RecordImportProjectJSON(const std::string& path) {
     auto j = make_entry(ActionName::ImportProjectJSON, NowMs());
     j["path"] = path;
-    Record(j.dump());
+    Record(Dump(j));
 }
 
 void ReplayRecorder::RecordExportArticleBibTeX(const std::string& article_link,
@@ -413,13 +419,13 @@ void ReplayRecorder::RecordExportArticleBibTeX(const std::string& article_link,
     auto j = make_entry(ActionName::ExportArticleBibTeX, NowMs());
     j["article_link"] = article_link;
     j["path"] = path;
-    Record(j.dump());
+    Record(Dump(j));
 }
 
 void ReplayRecorder::RecordExportArticlesBibTeX(const std::string& path) {
     auto j = make_entry(ActionName::ExportArticlesBibTeX, NowMs());
     j["path"] = path;
-    Record(j.dump());
+    Record(Dump(j));
 }
 
 void ReplayRecorder::RecordExportProjectBibTeX(const std::string& project,
@@ -427,56 +433,56 @@ void ReplayRecorder::RecordExportProjectBibTeX(const std::string& project,
     auto j = make_entry(ActionName::ExportProjectBibTeX, NowMs());
     j["project"] = project;
     j["path"] = path;
-    Record(j.dump());
+    Record(Dump(j));
 }
 
 void ReplayRecorder::RecordToggleSelection(const std::string& article_link) {
     auto j = make_entry(ActionName::ToggleSelection, NowMs());
     j["article_link"] = article_link;
-    Record(j.dump());
+    Record(Dump(j));
 }
 
 void ReplayRecorder::RecordExportSelectedDigest(const std::string& path) {
     auto j = make_entry(ActionName::ExportSelectedDigest, NowMs());
     j["path"] = path;
-    Record(j.dump());
+    Record(Dump(j));
 }
 
 void ReplayRecorder::RecordExportToObsidian(const std::string& path) {
     auto j = make_entry(ActionName::ExportToObsidian, NowMs());
     j["path"] = path;
-    Record(j.dump());
+    Record(Dump(j));
 }
 
 void ReplayRecorder::RecordExportDailyDigest(const std::string& path) {
     auto j = make_entry(ActionName::ExportDailyDigest, NowMs());
     j["path"] = path;
-    Record(j.dump());
+    Record(Dump(j));
 }
 
 void ReplayRecorder::RecordToggleCategory(const std::string& category) {
     auto j = make_entry(ActionName::ToggleCategory, NowMs());
     j["category"] = category;
-    Record(j.dump());
+    Record(Dump(j));
 }
 
 void ReplayRecorder::RecordSetActiveCategories(const std::vector<std::string>& categories) {
     auto j = make_entry(ActionName::SetActiveCategories, NowMs());
     j["categories"] = categories;
-    Record(j.dump());
+    Record(Dump(j));
 }
 
 void ReplayRecorder::RecordSaveKeywords(const std::vector<std::string>& keywords) {
     auto j = make_entry(ActionName::SaveKeywords, NowMs());
     j["keywords"] = keywords;
-    Record(j.dump());
+    Record(Dump(j));
 }
 
 void ReplayRecorder::RecordEvent(const std::string& name, const std::string& detail) {
     json j{{"ts", NowMs()}, {"action", "event"}, {"name", name}};
     if (!detail.empty())
         j["detail"] = detail;
-    Record(j.dump());
+    Record(Dump(j));
 }
 
 // ---------------------------------------------------------------------------

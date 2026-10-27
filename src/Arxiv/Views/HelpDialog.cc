@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 #include "Arxiv/App.hh"
+#include "Arxiv/Utf8.hh"
 #include "Arxiv/Views/Colors.hh"
 
 #include <algorithm>
@@ -100,7 +101,7 @@ bool ArxivApp::HandleHelpEvent(ftxui::Event event) {
     }
     if (event == Event::Backspace) {
         if (!help_search_query.empty())
-            help_search_query.pop_back();
+            Utf8::PopBack(help_search_query);
         return true;
     }
     if (event.is_character()) {

@@ -425,6 +425,7 @@ Inside test bodies, plain `ALLOW_CALL` is fine because the generated local varia
 - A background `std::thread` drives periodic UI refresh via `screen.PostEvent(Event::Custom)`.
 - Key events are dispatched through the `event_handler` component which checks `KeyBindings` before falling through to child components.
 - AppCore exposes no writable state: menus bind UI-owned indices (`filter_menu_index`, `article_menu_index`) and every change goes through `ArxivApp::SelectFilter` / `SelectArticle`. The selected project/tag name is `AppCore::CurrentProject()` / `CurrentTag()`; `FilterView::Tag`/`Project` are kinds, not indices (`kFirstTagIndex`).
+- Text fields hold UTF-8: Backspace is `Utf8::PopBack` (`Utf8.hh`), never `pop_back()`. JSON is written with `error_handler_t::replace` (invalid bytes from feeds or typing must not throw).
 - `TESTING` preprocessor macro is defined when building tests; use it to skip UI-only code paths if needed.
 
 ---

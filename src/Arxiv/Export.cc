@@ -196,7 +196,8 @@ bool ProjectJSON(const std::string& path,
             entry["note"] = note_for(a.link);
             j["articles"].push_back(std::move(entry));
         }
-        file << j.dump(2) << "\n";
+        // Invalid UTF-8 from a feed becomes U+FFFD rather than an exception.
+        file << j.dump(2, ' ', false, nlohmann::json::error_handler_t::replace) << "\n";
     });
 }
 

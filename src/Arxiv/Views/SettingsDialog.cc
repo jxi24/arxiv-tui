@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 #include "Arxiv/App.hh"
+#include "Arxiv/Utf8.hh"
 #include "Arxiv/Views/Colors.hh"
 
 using namespace ftxui;
@@ -344,7 +345,7 @@ bool ArxivApp::HandleSettingsEvent(ftxui::Event event) {
 
     if (event == Event::Backspace && settings_editing) {
         if (!settings_edit_buffer.empty())
-            settings_edit_buffer.pop_back();
+            Utf8::PopBack(settings_edit_buffer);
         return true;
     }
 

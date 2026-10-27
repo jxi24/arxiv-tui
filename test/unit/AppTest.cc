@@ -5,6 +5,7 @@
 #include <Arxiv/AppCore.hh>
 #include <Arxiv/Config.hh>
 #include <Arxiv/DatabaseManager.hh>
+#include <Arxiv/Export.hh>
 #include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers.hpp>
@@ -2269,4 +2270,22 @@ TEST_CASE("AppCore: adding a selection to a project updates the project's .bib",
     std::filesystem::remove(bib);
     REQUIRE_THAT(content, ContainsSubstring(a.id()));
     REQUIRE_THAT(content, ContainsSubstring(b.id()));
+}
+
+TEST_CASE("Project JSON export writes invalid UTF-8 from a feed instead of throwing",
+          "[export][regression]") {
+    // pugixml passes invalid bytes through and the database keeps them;
+    // json::dump then threw and took the TUI down.
+    auto dir =
+        std::filesystem::temp_directory_path() / ("utf8_export_" + std::to_string(::getpid()));
+    std::filesystem::create_directories(dir);
+    auto paper = arxiv_tui::test::fixtures::sample_articles[0];
+    paper.title = "Broken \xC3 title";
+    const auto path = (dir / "p.json").string();
+
+    bool ok = false;
+    REQUIRE_NOTHROW(ok = Arxiv::Export::ProjectJSON(
+                        path, "P", {paper}, [](const std::string&) { return std::string(); }));
+    REQUIRE(ok);
+    std::filesystem::remove_all(dir);
 }
