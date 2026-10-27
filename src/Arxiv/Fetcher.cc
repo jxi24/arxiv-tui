@@ -960,7 +960,15 @@ std::string Fetcher::FetchBibTeX(const std::string& paper_id) {
                 }
 
                 auto bib_resp = m_http->Get(bibtex_url, std::chrono::milliseconds(5000));
-                if (bib_resp.status == 200 && !bib_resp.body.empty()) {
+                // It goes to the clipboard and into project .bib files: take
+                // only something that looks like one entry.
+                const auto first = bib_resp.body.find_first_not_of(" \t\r\n");
+                const bool plausible = first != std::string::npos && bib_resp.body[first] == '@' &&
+                                       bib_resp.body.size() <= kMaxBibTeXBytes;
+                if (bib_resp.status == 200 && !plausible)
+                    spdlog::warn("[Fetcher]: Ignoring InspireHEP answer that is not BibTeX for {}",
+                                 paper_id);
+                if (bib_resp.status == 200 && plausible) {
                     spdlog::info("[Fetcher]: Got InspireHEP BibTeX for {}", paper_id);
                     return bib_resp.body;
                 }

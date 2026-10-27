@@ -218,3 +218,31 @@ TEST_CASE("FetchSince gives up after a bounded number of API pages", "[fetcher][
     REQUIRE_THROWS_AS(net.fetcher->FetchSince("2026-05-01"), FetchError);
     REQUIRE(net.Count("export.arxiv.org") == static_cast<std::size_t>(Fetcher::kMaxApiPages));
 }
+
+TEST_CASE("FetchBibTeX accepts only a plausible BibTeX entry",
+          "[fetcher][net][inspire][security]") {
+    // The body went to the clipboard and into project .bib files unchecked:
+    // an error page or a huge answer would land in the user's bibliography.
+    Net net;
+    net.Answer("api/literature?q=", [](const std::string&) {
+        return HttpResponse{
+            200,
+            R"({"hits":{"hits":[{"links":{"bibtex":"https://inspirehep.net/api/literature/1?format=bibtex"}}]}})",
+            ""};
+    });
+    std::string body;
+    net.Answer("format=bibtex", [&](const std::string&) { return HttpResponse{200, body, ""}; });
+
+    SECTION("not an entry") {
+        body = "<html><body>Service unavailable</body></html>";
+        REQUIRE(net.fetcher->FetchBibTeX("2401.00001").empty());
+    }
+    SECTION("too large") {
+        body = "@article{Big, note={" + std::string(Fetcher::kMaxBibTeXBytes, 'x') + "}}";
+        REQUIRE(net.fetcher->FetchBibTeX("2401.00001").empty());
+    }
+    SECTION("leading whitespace is fine") {
+        body = "\n  @article{Doe:2024abc, title={X}}\n";
+        REQUIRE_THAT(net.fetcher->FetchBibTeX("2401.00001"), ContainsSubstring("Doe:2024abc"));
+    }
+}

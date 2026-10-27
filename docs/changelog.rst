@@ -7,6 +7,11 @@ Changelog
 Unreleased
 ----------
 
+- **InspireHEP answers are checked** — the BibTeX it returned went to the
+  clipboard and into project ``.bib`` files whatever it was; an answer that
+  does not start with an ``@`` entry or is larger than 64 KiB is now ignored
+  (the paper's own BibTeX is used instead).
+
 - **Only arXiv links are opened in the browser** — ``O`` passed whatever link
   a stored paper had to ``xdg-open``; rows from before links were checked
   could hold ``file://`` or ``javascript:`` links. Anything that is not an

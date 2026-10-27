@@ -123,6 +123,10 @@ class Fetcher {
     /// papers: far more than any real backfill.
     static constexpr int kMaxApiPages = 50;
 
+    /// FetchBibTeX ignores an InspireHEP answer larger than this (one entry
+    /// is a few kilobytes).
+    static constexpr std::size_t kMaxBibTeXBytes = 64 * 1024;
+
     /// Normalize an arXiv link to canonical form: https scheme, /abs/ (a /pdf/
     /// link and its ".pdf" are folded into it), no version suffix.
     /// e.g. "http://arxiv.org/abs/2605.28788v1" → "https://arxiv.org/abs/2605.28788"
