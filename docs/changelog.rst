@@ -7,6 +7,11 @@ Changelog
 Unreleased
 ----------
 
+- **Accented names and titles are cut cleanly** — the article list
+  truncated author names and other columns, and scrolled long titles, by
+  byte, so a cut could fall inside a character (``Schr\xC3…``). Both now work
+  by character.
+
 - **Deleted papers stay deleted** — the next fetch brought a deleted paper
   back (as "new"). Deletions are now remembered and fetches skip them; ``u``
   restores a paper with the time it was first stored, so it is not new again,
