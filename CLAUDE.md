@@ -511,7 +511,10 @@ A brief record of what has been implemented. Consult `README.md` for user-facing
   showed only the current day. `AppCore` reads `new_articles_anchor_ts` (the instant the
   *previous* session finished fetching, persisted as `last_fetch_end_ts` right after the
   bulk insert) and calls `DatabaseManager::GetArticlesAddedSince`. Articles stored in
-  between by a headless `--fetch` are covered too. The old date window remains as a
+  between by a headless `--fetch` are covered too: `--fetch` runs `FetchMode::Headless`,
+  which never moves the anchor, and the anchor follows `last_view_date` /
+  `last_view_end_ts`, written only by interactive sessions (falling back to the
+  `last_fetch_*` markers on databases from before them). The old date window remains as a
   fallback so the view is never blank (fresh DB, first run after the upgrade, or fetch
   still in flight). `MigrateAddAddedAt` backfills pre-existing rows from `date`.
 - **The anchor is exclusive** — `GetArticlesAddedSince` compares `added_at > since_ts`,

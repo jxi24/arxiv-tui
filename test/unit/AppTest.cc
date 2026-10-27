@@ -2431,3 +2431,56 @@ TEST_CASE("Search falls back to fuzzy matching", "[appcore][search]") {
 
     REQUIRE_FALSE(core.GetCurrentArticles().empty());
 }
+
+TEST_CASE("Papers a cron --fetch stored stay new until the user opens the TUI",
+          "[appcore][new_articles][regression]") {
+    // A headless --fetch crossing a day moved the New Articles anchor to the
+    // previous fetch's end, as an interactive session does. With a daily
+    // cron, day 2's run moved it past what day 1's run had stored, so those
+    // papers never showed as new.
+    const auto dir =
+        std::filesystem::temp_directory_path() / ("cron_anchor_" + std::to_string(::getpid()));
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
+    const std::string db_file = (dir / "articles.db").string();
+    Arxiv::Config cfg;
+    cfg.set_topics({"hep-ph"});
+    const auto paper = arxiv_tui::test::fixtures::sample_articles[0];
+    {
+        // The user's last session, long ago.
+        Arxiv::DatabaseManager db(db_file);
+        db.SetMetadata("last_fetch_date", "2000-01-01");
+        db.SetMetadata("last_fetch_end_ts", "100");
+        db.SetMetadata("new_articles_anchor_ts", "50");
+    }
+    auto cron_day = [&](std::vector<Arxiv::Article> fetched) {
+        {
+            // Each run is a new day.
+            Arxiv::DatabaseManager db(db_file);
+            db.SetMetadata("last_fetch_date", "2000-01-02");
+        }
+        auto fetcher = std::make_unique<FetcherMock>();
+        ALLOW_CALL(*fetcher, FetchSince(ANY(std::string))).RETURN(fetched);
+        Arxiv::AppCore cron(cfg,
+                            std::make_unique<Arxiv::DatabaseManager>(db_file),
+                            std::move(fetcher),
+                            Arxiv::AppCore::FetchMode::Headless);
+    };
+    // Day 2's paper keeps the view from falling back to its date window
+    // (used only when the anchored window is empty).
+    const auto day2_paper = arxiv_tui::test::fixtures::sample_articles[1];
+    cron_day({paper});                                            // day 1
+    std::this_thread::sleep_for(std::chrono::milliseconds(1100)); // next second
+    cron_day({day2_paper});                                       // day 2
+
+    Arxiv::AppCore tui(cfg,
+                       std::make_unique<Arxiv::DatabaseManager>(db_file),
+                       std::make_unique<FetcherMock>(),
+                       Arxiv::AppCore::FetchMode::Sync);
+    tui.SetFilterIndex(Arxiv::AppCore::FilterView::NewArticles);
+
+    const auto& shown = tui.GetCurrentArticles();
+    REQUIRE(std::any_of(
+        shown.begin(), shown.end(), [&](const Arxiv::Article& a) { return a.link == paper.link; }));
+    std::filesystem::remove_all(dir);
+}

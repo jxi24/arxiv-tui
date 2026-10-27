@@ -84,7 +84,17 @@ AppCore::AppCore(const Config& config,
     const std::string today = today_utc_string();
     const std::string prev_fetch = m_db->GetMetadata("last_fetch_date");
     std::string anchor = m_db->GetMetadata("new_articles_anchor");
-    const bool crossed_day_boundary = (!prev_fetch.empty() && prev_fetch < today);
+    // "New" means new to the user: the window follows interactive sessions
+    // only (last_view_*). A cron --fetch (Headless) fetches and stores but
+    // must not move it, or the papers it stored would never count as new.
+    // Databases from before last_view_* fall back to the fetch markers.
+    std::string prev_view = m_db->GetMetadata("last_view_date");
+    std::string prev_view_end = m_db->GetMetadata("last_view_end_ts");
+    if (prev_view.empty()) {
+        prev_view = prev_fetch;
+        prev_view_end = m_db->GetMetadata("last_fetch_end_ts");
+    }
+    const bool crossed_day_boundary = (!prev_view.empty() && prev_view < today);
 
     // The "New Articles" anchor only advances on a real day-boundary
     // crossing. A same-day restart must NOT collapse the anchor to today —
@@ -101,11 +111,12 @@ AppCore::AppCore(const Config& config,
     // persists nothing, so it never consumes the interactive session's
     // crossing.
     const bool offline = (fetch_mode == FetchMode::Offline);
+    const bool headless = (fetch_mode == FetchMode::Headless);
     m_new_articles_anchor_ts = parse_ts(m_db->GetMetadata("new_articles_anchor_ts"));
     if (crossed_day_boundary) {
-        anchor = prev_fetch;
-        m_new_articles_anchor_ts = parse_ts(m_db->GetMetadata("last_fetch_end_ts"));
-        if (!offline) {
+        anchor = prev_view;
+        m_new_articles_anchor_ts = parse_ts(prev_view_end);
+        if (!offline && !headless) {
             m_db->SetMetadata("new_articles_anchor", anchor);
             m_db->SetMetadata("new_articles_anchor_ts", std::to_string(m_new_articles_anchor_ts));
         }
@@ -138,7 +149,7 @@ AppCore::AppCore(const Config& config,
     // UI thread can refresh on its next tick via TryRefetchIfNeeded(). This
     // avoids racing with UI-thread reads and avoids invoking the callback
     // before App's SetupUI() has installed it.
-    auto do_fetch = [this, prev_fetch, today, fetch_mode]() {
+    auto do_fetch = [this, prev_fetch, today, fetch_mode, headless]() {
         Record("appcore/bg_fetch_begin",
                "mode=" + std::string(fetch_mode == FetchMode::Async ? "async" : "sync"));
         std::vector<Article> articles;
@@ -171,9 +182,15 @@ AppCore::AppCore(const Config& config,
         // Stamped after the insert so the next session's New Articles window
         // starts past everything this fetch stored — otherwise today's papers
         // would be replayed as new tomorrow.
-        m_db->SetMetadata("last_fetch_end_ts", std::to_string(now_ts()));
+        const std::string end_ts = std::to_string(now_ts());
+        m_db->SetMetadata("last_fetch_end_ts", end_ts);
         // Only now are the days up to today covered.
         m_db->SetMetadata("last_fetch_date", today);
+        if (!headless) {
+            // What the next session's New Articles window starts from.
+            m_db->SetMetadata("last_view_end_ts", end_ts);
+            m_db->SetMetadata("last_view_date", today);
+        }
         m_last_fetch_ok.store(true);
 
         if (fetch_mode == FetchMode::Sync) {

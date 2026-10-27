@@ -93,7 +93,8 @@ int main(int argc, char* argv[]) {
             Arxiv::AppCore core(
                 config,
                 std::make_unique<Arxiv::DatabaseManager>(config.get_db_file()),
-                std::make_unique<Arxiv::Fetcher>(config.get_topics(), config.get_download_dir()));
+                std::make_unique<Arxiv::Fetcher>(config.get_topics(), config.get_download_dir()),
+                Arxiv::AppCore::FetchMode::Headless); // the user has seen nothing yet
             if (!core.LastFetchSucceeded()) {
                 std::cerr << "Fetch failed; see the log for details.\n";
                 return 1;

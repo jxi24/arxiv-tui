@@ -7,6 +7,11 @@ Changelog
 Unreleased
 ----------
 
+- **Papers from a cron ``--fetch`` stay new** — a ``--fetch`` that crossed a
+  day moved the New Articles window just like opening the TUI does, so with a
+  daily cron job each run hid what the previous run had stored. ``--fetch``
+  now leaves the window alone; it moves only when you open arxiv-tui.
+
 - **Search** — asking for several fields at once (the GUI searches title,
   authors and abstract) searched titles only; every field asked for is now
   searched. When nothing matches exactly, near misses are shown (the fuzzy

@@ -44,7 +44,10 @@ class AppCore {
     // Offline: no network fetch and no fetch bookkeeping (last fetch date,
     // New Articles anchor) — for headless exports and replay, which must not
     // consume the interactive session's day-boundary crossing.
-    enum class FetchMode { Sync, Async, Offline };
+    // Headless: what --fetch (cron) uses — fetches and stores like Sync, but
+    // the user has not seen anything, so the New Articles window is left
+    // for the next interactive session.
+    enum class FetchMode { Sync, Async, Offline, Headless };
 
     // Constructor with dependency injection. `recorder` is optional and used
     // for diagnostic instrumentation (lifecycle / fetch-progress events) so
