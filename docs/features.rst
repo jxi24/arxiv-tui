@@ -153,7 +153,8 @@ arxiv-tui first queries InspireHEP for rich metadata and falls back to the
 arXiv-derived fields if the lookup fails.
 
 To export BibTeX to a file, use the project export dialog (``e``), which
-can produce a ``.bib`` for the entire project or for a selection of articles.
+produces a ``.bib`` for the whole project. Once exported, the file is kept up
+to date as papers are added to the project.
 
 Multi-article selection and bulk actions
 -----------------------------------------
@@ -162,7 +163,7 @@ Press ``Space`` to toggle the selection on the current article. While articles
 are selected the article pane header shows ``[N selected]``. Bulk actions:
 
 - ``b`` — bookmark all selected
-- ``n`` — rate all selected with a single score
+- ``W`` — rate all selected with a single score (``n`` rates only the focused one)
 - ``p`` — assign all selected to projects
 - ``D`` — delete all selected (with confirmation)
 - ``g`` — export as a Markdown digest + PDF bundle

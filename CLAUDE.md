@@ -187,13 +187,18 @@ CREATE TABLE articles (
     category        TEXT DEFAULT '',
     is_replacement  INTEGER DEFAULT 0,
     read_at         INTEGER DEFAULT NULL,
-    added_at        INTEGER DEFAULT NULL  -- when we first stored the row;
+    added_at        INTEGER DEFAULT NULL, -- when we first stored the row;
                                           -- drives the New Articles window
+    updated_at      INTEGER DEFAULT NULL  -- last seen as a replacement (Updated view)
 );
 
 CREATE TABLE projects (
-    name TEXT PRIMARY KEY
+    name     TEXT PRIMARY KEY,
+    parent   TEXT DEFAULT '',  -- sub-projects
+    bib_path TEXT DEFAULT ''   -- exported .bib kept up to date
 );
+-- Also: tags(name), followed_authors, metadata(key, value) — fetch markers
+-- (last_fetch_*, last_view_*, new_articles_anchor*) — and the FTS5 index.
 
 CREATE TABLE project_articles (
     project_name TEXT REFERENCES projects(name) ON DELETE CASCADE ON UPDATE CASCADE,
@@ -441,7 +446,7 @@ Inside test bodies, plain `ALLOW_CALL` is fine because the generated local varia
 ## Common Development Tasks
 
 ### Add a New arXiv Topic
-Edit `.arxiv-tui.yml` and add the topic string under `articles.topics`. Topics correspond to arXiv category identifiers (e.g., `cs.LG`, `quant-ph`).
+Edit `~/.config/arxiv-tui/config.yml` and add the topic string under `article_settings.topics` (or use the Settings dialog, Topics section). Topics correspond to arXiv category identifiers (e.g., `cs.LG`, `quant-ph`).
 
 ### Add a New Key Binding
 1. Define the action string in `KeyBindings.hh/.cc`.
@@ -450,7 +455,7 @@ Edit `.arxiv-tui.yml` and add the topic string under `articles.topics`. Topics c
 
 ### Add a New Filter
 1. Add a filter name to `AppCore::RefreshFilterOptions()`.
-2. Handle the filter index in `AppCore::SetFilterIndex()` (update `m_current_articles`).
+2. Handle the view in `AppCore::FetchArticles()` (the `switch (GetFilterView())` that fills `m_current_articles`).
 3. Update `ArxivApp` event handling if the filter requires a dialog.
 
 ### Add a New Database Table/Column
