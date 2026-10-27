@@ -7,6 +7,12 @@ Changelog
 Unreleased
 ----------
 
+- **Network limits** — responses are capped at 64 MiB (a huge or endless
+  answer no longer fills memory), redirects are followed at most five hops
+  and only to ``https`` (the InspireHEP host check only saw the first URL),
+  and a backfill stops with an error after 50 API pages (10,000 papers)
+  instead of paging for as long as the API keeps answering.
+
 - **Private files** — the replay log (searches, notes, keywords, paths), the
   log file and a new database (notes, ratings) are created readable by you
   only (mode 0600), and new data and state directories mode 0700; before

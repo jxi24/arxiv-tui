@@ -770,7 +770,10 @@ std::vector<Article> Fetcher::FetchSince(const std::string& utc_date) {
     int start = 0;
     const int max_results = 200;
 
-    while (true) {
+    for (int page = 0;; ++page) {
+        if (page == kMaxApiPages)
+            throw FetchError("arXiv API: more than " + std::to_string(kMaxApiPages) +
+                             " pages; giving up");
         auto url = fmt::format("{}?search_query={}{}&start={}&max_results={}"
                                "&sortBy=submittedDate&sortOrder=descending",
                                ARXIV_API_URL,

@@ -119,6 +119,10 @@ class Fetcher {
     /// std::regex recurses per character and overflows the stack on ~100 KB.
     static constexpr std::size_t kMaxLinkLength = 256;
 
+    /// FetchSince gives up (FetchError) after this many API pages of 200
+    /// papers: far more than any real backfill.
+    static constexpr int kMaxApiPages = 50;
+
     /// Normalize an arXiv link to canonical form: https scheme, /abs/ (a /pdf/
     /// link and its ".pdf" are folded into it), no version suffix.
     /// e.g. "http://arxiv.org/abs/2605.28788v1" → "https://arxiv.org/abs/2605.28788"

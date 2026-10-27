@@ -59,6 +59,7 @@ add_executable(unit_tests
     unit/Utf8Test.cc
     unit/RankingServiceTest.cc
     unit/PrivateFilesTest.cc
+    unit/HttpClientTest.cc
 )
 
 # Link against Catch2 and our library

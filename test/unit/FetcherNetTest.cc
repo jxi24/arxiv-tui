@@ -207,3 +207,14 @@ TEST_CASE("FetchBibTeX follows InspireHEP's BibTeX link", "[fetcher][net][inspir
         REQUIRE(net.fetcher->FetchBibTeX("2401.00001").empty());
     }
 }
+
+TEST_CASE("FetchSince gives up after a bounded number of API pages", "[fetcher][net][security]") {
+    // An API that keeps answering full pages kept the loop (and the memory
+    // for the papers) going for ever.
+    Net net;
+    net.Answer("export.arxiv.org",
+               [](const std::string&) { return HttpResponse{200, atom_page(0, 200), ""}; });
+
+    REQUIRE_THROWS_AS(net.fetcher->FetchSince("2026-05-01"), FetchError);
+    REQUIRE(net.Count("export.arxiv.org") == static_cast<std::size_t>(Fetcher::kMaxApiPages));
+}
