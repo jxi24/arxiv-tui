@@ -2,10 +2,8 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
-#include <yaml-cpp/yaml.h>
-
 #include <Arxiv/AppCore.hh>
-#include <Arxiv/Config.hh>
+#include <Arxiv/Config.hh> // also yaml-cpp, with its warnings silenced
 #include <Arxiv/DatabaseManager.hh>
 #include <Arxiv/Export.hh>
 #include <algorithm>
