@@ -1261,3 +1261,67 @@ TEST_CASE("Backspace in a text field removes a whole character", "[tui][utf8][re
 
     REQUIRE(t.app->GetCore().GetProjects() == std::vector<std::string>{"z"});
 }
+
+// ---------------------------------------------------------------------------
+// An open dialog gets every key first: global bindings used to fire while the
+// user was typing (a for detail, t for categories, / for search, ...).
+// ---------------------------------------------------------------------------
+
+namespace {
+void type_text(ArxivApp& app, const std::string& s) {
+    for (char c : s)
+        app.GetEventHandler()->OnEvent(Event::Character(std::string(1, c)));
+}
+} // namespace
+
+TEST_CASE("Dialogs get keys before the global bindings", "[tui][dialogs][regression]") {
+    RealDbApp t;
+    auto& core = t.app->GetCore();
+    auto handler = t.app->GetEventHandler();
+
+    SECTION("a project name can use any letter") {
+        handler->OnEvent(Event::Character("p")); // new project (filter pane)
+        type_text(*t.app, "dark matter");
+        handler->OnEvent(Event::Return);
+        REQUIRE(core.GetProjects() == std::vector<std::string>{"dark matter"});
+    }
+    SECTION("/ can be typed into a text field") {
+        handler->OnEvent(Event::Character("p"));
+        type_text(*t.app, "dm/x");
+        handler->OnEvent(Event::Return);
+        REQUIRE(core.GetProjects() == std::vector<std::string>{"dm/x"});
+    }
+    SECTION("? is part of a search, not the help") {
+        handler->OnEvent(Event::Character("/"));
+        type_text(*t.app, "why?");
+        handler->OnEvent(Event::Return);
+        REQUIRE(core.GetSearchQuery() == "why?");
+    }
+    SECTION("Escape cancels a new project") {
+        handler->OnEvent(Event::Character("p"));
+        type_text(*t.app, "zz");
+        handler->OnEvent(Event::Escape);
+        handler->OnEvent(Event::Return);
+        REQUIRE(core.GetProjects().empty());
+    }
+    SECTION("Space in Assign Project ticks the project, not the article") {
+        core.AddProject("P");
+        core.SetFilterIndex(Arxiv::AppCore::FilterView::All);
+        const auto link = core.GetCurrentArticles().front().link;
+        handler->OnEvent(Event::Character("l")); // article list
+        handler->OnEvent(Event::Character("p")); // assign to project
+        handler->OnEvent(Event::Character(" "));
+        handler->OnEvent(Event::Return);
+        REQUIRE(core.GetSelectionCount() == 0);
+        REQUIRE(core.GetProjectsForArticle(link) == std::vector<std::string>{"P"});
+    }
+    SECTION("an error message keeps keys from the panes") {
+        handler->OnEvent(Event::Character("l"));
+        handler->OnEvent(Event::Character("W")); // rate selection with none: error
+        handler->OnEvent(Event::Character("j"));
+        REQUIRE(core.GetArticleIndex() == 0);
+        handler->OnEvent(Event::Return); // dismiss
+        handler->OnEvent(Event::Character("j"));
+        REQUIRE(core.GetArticleIndex() == 1);
+    }
+}

@@ -28,6 +28,10 @@ ftxui::Element ArxivApp::RenderNewProjectDialog() {
 }
 
 bool ArxivApp::HandleNewProjectEvent(ftxui::Event event) {
+    if (event == Event::Escape) {
+        dialog_depth = Dialog::None;
+        return true;
+    }
     if (event == Event::Return) {
         if (!new_project_name.empty()) {
             core.AddProject(new_project_name);

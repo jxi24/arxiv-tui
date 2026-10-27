@@ -7,6 +7,15 @@ Changelog
 Unreleased
 ----------
 
+- **Typing in a dialog no longer triggers other commands** — keys reached
+  the global bindings before the open dialog: naming a project "dark matter"
+  toggled the detail pane and opened the category filter, ``/`` opened Search
+  instead of being typed into a path, ``?`` in a search opened the help, and
+  Space in "Assign to project" selected the article instead of ticking the
+  project. An open dialog now gets every key first, and keys it does not use
+  go nowhere (an error message no longer lets ``j``/``k`` move the list
+  behind it). ``Esc`` closes New Project and Assign to Project.
+
 - **A config.yml of the wrong shape no longer stops the app starting** — a
   file that is valid YAML but not a list of settings (a single word, a list),
   a non-map ``article_settings``, or a key mapping that is not an

@@ -69,6 +69,10 @@ void ArxivApp::SetupAssignProjectDialog() {
 }
 
 bool ArxivApp::HandleAssignProjectEvent(ftxui::Event event) {
+    if (event == Event::Escape || key_bindings.matches(event, KeyBindings::Action::Quit)) {
+        dialog_depth = Dialog::None;
+        return true;
+    }
     if (event == Event::Return) {
         if (core.GetSelectionCount() > 0) {
             // Bulk mode: add all selected articles to every checked project.

@@ -423,7 +423,7 @@ Inside test bodies, plain `ALLOW_CALL` is fine because the generated local varia
 - Empty article lists show `ArxivApp::EmptyViewMessage()` — one line per view saying what to do next, using the user's actual keys.
 - UI components are built in `ArxivApp::SetupUI()`.
 - A background `std::thread` drives periodic UI refresh via `screen.PostEvent(Event::Custom)`.
-- Key events are dispatched through the `event_handler` component which checks `KeyBindings` before falling through to child components.
+- Key events are dispatched through the `event_handler` component: the help overlay, then the open dialog (`HandleDialogEvent`, modal — it consumes every key), then global `KeyBindings` (`HandleGlobalEvent`), then the focused pane. A new dialog gets a `case` in `HandleDialogEvent` and handles its own Escape.
 - AppCore exposes no writable state: menus bind UI-owned indices (`filter_menu_index`, `article_menu_index`) and every change goes through `ArxivApp::SelectFilter` / `SelectArticle`. The selected project/tag name is `AppCore::CurrentProject()` / `CurrentTag()`; `FilterView::Tag`/`Project` are kinds, not indices (`kFirstTagIndex`).
 - Text fields hold UTF-8: Backspace is `Utf8::PopBack` (`Utf8.hh`), never `pop_back()`. JSON is written with `error_handler_t::replace` (invalid bytes from feeds or typing must not throw).
 - `TESTING` preprocessor macro is defined when building tests; use it to skip UI-only code paths if needed.
