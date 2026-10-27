@@ -234,6 +234,8 @@ bool Fetcher::DownloadPaper(const std::string& paper_id, const std::string& outp
 }
 
 std::string Fetcher::NormalizeLink(const std::string& link) {
+    if (link.size() > kMaxLinkLength)
+        return link; // not a paper; IsArxivLink rejects it
     std::string result = link;
 
     // Normalize scheme to https
@@ -260,7 +262,7 @@ std::string Fetcher::NormalizeLink(const std::string& link) {
 
 bool Fetcher::IsArxivLink(const std::string& link) {
     constexpr std::string_view host = "https://arxiv.org/";
-    if (link.compare(0, host.size(), host) != 0)
+    if (link.size() > kMaxLinkLength || link.compare(0, host.size(), host) != 0)
         return false;
     const std::string_view path(link.c_str() + host.size());
     std::string_view id;
@@ -914,7 +916,7 @@ std::optional<std::string> Fetcher::InspireSearchUrl(const std::string& paper_id
     // optionally versioned. Anything else could smuggle query syntax.
     static const std::regex arxiv_id(
         R"(^(?:\d{4}\.\d{4,5}|[A-Za-z-]+(?:\.[A-Za-z]{2})?/\d{7})(?:v\d+)?$)");
-    if (!std::regex_match(paper_id, arxiv_id))
+    if (paper_id.size() > kMaxLinkLength || !std::regex_match(paper_id, arxiv_id))
         return std::nullopt;
     std::string encoded;
     for (char c : paper_id)

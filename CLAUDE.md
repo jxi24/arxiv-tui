@@ -331,7 +331,7 @@ object programmatically.
 Tests tagged `[regression]` reproduce bugs found in code review (now fixed); the `[threads]` ones are only meaningful under ThreadSanitizer (the Sanitizers CI workflow). `[background]` covers the background-task API.
 
 ### Fuzzing
-- `test/fuzz/fuzz_<name>.cc` — libFuzzer targets (`-DARXIV_TUI_ENABLE_FUZZING=ON`, Clang only; `-fno-sanitize-recover`, so UB is a crash). Harness helpers in `FuzzSupport.hh` / `CoreHarness.hh` (offline fetcher, sandboxed AppCore, GCC-safe byte reader — read input bytes in separate statements, never inside one call's argument list).
+- `test/fuzz/fuzz_<name>.cc` — libFuzzer targets (CI runs them with `-max_len=262144`) (`-DARXIV_TUI_ENABLE_FUZZING=ON`, Clang only; `-fno-sanitize-recover`, so UB is a crash). Harness helpers in `FuzzSupport.hh` / `CoreHarness.hh` (offline fetcher, sandboxed AppCore, GCC-safe byte reader — read input bytes in separate statements, never inside one call's argument list).
 - Every testing build makes `fuzz_<name>_replay`; ctest replays `test/fuzz/corpus/<name>/`. Crashers go in the corpus as `regress_<what>` together with a unit regression test.
 - CI: `.github/workflows/fuzz.yml`.
 

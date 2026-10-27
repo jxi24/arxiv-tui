@@ -7,6 +7,12 @@ Changelog
 Unreleased
 ----------
 
+- **A very long link no longer crashes the app** — links in feeds and project
+  imports were matched with ``std::regex``, which recurses once per character
+  and overflowed the stack on a link of a few hundred kilobytes. Links longer
+  than any real arXiv link (256 characters) are now refused before any regex
+  runs, and CI fuzzes inputs up to 256 KiB (it used libFuzzer's 4 KiB default).
+
 - **Crash reports start with a JSON header** — one line with the format
   marker, version, signal, UTC time, pid and replay-log path, written from
   the signal handler. ``--replay`` prints it and warns when the report came

@@ -740,3 +740,15 @@ TEST_CASE("RequestPacer spaces requests by the interval", "[fetcher][etiquette]"
         REQUIRE(slept.empty());
     }
 }
+
+TEST_CASE("Fetcher regression: a very long link is rejected, not a crash",
+          "[fetcher][regression]") {
+    // libstdc++'s std::regex recurses once per character: a ~300 KB link (one
+    // fits easily in a project import) overflowed the stack in NormalizeLink.
+    const std::string id(300000, '1');
+    const std::string link = "https://arxiv.org/abs/" + id;
+
+    SECTION("NormalizeLink leaves it alone") { REQUIRE(Fetcher::NormalizeLink(link) == link); }
+    SECTION("IsArxivLink refuses it") { REQUIRE_FALSE(Fetcher::IsArxivLink(link)); }
+    SECTION("no InspireHEP query for it") { REQUIRE_FALSE(Fetcher::InspireSearchUrl(id)); }
+}

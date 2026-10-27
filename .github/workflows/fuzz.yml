@@ -95,6 +95,7 @@ jobs:
           if [ -f "$DICT" ]; then DICT_ARG="-dict=$DICT"; fi
           ./build/test/fuzz/fuzz_${{ matrix.target }} corpus $DICT_ARG \
             -max_total_time=$SECONDS_PER_TARGET -timeout=10 -rss_limit_mb=2048 \
+            -max_len=262144 \
             -artifact_prefix=artifacts/ -print_final_stats=1
 
       - name: Upload crash reproducers
