@@ -57,10 +57,10 @@ void ArxivApp::SetupFilterPane() {
                 return true;
             }
             if (key_bindings.matches(event, KeyBindings::Action::DeleteProject)) {
+                // Its memberships and notes go with it: ask first.
                 if (const std::string proj = core.CurrentProject(); !proj.empty()) {
-                    core.RemoveProject(proj);
-                    if (m_recorder)
-                        m_recorder->RecordRemoveProject(proj);
+                    m_pending_project_delete = proj;
+                    dialog_depth = Dialog::ConfirmDelete;
                 }
                 return true;
             }

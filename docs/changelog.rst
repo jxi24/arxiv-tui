@@ -7,6 +7,10 @@ Changelog
 Unreleased
 ----------
 
+- **Deleting a project asks first** — ``x`` in the filter pane removed the
+  project with its memberships and notes at once; it now asks (``y`` deletes,
+  any other key keeps it), like deleting articles and tags.
+
 - **Untitled papers** — a paper with no title (a link-only entry in a
   project import) is listed as "(no title)"; with it focused, the title
   scroller divided by the empty title's length.

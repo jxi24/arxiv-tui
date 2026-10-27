@@ -1406,3 +1406,31 @@ TEST_CASE("An article without a title is listed as untitled", "[tui][regression]
 
     REQUIRE(any_line_matches(plain_lines(app), "\\(no title\\)"));
 }
+
+TEST_CASE("Deleting a project asks first", "[tui][projects][regression]") {
+    // x removed the project, its memberships and notes at once.
+    RealDbApp t;
+    auto& core = t.app->GetCore();
+    core.AddProject("thesis");
+    const auto& options = core.GetFilterOptions();
+    const int index =
+        static_cast<int>(std::find(options.begin(), options.end(), "thesis") - options.begin());
+    core.SetFilterIndex(index);
+    auto handler = t.app->GetEventHandler();
+
+    handler->OnEvent(Event::Character("x"));
+
+    SECTION("nothing is deleted yet, and the question names the project") {
+        REQUIRE(core.GetProjects() == std::vector<std::string>{"thesis"});
+        REQUIRE(any_line_matches(plain_lines(*t.app), "thesis"));
+    }
+    SECTION("y deletes it") {
+        handler->OnEvent(Event::Character("y"));
+        REQUIRE(core.GetProjects().empty());
+    }
+    SECTION("any other key keeps it") {
+        handler->OnEvent(Event::Character("n"));
+        handler->OnEvent(Event::Character("y"));
+        REQUIRE(core.GetProjects() == std::vector<std::string>{"thesis"});
+    }
+}

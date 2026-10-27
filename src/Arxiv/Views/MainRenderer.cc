@@ -210,8 +210,11 @@ void ArxivApp::SetupMainRenderer() {
             document = dbox({document, settings_dialog->Render()});
         } else if (dialog_depth == Dialog::ConfirmDelete) {
             std::size_t n = core.GetSelectionCount();
-            std::string msg = n > 0 ? "Delete " + std::to_string(n) + " selected article(s)?"
-                                    : "Delete this article?";
+            std::string msg = !m_pending_project_delete.empty()
+                                  ? "Delete project '" + m_pending_project_delete +
+                                        "' with its notes? (Papers stay.)"
+                              : n > 0 ? "Delete " + std::to_string(n) + " selected article(s)?"
+                                      : "Delete this article?";
             auto confirm_dialog = vbox({
                                       text("DELETE") | bold | center | color(TextColors::error()),
                                       separator() | color(TextColors::error()),
@@ -371,8 +374,16 @@ bool ArxivApp::HandleDialogEvent(ftxui::Event event) {
         break;
     case Dialog::ConfirmDelete:
         // y confirms; any other key cancels.
-        if (event == Event::Character('y') || event == Event::Character('Y'))
-            core.DeleteCurrentOrSelected();
+        if (event == Event::Character('y') || event == Event::Character('Y')) {
+            if (!m_pending_project_delete.empty()) {
+                core.RemoveProject(m_pending_project_delete);
+                if (m_recorder)
+                    m_recorder->RecordRemoveProject(m_pending_project_delete);
+            } else {
+                core.DeleteCurrentOrSelected();
+            }
+        }
+        m_pending_project_delete.clear();
         dialog_depth = Dialog::None;
         break;
     case Dialog::Error:
