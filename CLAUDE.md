@@ -202,12 +202,18 @@ CREATE TABLE project_articles (
 );
 -- article_ratings, project_notes and article_tags cascade the same way
 -- (kLinkTables in DatabaseManager.cc).
+
+CREATE TABLE deleted_articles (   -- schema v2
+    link TEXT PRIMARY KEY, deleted_at INTEGER, added_at INTEGER
+);
+-- DeleteArticle records the paper here; AddArticles (fetches) skips these
+-- links; AddArticle (undo, import) restores added_at and removes the row.
 ```
 
 `PRAGMA foreign_keys` is on for every connection, and `PRAGMA user_version`
 holds `DatabaseManager::kSchemaVersion`. `MigrateSchema` runs the numbered
 migrations once each (1: rebuild the link tables with cascading keys,
-dropping orphan rows); a database with a higher version is refused. Inserts
+dropping orphan rows; 2: `deleted_articles`); a database with a higher version is refused. Inserts
 into link tables are guarded (`WHERE EXISTS`), so linking/rating/noting a
 paper or project that is not stored is a no-op rather than a constraint
 error. Add a new migration as the next version, not as another

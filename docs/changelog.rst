@@ -7,6 +7,13 @@ Changelog
 Unreleased
 ----------
 
+- **Deleted papers stay deleted** — the next fetch brought a deleted paper
+  back (as "new"). Deletions are now remembered and fetches skip them; ``u``
+  restores a paper with the time it was first stored, so it is not new again,
+  and its tags reappear in the filter pane even if the tag was deleted
+  meanwhile. (Database schema version 2; older arxiv-tui versions refuse to
+  open the upgraded database.)
+
 - **Papers from a cron ``--fetch`` stay new** — a ``--fetch`` that crossed a
   day moved the New Articles window just like opening the TUI does, so with a
   daily cron job each run hid what the previous run had stored. ``--fetch``

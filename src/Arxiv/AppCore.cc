@@ -1557,6 +1557,7 @@ void AppCore::UndoLastDelete() {
         for (const auto& tag : snap.tags)
             m_db->LinkArticleToTag(snap.article.link, tag);
     }
+    RefreshFilterOptions(); // a tag deleted meanwhile is back
     FetchArticles();
 }
 

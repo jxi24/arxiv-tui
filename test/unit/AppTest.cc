@@ -2484,3 +2484,17 @@ TEST_CASE("Papers a cron --fetch stored stay new until the user opens the TUI",
         shown.begin(), shown.end(), [&](const Arxiv::Article& a) { return a.link == paper.link; }));
     std::filesystem::remove_all(dir);
 }
+
+TEST_CASE("Undo brings back a deleted paper's tags in the filter pane",
+          "[appcore][undo][regression]") {
+    auto core = core_with_papers(2);
+    const auto link = core->GetCurrentArticles()[0].link;
+    core->LinkArticleToTag(link, "keep");
+    core->DeleteCurrentOrSelected();
+    core->RemoveTag("keep");
+
+    core->UndoLastDelete();
+
+    const auto& options = core->GetFilterOptions();
+    REQUIRE(std::find(options.begin(), options.end(), "#keep") != options.end());
+}

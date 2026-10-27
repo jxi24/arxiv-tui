@@ -233,10 +233,12 @@ filter pane.
 Undo delete
 -----------
 
-Press ``u`` to restore the most recently deleted article (or bulk-deleted
+A deleted paper stays deleted: later fetches skip it even when arXiv lists it
+again (a new version, a backfill). Press ``u`` to restore the most recently deleted article (or bulk-deleted
 selection). The full state is restored:
 
-- The article row itself (title, authors, abstract, date, category, bookmark flag)
+- The article row itself (title, authors, abstract, date, category, bookmark flag),
+  with the time it was first stored, so it does not show as new again
 - Its star rating, if it had one
 - All project memberships, with the per-article note for each project
 - All tags
