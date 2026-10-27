@@ -35,6 +35,9 @@ void Config::apply_defaults() {
 
 void Config::load_from_file(const std::string& config_file) {
     warnings_.clear();
+    // Every key is optional: one that is missing or rejected keeps its
+    // default (a config without topics used to fetch nothing).
+    apply_defaults();
     if (!std::filesystem::exists(config_file)) {
         // Create default configuration; download_dir is left empty so the
         // caller (main) can fill it in from the resolved XDG/install paths.
@@ -56,13 +59,28 @@ void Config::load_from_file(const std::string& config_file) {
         return;
     }
 
-    const YAML::Node settings_node = config["article_settings"];
+    // Valid YAML of the wrong shape (a bare scalar or a list) has no keys;
+    // indexing it threw YAML::BadSubscript and aborted startup.
+    if (!config.IsNull() && !config.IsMap()) {
+        apply_defaults();
+        warnings_.push_back("config.yml is not a list of settings (key: value); using the "
+                            "defaults for every setting. The file was not changed.");
+        spdlog::error("[Config]: {}", warnings_.back());
+        return;
+    }
+    YAML::Node settings_node = config["article_settings"];
+    if (settings_node && !settings_node.IsMap()) {
+        warnings_.push_back("article_settings: expected download_dir and topics under it; "
+                            "using the defaults.");
+        spdlog::warn("[Config]: {}", warnings_.back());
+        settings_node = YAML::Node();
+    }
 
     // Read one optional key. A value of the wrong type, or one `valid`
     // rejects, keeps the default and is reported in warnings_ (the TUI shows
     // them in a pop-up) instead of aborting startup over a hand-edited config.
     auto read = [&](const YAML::Node& node, const char* key, auto& field, auto valid) {
-        if (!node || !node[key])
+        if (!node || !node.IsMap() || !node[key])
             return;
         using T = std::decay_t<decltype(field)>;
         const std::string name =
@@ -114,6 +132,12 @@ void Config::load_from_file(const std::string& config_file) {
     if (config["key_mappings"] && config["key_mappings"].IsSequence()) {
         key_mappings_.clear();
         for (const auto& mapping : config["key_mappings"]) {
+            if (!mapping.IsMap()) {
+                warnings_.push_back("key_mappings: an entry is not an action/key pair; "
+                                    "skipped.");
+                spdlog::warn("[Config]: {}", warnings_.back());
+                continue;
+            }
             KeyMapping km;
             read(mapping, "action", km.action, any);
             read(mapping, "key", km.key, any);

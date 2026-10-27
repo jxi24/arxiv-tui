@@ -7,6 +7,13 @@ Changelog
 Unreleased
 ----------
 
+- **A config.yml of the wrong shape no longer stops the app starting** — a
+  file that is valid YAML but not a list of settings (a single word, a list),
+  a non-map ``article_settings``, or a key mapping that is not an
+  action/key pair threw and aborted. These now load the defaults with a
+  warning, like any other bad value. A key that is missing from the file
+  (e.g. ``topics``) now keeps its default instead of being left empty.
+
 - **Invalid UTF-8 no longer crashes the app** — Backspace in every text field
   removed one byte, so "é" then Backspace left half a character behind; the
   replay recorder then threw on it and the TUI exited. The same happened when
