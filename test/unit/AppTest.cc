@@ -2398,3 +2398,36 @@ TEST_CASE("Only arXiv links are handed to the browser", "[appcore][security][reg
 
     REQUIRE(core.GetLinksToOpen() == std::vector<std::string>{good.link});
 }
+
+TEST_CASE("Search covers every field asked for", "[appcore][search][regression]") {
+    // SetSearchQuery kept only the first field set: title+authors+abstract
+    // (what the GUI asks for) searched titles only.
+    auto db = std::make_unique<Arxiv::DatabaseManager>(":memory:");
+    for (const auto& a : arxiv_tui::test::fixtures::sample_articles)
+        db->AddArticle(a);
+    Arxiv::Config cfg;
+    cfg.set_topics({"hep-ph"});
+    Arxiv::AppCore core(
+        cfg, std::move(db), std::make_unique<FetcherMock>(), Arxiv::AppCore::FetchMode::Offline);
+    core.SetFilterIndex(Arxiv::AppCore::FilterView::Search);
+
+    core.SetSearchQuery("purposes", true, true, true); // only in an abstract
+
+    REQUIRE(core.GetCurrentArticles().size() == 1);
+}
+
+TEST_CASE("Search falls back to fuzzy matching", "[appcore][search]") {
+    // The docs promised near-miss results; FuzzySearchArticles was never used.
+    auto db = std::make_unique<Arxiv::DatabaseManager>(":memory:");
+    for (const auto& a : arxiv_tui::test::fixtures::sample_articles)
+        db->AddArticle(a);
+    Arxiv::Config cfg;
+    cfg.set_topics({"hep-ph"});
+    Arxiv::AppCore core(
+        cfg, std::move(db), std::make_unique<FetcherMock>(), Arxiv::AppCore::FetchMode::Offline);
+    core.SetFilterIndex(Arxiv::AppCore::FilterView::Search);
+
+    core.SetSearchQuery("Artcle", true, false, false); // typo of "Article"
+
+    REQUIRE_FALSE(core.GetCurrentArticles().empty());
+}

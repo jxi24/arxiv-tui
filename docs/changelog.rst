@@ -7,6 +7,12 @@ Changelog
 Unreleased
 ----------
 
+- **Search** — asking for several fields at once (the GUI searches title,
+  authors and abstract) searched titles only; every field asked for is now
+  searched. When nothing matches exactly, near misses are shown (the fuzzy
+  matching the docs described was never used). The docs no longer claim
+  stemming, which the search index does not do.
+
 - **InspireHEP answers are checked** — the BibTeX it returned went to the
   clipboard and into project ``.bib`` files whatever it was; an answer that
   does not start with an ``@`` entry or is larger than 64 KiB is now ignored

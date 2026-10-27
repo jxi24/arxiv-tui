@@ -444,22 +444,26 @@ class AppCore {
     struct SearchFilter {
         bool active = false;
         std::string query;
-        SearchMode mode = SearchMode::title;
+        // Fields to search; any combination (the TUI picks one, the GUI all).
+        bool title = true;
+        bool authors = false;
+        bool abstract = false;
 
-        void set(const std::string& q, SearchMode m) {
+        void set(const std::string& q, bool in_title, bool in_authors, bool in_abstract) {
             query = q;
-            mode = m;
+            title = in_title;
+            authors = in_authors;
+            abstract = in_abstract;
             active = true;
         }
-        void clear() {
-            active = false;
-            query.clear();
-            mode = SearchMode::title;
-        }
+        void clear() { *this = SearchFilter{}; }
     };
 
     DateRangeFilter m_date_range;
     SearchFilter m_search;
+    // Articles whose searched fields nearly match (the fallback when the
+    // full-text search finds nothing).
+    std::vector<Article> FuzzySearch(const SearchFilter& search, int threshold = 80) const;
 
     // Background auto-refresh
     std::thread m_refresh_thread;

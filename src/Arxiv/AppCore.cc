@@ -312,11 +312,11 @@ void AppCore::FetchArticles() {
         break;
     case FilterView::Search:
         if (m_search.active) {
-            bool search_title = (m_search.mode == SearchMode::title);
-            bool search_authors = (m_search.mode == SearchMode::authors);
-            bool search_abstract = (m_search.mode == SearchMode::abstract);
-            m_current_articles =
-                m_db->SearchArticles(m_search.query, search_title, search_authors, search_abstract);
+            m_current_articles = m_db->SearchArticles(
+                m_search.query, m_search.title, m_search.authors, m_search.abstract);
+            // No exact hit (a typo, a different word form): near misses.
+            if (m_current_articles.empty())
+                m_current_articles = FuzzySearch(m_search);
         } else {
             m_current_articles = m_db->GetRecent(-1);
         }
@@ -792,14 +792,9 @@ void AppCore::SetSearchQuery(const std::string& query,
                              bool _search_title,
                              bool _search_authors,
                              bool _search_abstract) {
-    SearchMode mode = SearchMode::title;
-    if (_search_title)
-        mode = SearchMode::title;
-    else if (_search_authors)
-        mode = SearchMode::authors;
-    else if (_search_abstract)
-        mode = SearchMode::abstract;
-    m_search.set(query, mode);
+    // No field ticked means titles, as before.
+    const bool any = _search_title || _search_authors || _search_abstract;
+    m_search.set(query, _search_title || !any, _search_authors, _search_abstract);
     m_fetched_filter_index = -1; // new results: start at the top
     FetchArticles();
 }
@@ -1036,14 +1031,20 @@ bool AppCore::ExportProjectBibTeX(const std::string& project_name, const std::st
 // ---------------------------------------------------------------------------
 
 std::vector<Article> AppCore::FuzzySearchArticles(const std::string& query, int threshold) const {
-    auto all = m_db->GetRecent(-1);
+    SearchFilter all_fields;
+    all_fields.set(query, true, true, true);
+    return FuzzySearch(all_fields, threshold);
+}
+
+std::vector<Article> AppCore::FuzzySearch(const SearchFilter& search, int threshold) const {
     std::vector<Article> results;
-    for (const auto& a : all) {
-        if (FuzzyMatch::MatchesText(query, a.title, threshold) ||
-            FuzzyMatch::MatchesText(query, a.authors, threshold) ||
-            FuzzyMatch::MatchesText(query, a.abstract, threshold)) {
-            results.push_back(a);
-        }
+    if (search.query.empty())
+        return results;
+    for (auto& a : m_db->GetRecent(-1)) {
+        if ((search.title && FuzzyMatch::MatchesText(search.query, a.title, threshold)) ||
+            (search.authors && FuzzyMatch::MatchesText(search.query, a.authors, threshold)) ||
+            (search.abstract && FuzzyMatch::MatchesText(search.query, a.abstract, threshold)))
+            results.push_back(std::move(a));
     }
     return results;
 }

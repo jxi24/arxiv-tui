@@ -71,9 +71,9 @@ Full-text and fuzzy search
 --------------------------
 
 Pressing ``/`` opens a search dialog. arxiv-tui uses SQLite's FTS5 extension
-to search across titles, authors, and abstracts with stemming and relevance
-ranking. Fuzzy matching surfaces near-miss results when an exact match is not
-found.
+to search the chosen field (title, authors or abstract); every word must
+appear. When nothing matches exactly, fuzzy matching on the same field
+surfaces near misses (a typo, another form of the word).
 
 Read/unread tracking
 ---------------------
