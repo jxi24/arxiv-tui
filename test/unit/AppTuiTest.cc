@@ -1390,3 +1390,19 @@ TEST_CASE("Settings: an out-of-range number is refused", "[tui][settings][regres
 
     REQUIRE(t.app->GetCore().GetConfig().get_retrain_interval() == before);
 }
+
+TEST_CASE("An article without a title is listed as untitled", "[tui][regression]") {
+    // The focused row's title scroller computed `% title.length()`: a
+    // division by zero for an empty title (a link-only project import).
+    auto db = std::make_unique<Arxiv::DatabaseManager>(":memory:");
+    auto paper = arxiv_tui::test::fixtures::sample_articles[0];
+    paper.title.clear();
+    db->AddArticle(paper);
+    KeyBindings kb{std::vector<Config::KeyMapping>{}};
+    ArxivApp app(make_test_config(), std::move(db), std::make_unique<FetcherMock>(), std::move(kb));
+    app.GetCore().SetFilterIndex(Arxiv::AppCore::FilterView::All);
+    app.GetEventHandler()->OnEvent(Event::Character("l")); // focus the list
+    app.GetEventHandler()->OnEvent(Event::Character("a")); // detail: title scrolls
+
+    REQUIRE(any_line_matches(plain_lines(app), "\\(no title\\)"));
+}

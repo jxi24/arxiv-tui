@@ -7,6 +7,10 @@ Changelog
 Unreleased
 ----------
 
+- **Untitled papers** — a paper with no title (a link-only entry in a
+  project import) is listed as "(no title)"; with it focused, the title
+  scroller divided by the empty title's length.
+
 - **The first automatic retrain learns from your ratings** — with no saved
   model yet, reaching ``retrain_interval`` ratings started a "warm" retrain
   from an empty model, which kept its empty vocabulary: every paper got the

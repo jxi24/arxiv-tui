@@ -280,10 +280,11 @@ void ArxivApp::SetupArticlePane() {
             // Compute the title cell value (with prefix and scrolling for current row).
             std::string title_cell;
             if (has_title) {
-                std::string title = article.title;
+                // Never empty: the scroller below divides by the length.
+                std::string title = article.title.empty() ? "(no title)" : article.title;
                 if (is_current) {
-                    size_t start_pos = static_cast<size_t>(std::floor(title_start_position)) %
-                                       article.title.length();
+                    size_t start_pos =
+                        static_cast<size_t>(std::floor(title_start_position)) % title.length();
                     if (title.length() > static_cast<size_t>(title_w - 2)) {
                         title = title.substr(start_pos) + "    " + title.substr(0, start_pos);
                     }
