@@ -7,6 +7,11 @@ Changelog
 Unreleased
 ----------
 
+- **Only arXiv links are opened in the browser** — ``O`` passed whatever link
+  a stored paper had to ``xdg-open``; rows from before links were checked
+  could hold ``file://`` or ``javascript:`` links. Anything that is not an
+  arXiv page is now skipped.
+
 - **Feed text in the log is escaped** — a rejected feed link was logged as
   it came, so escape sequences in it ran in the terminal of anyone tailing
   the log and newlines in it forged log lines. Control characters are now

@@ -2377,3 +2377,24 @@ TEST_CASE("Obsidian notes keep feed text inside its frontmatter values",
     SECTION("no control characters") { REQUIRE(front.find('\x1b') == std::string::npos); }
     std::filesystem::remove_all(vault);
 }
+
+TEST_CASE("Only arXiv links are handed to the browser", "[appcore][security][regression]") {
+    // Rows stored before links were validated (or only normalised by a
+    // migration) could hold file://, javascript: or "-..." values, which
+    // went to xdg-open as they were.
+    auto db = std::make_unique<Arxiv::DatabaseManager>(":memory:");
+    auto good = arxiv_tui::test::fixtures::sample_articles[0];
+    auto bad = good;
+    bad.link = "file:///etc/passwd";
+    db->AddArticle(good);
+    db->AddArticle(bad);
+    Arxiv::Config cfg;
+    cfg.set_topics({"hep-ph"});
+    Arxiv::AppCore core(
+        cfg, std::move(db), std::make_unique<FetcherMock>(), Arxiv::AppCore::FetchMode::Offline);
+    core.SetFilterIndex(Arxiv::AppCore::FilterView::All);
+    core.ToggleSelection(good.link);
+    core.ToggleSelection(bad.link);
+
+    REQUIRE(core.GetLinksToOpen() == std::vector<std::string>{good.link});
+}

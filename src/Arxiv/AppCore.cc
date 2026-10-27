@@ -1131,7 +1131,16 @@ void AppCore::ClearSelections() {
     NotifyArticleUpdate();
 }
 
-std::vector<std::string> AppCore::GetLinksToOpen() const { return TargetLinks(); }
+std::vector<std::string> AppCore::GetLinksToOpen() const {
+    // These go to xdg-open: only real arXiv pages, whatever an older
+    // database row holds (file://, javascript:, a leading "-").
+    auto links = TargetLinks();
+    links.erase(std::remove_if(links.begin(),
+                               links.end(),
+                               [](const std::string& l) { return !Fetcher::IsArxivLink(l); }),
+                links.end());
+    return links;
+}
 
 std::vector<std::string> AppCore::TargetLinks() const {
     if (!m_selected_links.empty())
