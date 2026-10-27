@@ -2289,3 +2289,58 @@ TEST_CASE("Project JSON export writes invalid UTF-8 from a feed instead of throw
     REQUIRE(ok);
     std::filesystem::remove_all(dir);
 }
+
+namespace {
+std::unique_ptr<Arxiv::AppCore> core_with_papers(int n) {
+    auto db = std::make_unique<Arxiv::DatabaseManager>(":memory:");
+    auto base = arxiv_tui::test::fixtures::sample_articles[0];
+    for (int i = 0; i < n; ++i) {
+        auto a = base;
+        a.link = "https://arxiv.org/abs/2607." + std::to_string(20000 + i);
+        a.title = "Paper " + std::to_string(i);
+        a.date = base.date - std::chrono::hours(i); // a fixed order
+        db->AddArticle(a);
+    }
+    Arxiv::Config cfg;
+    cfg.set_topics({"hep-ph"});
+    auto core = std::make_unique<Arxiv::AppCore>(
+        cfg, std::move(db), std::make_unique<FetcherMock>(), Arxiv::AppCore::FetchMode::Offline);
+    core->SetFilterIndex(Arxiv::AppCore::FilterView::All);
+    return core;
+}
+} // namespace
+
+TEST_CASE("Reloading a view keeps the cursor on the same paper", "[appcore][regression]") {
+    // FetchArticles reset the cursor to the top: every auto-refresh,
+    // retrain, tag change, delete or undo sent the user back to row 0.
+    auto core = core_with_papers(4);
+    core->SetArticleIndex(2);
+    const auto focused = core->GetCurrentArticles()[2].link;
+
+    SECTION("same view reloaded") {
+        core->AddTag("x"); // reloads the view
+        REQUIRE(
+            core->GetCurrentArticles()[static_cast<std::size_t>(core->GetArticleIndex())].link ==
+            focused);
+    }
+    SECTION("focused paper deleted: the cursor stays on that row") {
+        core->DeleteCurrentOrSelected();
+        REQUIRE(core->GetArticleIndex() == 2);
+    }
+    SECTION("last paper deleted: the cursor moves up one") {
+        core->SetArticleIndex(3);
+        core->DeleteCurrentOrSelected();
+        REQUIRE(core->GetArticleIndex() == 2);
+    }
+    SECTION("another view starts at the top") {
+        core->SetFilterIndex(Arxiv::AppCore::FilterView::Unread);
+        REQUIRE(core->GetArticleIndex() == 0);
+    }
+    SECTION("a new search starts at the top") {
+        core->SetFilterIndex(Arxiv::AppCore::FilterView::Search);
+        core->SetSearchQuery("Paper", true, false, false);
+        core->SetArticleIndex(2);
+        core->SetSearchQuery("Paper", true, false, false);
+        REQUIRE(core->GetArticleIndex() == 0);
+    }
+}

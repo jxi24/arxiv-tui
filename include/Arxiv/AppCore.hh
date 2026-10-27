@@ -416,6 +416,7 @@ class AppCore {
     std::vector<std::string> m_filter_project_names;
 
     int m_filter_index{static_cast<int>(FilterView::NewArticles)};
+    int m_fetched_filter_index{-1}; // the view m_current_articles holds
     int m_article_index{0};
 
     ArticleUpdateCallback m_article_update_callback;

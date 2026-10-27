@@ -7,6 +7,12 @@ Changelog
 Unreleased
 ----------
 
+- **The cursor stays where you were** — every reload of the list (auto
+  refresh, a retrain finishing, tagging, deleting, undo) sent the cursor back
+  to the first paper. It now stays on the same paper, or on the same row if
+  that paper was deleted. Switching views, searching or setting a date range
+  still starts at the top.
+
 - **Deleting a project asks first** — ``x`` in the filter pane removed the
   project with its memberships and notes at once; it now asks (``y`` deletes,
   any other key keeps it), like deleting articles and tags.

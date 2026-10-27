@@ -280,6 +280,16 @@ bool AppCore::MatchesActiveCategory(const std::string& categories) const {
 void AppCore::FetchArticles() {
     Record("appcore/fetcharticles_begin",
            "view=" + std::to_string(static_cast<int>(GetFilterView())));
+    // Reloading the same view keeps the cursor on the paper it was on (or,
+    // if that paper is gone, on the same row); another view starts at the
+    // top.
+    const bool same_view = m_fetched_filter_index == m_filter_index;
+    const int index_before = m_article_index;
+    const std::string focused_before =
+        same_view && index_before >= 0 && index_before < static_cast<int>(m_current_articles.size())
+            ? m_current_articles[static_cast<std::size_t>(index_before)].link
+            : std::string();
+    m_fetched_filter_index = m_filter_index;
     m_current_articles.clear();
 
     switch (GetFilterView()) {
@@ -403,6 +413,15 @@ void AppCore::FetchArticles() {
 
     RefreshTitles();
     m_article_index = 0;
+    if (same_view && !m_current_articles.empty()) {
+        auto it = std::find_if(m_current_articles.begin(),
+                               m_current_articles.end(),
+                               [&](const Article& a) { return a.link == focused_before; });
+        m_article_index =
+            it != m_current_articles.end()
+                ? static_cast<int>(it - m_current_articles.begin())
+                : std::min(index_before, static_cast<int>(m_current_articles.size()) - 1);
+    }
     Record("appcore/fetcharticles_end", "count=" + std::to_string(m_current_articles.size()));
     NotifyArticleUpdate();
 }
@@ -759,11 +778,13 @@ void AppCore::RefreshFilterOptions() {
 
 void AppCore::SetDateRange(const std::string& start, const std::string& end) {
     m_date_range.set(start, end);
+    m_fetched_filter_index = -1; // new results: start at the top
     FetchArticles();
 }
 
 void AppCore::ClearDateRange() {
     m_date_range.clear();
+    m_fetched_filter_index = -1; // new results: start at the top
     FetchArticles();
 }
 
@@ -779,11 +800,13 @@ void AppCore::SetSearchQuery(const std::string& query,
     else if (_search_abstract)
         mode = SearchMode::abstract;
     m_search.set(query, mode);
+    m_fetched_filter_index = -1; // new results: start at the top
     FetchArticles();
 }
 
 void AppCore::ClearSearch() {
     m_search.clear();
+    m_fetched_filter_index = -1; // new results: start at the top
     FetchArticles();
 }
 
