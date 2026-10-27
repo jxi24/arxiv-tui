@@ -319,3 +319,10 @@ TEST_CASE("Docs: every action is documented", "[keybindings][docs]") {
     const KeyBindings defaults(std::vector<Config::KeyMapping>{});
     REQUIRE(documented_rows().size() == defaults.get_all_bindings().size());
 }
+
+TEST_CASE("KeyBindings honours mappings saved under a display name", "[keybindings][regression]") {
+    // Settings saved edited keys as "Rate Article" instead of "rate_article";
+    // those entries are in users' config.yml and should take effect.
+    Arxiv::KeyBindings kb({{"Rate Article", "Z"}});
+    REQUIRE(kb.get_key(Arxiv::KeyBindings::Action::RateArticle) == "Z");
+}

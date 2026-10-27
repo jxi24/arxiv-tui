@@ -76,6 +76,12 @@ const ActionInfo* find_by_config_name(std::string_view name) {
         if (info.config_name == name)
             return &info;
     }
+    // Earlier versions of the Settings dialog saved the display name
+    // ("Rate Article"); those entries are still in users' config.yml.
+    for (const auto& info : kActionTable) {
+        if (info.display_name == name)
+            return &info;
+    }
     return nullptr;
 }
 
@@ -115,6 +121,19 @@ std::string KeyBindings::get_action_name(Action action) {
         return std::string(info->display_name);
     }
     return "Unknown";
+}
+
+std::string KeyBindings::get_config_name(Action action) {
+    const auto* info = find_by_action(action);
+    return info ? std::string(info->config_name) : std::string();
+}
+
+std::vector<KeyBindings::Action> KeyBindings::actions() const {
+    std::vector<Action> result;
+    result.reserve(bindings_.size());
+    for (const auto& entry : bindings_)
+        result.push_back(entry.first);
+    return result;
 }
 
 std::vector<std::pair<std::string, std::string>> KeyBindings::get_all_bindings() const {

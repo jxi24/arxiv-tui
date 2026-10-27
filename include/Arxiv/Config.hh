@@ -62,6 +62,11 @@ class Config {
     void set_download_dir(const std::string& dir) { article_settings_.download_dir = dir; }
     void set_topics(const std::vector<std::string>& topics) { article_settings_.topics = topics; }
     void set_key_mappings(const std::vector<KeyMapping>& mappings) { key_mappings_ = mappings; }
+    // What config.yml accepts for these settings; Settings uses the same rules.
+    static bool ValidRecommendThreshold(float t) { return t >= 1.0f && t <= 5.0f; }
+    static bool ValidRetrainInterval(int n) { return n > 0; }
+    static bool ValidNonNegative(int n) { return n >= 0; }
+
     void set_recommend_threshold(float t) { recommend_threshold_ = t; }
     void set_retrain_interval(int n) { retrain_interval_ = n; }
     void set_db_file(const std::string& path) { db_file_ = path; }

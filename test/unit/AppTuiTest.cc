@@ -1325,3 +1325,68 @@ TEST_CASE("Dialogs get keys before the global bindings", "[tui][dialogs][regress
         REQUIRE(core.GetArticleIndex() == 1);
     }
 }
+
+// ---------------------------------------------------------------------------
+// Settings: a key edited in the Keys section takes effect and is saved under
+// its config name; numbers out of range are refused like in config.yml.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Settings: an edited key binding works and is saved by its config name",
+          "[tui][settings][regression]") {
+    RealDbApp t;
+    auto& core = t.app->GetCore();
+    auto handler = t.app->GetEventHandler();
+    // Where Bookmark sits in the Keys list.
+    KeyBindings kb{std::vector<Config::KeyMapping>{}};
+    const auto all = kb.get_all_bindings();
+    const auto row = std::find_if(all.begin(),
+                                  all.end(),
+                                  [](const auto& b) {
+                                      return b.first == KeyBindings::get_action_name(
+                                                            KeyBindings::Action::Bookmark);
+                                  }) -
+                     all.begin();
+
+    handler->OnEvent(Event::Character("S"));
+    for (int i = 0; i < 4; ++i)
+        handler->OnEvent(Event::Tab); // Keys section
+    for (int i = 0; i < row; ++i)
+        handler->OnEvent(Event::Character("j"));
+    handler->OnEvent(Event::Return); // edit
+    handler->OnEvent(Event::Backspace);
+    handler->OnEvent(Event::Character("m"));
+    handler->OnEvent(Event::Return); // commit
+    handler->OnEvent(Event::Escape); // save and close
+
+    SECTION("saved under the config name") {
+        const auto mappings = core.GetConfig().get_key_mappings();
+        REQUIRE(std::any_of(mappings.begin(), mappings.end(), [](const auto& m) {
+            return m.action == "bookmark" && m.key == "m";
+        }));
+    }
+    SECTION("the new key works") {
+        handler->OnEvent(Event::Character("l")); // article list
+        const auto link = core.GetCurrentArticles().front().link;
+        const bool before = core.IsArticleBookmarked(link);
+        handler->OnEvent(Event::Character("m"));
+        REQUIRE(core.IsArticleBookmarked(link) != before);
+    }
+}
+
+TEST_CASE("Settings: an out-of-range number is refused", "[tui][settings][regression]") {
+    RealDbApp t;
+    auto handler = t.app->GetEventHandler();
+    const int before = t.app->GetCore().GetConfig().get_retrain_interval();
+    handler->OnEvent(Event::Character("S"));
+    handler->OnEvent(Event::Tab);
+    handler->OnEvent(Event::Tab);            // Ranker section
+    handler->OnEvent(Event::Character("j")); // Retrain interval
+    handler->OnEvent(Event::Return);
+    for (int i = 0; i < 4; ++i)
+        handler->OnEvent(Event::Backspace);
+    handler->OnEvent(Event::Character("0"));
+    handler->OnEvent(Event::Return);
+    handler->OnEvent(Event::Escape);
+
+    REQUIRE(t.app->GetCore().GetConfig().get_retrain_interval() == before);
+}

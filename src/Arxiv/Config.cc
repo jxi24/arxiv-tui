@@ -99,13 +99,13 @@ void Config::load_from_file(const std::string& config_file) {
         spdlog::warn("[Config]: {}", warnings_.back());
     };
     auto any = [](const auto&) { return true; };
-    auto positive = [](int v) { return v > 0; };
-    auto non_negative = [](int v) { return v >= 0; };
+    auto positive = [](int v) { return ValidRetrainInterval(v); };
+    auto non_negative = [](int v) { return ValidNonNegative(v); };
 
     read(settings_node, "download_dir", article_settings_.download_dir, any);
     read(settings_node, "topics", article_settings_.topics, any);
     read(config, "recommend_threshold", recommend_threshold_, [](float v) {
-        return v >= 1.0f && v <= 5.0f;
+        return ValidRecommendThreshold(v);
     });
     read(config, "retrain_interval", retrain_interval_, positive);
     read(config, "auto_refresh_minutes", auto_refresh_minutes_, non_negative);

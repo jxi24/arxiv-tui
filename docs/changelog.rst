@@ -7,6 +7,13 @@ Changelog
 Unreleased
 ----------
 
+- **Key bindings edited in Settings work** — the Keys section saved the
+  action's display name ("Rate Article") instead of its config name
+  (``rate_article``), so the new key was ignored. It now saves the config
+  name, and entries saved the old way take effect too. Settings also checks
+  numbers with the same rules as ``config.yml``: a retrain interval below 1,
+  negative minutes or margins, or a threshold outside 1–5 are refused.
+
 - **Typing in a dialog no longer triggers other commands** — keys reached
   the global bindings before the open dialog: naming a project "dark matter"
   toggled the detail pane and opened the category filter, ``/`` opened Search
