@@ -7,6 +7,12 @@ Changelog
 Unreleased
 ----------
 
+- **The first automatic retrain learns from your ratings** — with no saved
+  model yet, reaching ``retrain_interval`` ratings started a "warm" retrain
+  from an empty model, which kept its empty vocabulary: every paper got the
+  same score until a full retrain (``R``). It now trains from scratch when
+  there is no model to continue from.
+
 - **Key bindings edited in Settings work** — the Keys section saved the
   action's display name ("Rate Article") instead of its config name
   (``rate_article``), so the new key was ignored. It now saves the config

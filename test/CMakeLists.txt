@@ -57,6 +57,7 @@ add_executable(unit_tests
     unit/CliTest.cc
     unit/FetcherNetTest.cc
     unit/Utf8Test.cc
+    unit/RankingServiceTest.cc
 )
 
 # Link against Catch2 and our library

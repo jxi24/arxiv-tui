@@ -38,9 +38,14 @@ void RankingService::StartTraining(std::vector<Article> corpus,
                                    std::function<void()> on_done) {
     WaitForTraining();
     Ranker seed;
-    if (warm_start) {
+    {
         std::lock_guard<std::mutex> lock(m_mutex);
-        seed = m_ranker; // keeps the vocabulary; SGD continues from these weights
+        // Nothing to continue from (no model trained or loaded yet): a warm
+        // start would keep the empty vocabulary and learn only a constant.
+        if (!m_ranker.IsTrained())
+            warm_start = false;
+        if (warm_start)
+            seed = m_ranker; // keeps the vocabulary; SGD continues from these weights
     }
     m_training = true;
     m_thread = std::thread([this,
