@@ -26,6 +26,10 @@ class Ranker {
     static constexpr int MIN_TRAIN = 3; // minimum rated articles to enable predictions
     static constexpr int EPOCHS = 200;
     static constexpr float LR = 0.01f;
+    // Load refuses a model whose IDF weights, weights or biases exceed this in
+    // magnitude. Trained values are tiny; this keeps every accepted model's
+    // forward pass far from float overflow (which turned scores into NaN).
+    static constexpr float kMaxModelValue = 1e6f;
 
     Ranker();
 
