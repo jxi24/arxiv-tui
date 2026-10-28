@@ -423,9 +423,29 @@ in the filter pane and are included in BibTeX exports.</p>
 </section>
 <section id="author-subscriptions">
 <h2>Author subscriptions<a class="headerlink" href="#author-subscriptions" title="Link to this heading">¶</a></h2>
-<p>In addition to category feeds, you can follow specific authors. Use the
-settings dialog (<code class="docutils literal notranslate"><span class="pre">S</span></code>) to add or remove author subscriptions. Articles by
-subscribed authors are ingested regardless of category.</p>
+<p>In addition to category feeds, you can follow specific authors. Press <code class="docutils literal notranslate"><span class="pre">f</span></code>
+to open the <em>Followed Authors</em> dialog: it lists the focused article’s authors
+(Enter follows or unfollows one) and everyone you follow (Enter or <code class="docutils literal notranslate"><span class="pre">d</span></code>
+unfollows); press <code class="docutils literal notranslate"><span class="pre">+</span></code> to type any name. The <em>Followed Authors</em> filter
+shows their papers.</p>
+<p>A name without a first initial (just <code class="docutils literal notranslate"><span class="pre">Li</span></code>) would match every author with
+that last name, so the dialog warns and asks for a second Enter before
+following it, and flags such entries in the list.</p>
+<p>Names are matched whole, using initials to tell apart authors who share a
+common last name:</p>
+<ul class="simple">
+<li><p>the last names must be identical (<code class="docutils literal notranslate"><span class="pre">Li</span></code> does not match <code class="docutils literal notranslate"><span class="pre">Lin</span></code>; particles
+such as <code class="docutils literal notranslate"><span class="pre">van</span> <span class="pre">der</span></code> are part of the last name);</p></li>
+<li><p>the first initials must agree, and the first names too when both are spelled
+out — following <code class="docutils literal notranslate"><span class="pre">W.</span> <span class="pre">Li</span></code> matches <em>Wei Li</em> but not <em>Xiao Li</em>, and
+<code class="docutils literal notranslate"><span class="pre">Wei</span> <span class="pre">Li</span></code> does not match <em>Wen Li</em>;</p></li>
+<li><p>a middle initial only counts when both names have one — <code class="docutils literal notranslate"><span class="pre">J.</span> <span class="pre">A.</span> <span class="pre">Smith</span></code>
+matches <em>John Smith</em> and <em>J. A. Smith</em> but not <em>J. B. Smith</em>;</p></li>
+<li><p>following a last name alone (<code class="docutils literal notranslate"><span class="pre">Li</span></code>) matches every author with that last
+name.</p></li>
+</ul>
+<p>Matching is case-insensitive and accepts initials with or without dots
+(<code class="docutils literal notranslate"><span class="pre">J.A.</span> <span class="pre">Smith</span></code>, <code class="docutils literal notranslate"><span class="pre">J</span> <span class="pre">A</span> <span class="pre">Smith</span></code>).</p>
 </section>
 <section id="bibtex-export">
 <h2>BibTeX export<a class="headerlink" href="#bibtex-export" title="Link to this heading">¶</a></h2>

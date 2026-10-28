@@ -310,11 +310,83 @@
 <section id="unreleased">
 <h2>Unreleased<a class="headerlink" href="#unreleased" title="Link to this heading">¶</a></h2>
 <ul class="simple">
-<li><p><strong>Settings take effect immediately</strong> — the Obsidian vault, <em>Download
-PDFs</em>, recommend threshold and retrain interval changed in the Settings
-dialog now apply as soon as the dialog closes instead of after a restart.
-Topics, the auto-refresh interval and the directory <code class="docutils literal notranslate"><span class="pre">d</span></code> downloads into
-still need a restart.</p></li>
+<li><p><strong>Exports and downloads no longer freeze the TUI</strong> — <code class="docutils literal notranslate"><span class="pre">o</span></code> (Obsidian),
+<code class="docutils literal notranslate"><span class="pre">g</span></code> (selected digest), <code class="docutils literal notranslate"><span class="pre">G</span></code> (digest archive) and <code class="docutils literal notranslate"><span class="pre">d</span></code> (download PDF)
+run in the background. A badge in the bottom-right corner shows progress
+(<code class="docutils literal notranslate"><span class="pre">Exporting</span> <span class="pre">to</span> <span class="pre">Obsidian</span> <span class="pre">1/3…</span></code>) and then the outcome; you can keep
+browsing meanwhile. One export runs at a time.</p></li>
+<li><p><strong>Obsidian notes never embed a missing PDF</strong> — with <em>Download PDFs</em> on,
+a note whose PDF failed to download links to the PDF on arXiv instead of
+embedding a file that is not there.</p></li>
+<li><p><strong>Settings apply immediately</strong> — saving the Settings dialog now applies
+the new values (and key bindings) to the running session, and reopening it
+shows what you saved. Topics still take effect on the next start. Letters
+such as <code class="docutils literal notranslate"><span class="pre">j</span></code>/<code class="docutils literal notranslate"><span class="pre">k</span></code> can now be typed into settings fields.</p></li>
+<li><p><strong>Auto-refresh works</strong> — <code class="docutils literal notranslate"><span class="pre">auto_refresh_minutes</span></code> now periodically fetches
+new articles; the list is refreshed without losing your place.</p></li>
+<li><p><strong>Safer fetching</strong> — the RSS feed is fetched over HTTPS; network requests
+time out; links that are not arXiv abstract or PDF links
+(<code class="docutils literal notranslate"><span class="pre">https://arxiv.org/abs/&lt;id&gt;</span></code> or <code class="docutils literal notranslate"><span class="pre">.../pdf/&lt;id&gt;</span></code>) are rejected from
+feeds and imports, and PDF links are stored as their <code class="docutils literal notranslate"><span class="pre">/abs/</span></code> form so a
+paper is never kept twice; arXiv API error responses are no longer stored as
+articles; <code class="docutils literal notranslate"><span class="pre">xdg-open</span></code> and <code class="docutils literal notranslate"><span class="pre">tar</span></code> are started without a shell.</p></li>
+<li><p><strong>No more lost days</strong> — a failed fetch no longer marks the missed days as
+fetched, so the next start retries the backfill. <code class="docutils literal notranslate"><span class="pre">--fetch</span></code> now uses the
+same backfill logic as the TUI, and <code class="docutils literal notranslate"><span class="pre">--export-today</span></code>/<code class="docutils literal notranslate"><span class="pre">--export-yaml</span></code>/
+<code class="docutils literal notranslate"><span class="pre">--replay</span></code> no longer fetch or move the <em>New Articles</em> window.</p></li>
+<li><p><strong>Robust config</strong> — a wrongly typed or out-of-range value in
+<code class="docutils literal notranslate"><span class="pre">config.yml</span></code> falls back to its default instead of crashing, and a pop-up
+at startup lists each one; an unparseable file runs on the defaults (and
+is left unchanged) with the same pop-up.</p></li>
+<li><p><strong>Data directories</strong> — when the compiled-in install prefix is not
+writable (e.g. <code class="docutils literal notranslate"><span class="pre">/usr/local</span></code>), data and state fall back to
+<code class="docutils literal notranslate"><span class="pre">~/.local/share</span></code> / <code class="docutils literal notranslate"><span class="pre">~/.local/state</span></code> instead of failing at startup.</p></li>
+<li><p><strong>Fixes</strong> — the YAML digest is valid even when titles contain LaTeX;
+sub-projects at any depth (and projects whose parent was removed) show in
+the filter pane; the category filter and followed authors match whole
+names (<code class="docutils literal notranslate"><span class="pre">math</span></code> no longer matches <code class="docutils literal notranslate"><span class="pre">math-ph</span></code>); followed authors match
+whole names with first and optional middle initials (<code class="docutils literal notranslate"><span class="pre">W.</span> <span class="pre">Li</span></code> matches
+<em>Wei Li</em> but not <em>Xiao Li</em> or <em>Wei Lin</em>); re-importing a project keeps it nested; deleting an
+article removes its tags and pruning keeps tagged articles; undo restores
+selected articles outside the current view and keeps the read state;
+old-style IDs such as <code class="docutils literal notranslate"><span class="pre">hep-ph/0101001</span></code> work for PDFs, BibTeX and
+Obsidian notes; a corrupt <code class="docutils literal notranslate"><span class="pre">ranker.bin</span></code> is rejected instead of crashing;
+malformed import or replay files are reported instead of aborting.</p></li>
+<li><p><strong>Found by fuzzing</strong> — pruning no longer deletes articles that carry a
+project note (the note was left orphaned); text containing a NUL byte is
+stored in full; link normalisation only strips real version suffixes;
+out-of-range dates in feeds are rejected instead of overflowing; a corrupt
+stored date no longer aborts startup.</p></li>
+<li><p><strong>Follow authors from the TUI</strong> — <code class="docutils literal notranslate"><span class="pre">f</span></code> opens a <em>Followed Authors</em> dialog
+with the focused article’s authors and your followed list; <code class="docutils literal notranslate"><span class="pre">+</span></code> adds a
+typed name. Names without a first initial are flagged and need a second
+Enter, since they match everyone with that last name.</p></li>
+<li><p><strong>Themes</strong> — <code class="docutils literal notranslate"><span class="pre">theme</span></code> selects <code class="docutils literal notranslate"><span class="pre">frappe</span></code> (default), <code class="docutils literal notranslate"><span class="pre">latte</span></code>,
+<code class="docutils literal notranslate"><span class="pre">mocha</span></code>, <code class="docutils literal notranslate"><span class="pre">high-contrast</span></code> or <code class="docutils literal notranslate"><span class="pre">terminal</span></code>; <code class="docutils literal notranslate"><span class="pre">theme_colors</span></code> overrides
+individual colours. Settings → General → Theme cycles them live.</p></li>
+<li><p><strong>Easier to find your way</strong> — the help overlay (<code class="docutils literal notranslate"><span class="pre">?</span></code>) groups bindings by
+task (Navigation, Articles, Selection, Projects, Export &amp; share, Ranking,
+App) with the key first and nothing cut off, and warns about keys bound to
+two actions. The unused <em>Generate BibTeX</em> binding, which shared <code class="docutils literal notranslate"><span class="pre">c</span></code>
+with <em>Export BibTeX</em>, is gone. Empty views say what to do next (“No
+bookmarks yet — press b …”). With many list columns the title keeps a
+readable width (optional columns are hidden from the right), and the
+footer drops the topic list instead of overlapping on narrow terminals.</p></li>
+<li><p><strong>Smoother under load</strong> — the database uses WAL journaling and waits for
+a busy lock instead of failing, so a cron <code class="docutils literal notranslate"><span class="pre">--fetch</span></code> and the TUI can run
+together; bookmarking or marking read no longer rewrites the search index;
+lists are ordered newest first; the idle TUI no longer redraws 20 times a
+second; fuzzy search is much faster on long abstracts and matches a typo
+that drops a letter.</p></li>
+<li><p><strong>BibTeX</strong> — clipboard and file exports produce the same entry; <code class="docutils literal notranslate"><span class="pre">%</span></code>,
+<code class="docutils literal notranslate"><span class="pre">&amp;</span></code> and <code class="docutils literal notranslate"><span class="pre">#</span></code> are escaped and braces balanced; the year is the UTC year;
+re-linking an article no longer appends it to the project <code class="docutils literal notranslate"><span class="pre">.bib</span></code> again.</p></li>
+<li><p><strong>Fixes</strong> — exports report failure when the disk is full; adding a tag no
+longer switches the view to a different project; removing the project you
+are viewing switches to New Articles; search input with control
+characters no longer errors.</p></li>
+<li><p><strong>Builds with Clang</strong> — fixed a <code class="docutils literal notranslate"><span class="pre">class</span></code>/<code class="docutils literal notranslate"><span class="pre">struct</span></code> mismatch that Clang
+rejects, and cpr’s own <code class="docutils literal notranslate"><span class="pre">-Werror</span></code> no longer trips on libstdc++ 13.</p></li>
 <li><p><strong>Obsidian export without PDFs</strong> — <code class="docutils literal notranslate"><span class="pre">o</span></code> no longer downloads each PDF into
 the vault. Notes link to the PDF on arXiv instead
 (<code class="docutils literal notranslate"><span class="pre">[PDF</span> <span class="pre">on</span> <span class="pre">arXiv](https://arxiv.org/pdf/&lt;id&gt;)</span></code>), keeping git-synced vaults

@@ -42,6 +42,28 @@ Tests live in ``test/unit/``. The project uses
 `Catch2 <https://github.com/catchorg/Catch2>`_ v3 for assertions and
 `trompeloeil <https://github.com/rollbear/trompeloeil>`_ for mocks.
 
+Fuzzing
+-------
+
+``test/fuzz/`` holds libFuzzer targets for everything that parses untrusted
+input: RSS/Atom feeds, LaTeX and link/date helpers, ``config.yml``, project
+JSON imports, replay logs, ``ranker.bin``, the YAML digest round trip, and a
+stateful sequence of database operations. Build and run them with Clang:
+
+.. code-block:: bash
+
+   sudo apt-get install clang libclang-rt-dev   # libFuzzer runtime
+   CC=clang CXX=clang++ cmake -B build-fuzz -DARXIV_TUI_ENABLE_FUZZING=ON
+   cmake --build build-fuzz --target fuzz_feeds
+   ./build-fuzz/test/fuzz/fuzz_feeds test/fuzz/corpus/feeds \
+       -dict=test/fuzz/dict/feeds.dict -max_total_time=300
+
+Every normal test build also compiles each target into
+``fuzz_<name>_replay`` and ``ctest`` replays ``test/fuzz/corpus/<name>/``, so
+seeds and past crashers run with any compiler. When the fuzzer finds a crash:
+add the input to the corpus (``regress_<what>``), write a unit test that
+reproduces it, and fix the code.
+
 Architecture notes
 ------------------
 
@@ -78,6 +100,8 @@ Every push and pull request runs:
      - Code style against ``.clang-format``
    * - **REUSE**
      - Every file carries a valid SPDX header
+   * - **Fuzz**
+     - libFuzzer, 60 s per target on pull requests, 20 min nightly
 
 License
 -------

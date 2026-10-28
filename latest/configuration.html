@@ -380,7 +380,8 @@ Set to <code class="docutils literal notranslate"><span class="pre">0</span></co
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">max_article_age_days</span></code></dt><dd><p>Maximum age (in days) of articles kept in the database. Articles older
 than this threshold are deleted on startup unless they are bookmarked,
-rated, or assigned to a project. Set to <code class="docutils literal notranslate"><span class="pre">0</span></code> to disable pruning.
+rated, tagged, noted, or assigned to a project. Set to <code class="docutils literal notranslate"><span class="pre">0</span></code> to disable
+pruning.
 Default: <code class="docutils literal notranslate"><span class="pre">0</span></code>.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">obsidian_vault</span></code></dt><dd><p>Obsidian vault that <code class="docutils literal notranslate"><span class="pre">o</span></code> exports selected articles into; notes are
@@ -395,9 +396,30 @@ in the Settings dialog (<code class="docutils literal notranslate"><span class="
 <code class="docutils literal notranslate"><span class="pre">false</span></code>.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">key_mappings</span></code></dt><dd><p>List of <code class="docutils literal notranslate"><span class="pre">{action,</span> <span class="pre">key}</span></code> pairs that remap the default key bindings.
-See <a class="reference internal" href="keybindings.html"><span class="doc">Key Bindings</span></a> for the full list of action names.</p>
+See <a class="reference internal" href="keybindings.html"><span class="doc">Key Bindings</span></a> for the full list of action names. If two actions
+end up on the same key, the help overlay (<code class="docutils literal notranslate"><span class="pre">?</span></code>) lists the conflict.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">theme</span></code></dt><dd><p>Colour theme: <code class="docutils literal notranslate"><span class="pre">frappe</span></code> (default), <code class="docutils literal notranslate"><span class="pre">latte</span></code> (light), <code class="docutils literal notranslate"><span class="pre">mocha</span></code>,
+<code class="docutils literal notranslate"><span class="pre">high-contrast</span></code>, or <code class="docutils literal notranslate"><span class="pre">terminal</span></code> (uses your terminal’s own palette —
+pick this for 16-colour terminals). Cycle through them live in the
+Settings dialog (<code class="docutils literal notranslate"><span class="pre">S</span></code> → General → Theme).</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">theme_colors</span></code></dt><dd><p>Optional per-colour overrides on top of <code class="docutils literal notranslate"><span class="pre">theme</span></code>, as <code class="docutils literal notranslate"><span class="pre">#rrggbb</span></code>. Keys:
+<code class="docutils literal notranslate"><span class="pre">base</span></code>, <code class="docutils literal notranslate"><span class="pre">surface</span></code>, <code class="docutils literal notranslate"><span class="pre">text</span></code>, <code class="docutils literal notranslate"><span class="pre">subtext</span></code>, <code class="docutils literal notranslate"><span class="pre">primary</span></code>, <code class="docutils literal notranslate"><span class="pre">border</span></code>,
+<code class="docutils literal notranslate"><span class="pre">secondary</span></code>, <code class="docutils literal notranslate"><span class="pre">error</span></code>.</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">theme</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mocha</span>
+<span class="nt">theme_colors</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">primary</span><span class="p">:</span><span class="w"> </span><span class="s">"#fab387"</span>
+</pre></div>
+</div>
 </dd>
 </dl>
+<p>A value of the wrong type or out of range is ignored and its default is used
+instead; when the TUI starts it shows a pop-up listing each such setting. If
+the file cannot be parsed at all, every setting uses its default and the file
+is left untouched so you can fix it. Saving from the Settings dialog writes
+the values in use (defaults included) back to <code class="docutils literal notranslate"><span class="pre">config.yml</span></code>. Headless modes
+(<code class="docutils literal notranslate"><span class="pre">--fetch</span></code>, <code class="docutils literal notranslate"><span class="pre">--export-*</span></code>, <code class="docutils literal notranslate"><span class="pre">--replay</span></code>) print the same warnings to stderr.</p>
 </section>
 <section id="environment-overrides">
 <h2>Environment overrides<a class="headerlink" href="#environment-overrides" title="Link to this heading">¶</a></h2>

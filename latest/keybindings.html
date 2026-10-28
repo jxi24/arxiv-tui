@@ -307,16 +307,17 @@
         <article role="main" id="furo-main-content">
           <section id="key-bindings">
 <h1>Key Bindings<a class="headerlink" href="#key-bindings" title="Link to this heading">¶</a></h1>
-<p>All bindings are remappable in <code class="docutils literal notranslate"><span class="pre">config.yml</span></code> via the <code class="docutils literal notranslate"><span class="pre">key_mappings</span></code> section.
-See <a class="reference internal" href="configuration.html"><span class="doc">Configuration</span></a> for the config format.</p>
+<p>All bindings are remappable in <code class="docutils literal notranslate"><span class="pre">config.yml</span></code> via the <code class="docutils literal notranslate"><span class="pre">key_mappings</span></code> section,
+using the <em>action names</em> below. See <a class="reference internal" href="configuration.html"><span class="doc">Configuration</span></a> for the config format.
+The groups match the in-app help overlay (<code class="docutils literal notranslate"><span class="pre">?</span></code>).</p>
 <section id="navigation">
 <h2>Navigation<a class="headerlink" href="#navigation" title="Link to this heading">¶</a></h2>
 <div class="table-wrapper colwidths-given docutils container">
 <table class="docutils align-default">
 <colgroup>
-<col style="width: 20.0%" />
+<col style="width: 15.0%" />
 <col style="width: 30.0%" />
-<col style="width: 50.0%" />
+<col style="width: 55.0%" />
 </colgroup>
 <thead>
 <tr class="row-odd"><th class="head"><p>Key</p></th>
@@ -333,38 +334,94 @@ See <a class="reference internal" href="configuration.html"><span class="doc">Co
 <td><p><code class="docutils literal notranslate"><span class="pre">previous</span></code></p></td>
 <td><p>Move to the previous article</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">h</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">focus_left</span></code></p></td>
-<td><p>Move focus to the left pane</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">l</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">focus_right</span></code></p></td>
-<td><p>Move focus to the right pane</p></td>
-</tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">a</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">show_detail</span></code></p></td>
 <td><p>Toggle the detail (abstract) pane</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">?</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">help</span></code></p></td>
-<td><p>Toggle the help overlay</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">l</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">move_right</span></code></p></td>
+<td><p>Move focus to the pane on the right</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">q</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">quit</span></code></p></td>
-<td><p>Quit the application</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">h</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">move_left</span></code></p></td>
+<td><p>Move focus to the pane on the left</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">r</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">set_date_range</span></code></p></td>
+<td><p>Set the date range (when the <em>Range</em> filter is active)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">/</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">search</span></code></p></td>
+<td><p>Open the search dialog</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">t</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">filter_categories</span></code></p></td>
+<td><p>Choose which arXiv categories are shown</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">O</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">open_in_browser</span></code></p></td>
+<td><p>Open the article (or every selected article) in the default browser</p></td>
 </tr>
 </tbody>
 </table>
 </div>
 </section>
-<section id="article-actions">
-<h2>Article actions<a class="headerlink" href="#article-actions" title="Link to this heading">¶</a></h2>
+<section id="articles">
+<h2>Articles<a class="headerlink" href="#articles" title="Link to this heading">¶</a></h2>
 <div class="table-wrapper colwidths-given docutils container">
 <table class="docutils align-default">
 <colgroup>
-<col style="width: 20.0%" />
+<col style="width: 15.0%" />
 <col style="width: 30.0%" />
-<col style="width: 50.0%" />
+<col style="width: 55.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Key</p></th>
+<th class="head"><p>Action name</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">d</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">download_article</span></code></p></td>
+<td><p>Download the article PDF to <code class="docutils literal notranslate"><span class="pre">download_dir</span></code> (runs in the background)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">b</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">bookmark</span></code></p></td>
+<td><p>Bookmark (or unbookmark) the article; bookmarks every selected article when a selection is active</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">n</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">rate_article</span></code></p></td>
+<td><p>Rate the focused article 1–5 stars (always the focused article; see <code class="docutils literal notranslate"><span class="pre">W</span></code> for a selection)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">N</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">edit_note</span></code></p></td>
+<td><p>Edit the article’s note for the current project</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">D</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">delete_article</span></code></p></td>
+<td><p>Delete the article (or every selected article), with confirmation</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">u</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">undo_delete</span></code></p></td>
+<td><p>Undo the last delete, restoring rating, project memberships, notes, tags and read state</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">f</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">follow_authors</span></code></p></td>
+<td><p>Follow or unfollow authors: the focused article’s authors, your followed list, or a typed name (<code class="docutils literal notranslate"><span class="pre">+</span></code>)</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="selection">
+<h2>Selection<a class="headerlink" href="#selection" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper colwidths-given docutils container">
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 15.0%" />
+<col style="width: 30.0%" />
+<col style="width: 55.0%" />
 </colgroup>
 <thead>
 <tr class="row-odd"><th class="head"><p>Key</p></th>
@@ -375,49 +432,23 @@ See <a class="reference internal" href="configuration.html"><span class="doc">Co
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Space</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">toggle_selection</span></code></p></td>
-<td><p>Toggle selection on the current article</p></td>
+<td><p>Select or deselect the article</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">b</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">bookmark</span></code></p></td>
-<td><p>Bookmark (or unbookmark) the current article; bookmarks all selected articles when a selection is active</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">D</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">delete_article</span></code></p></td>
-<td><p>Delete the current article (or all selected articles) with confirmation</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">u</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">undo</span></code></p></td>
-<td><p>Undo the last delete, restoring the article(s), rating, project memberships, and tags</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">d</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">download_article</span></code></p></td>
-<td><p>Download the article PDF to <code class="docutils literal notranslate"><span class="pre">download_dir</span></code></p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">n</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">rate</span></code></p></td>
-<td><p>Rate the article 1–5 stars; with a selection active, rates all selected articles at once</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">c</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">copy_bibtex</span></code></p></td>
-<td><p>Copy the BibTeX entry to the system clipboard (with InspireHEP lookup)</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">N</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">edit_note</span></code></p></td>
-<td><p>Edit the per-article note for the current project</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">W</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">rate_selection</span></code></p></td>
+<td><p>Rate every selected article with one score</p></td>
 </tr>
 </tbody>
 </table>
 </div>
-</section>
-<section id="selection-and-bulk-actions">
-<h2>Selection and bulk actions<a class="headerlink" href="#selection-and-bulk-actions" title="Link to this heading">¶</a></h2>
-<p>Select any number of articles with <code class="docutils literal notranslate"><span class="pre">Space</span></code>. While a selection is active the
-article pane header shows <code class="docutils literal notranslate"><span class="pre">[N</span> <span class="pre">selected]</span></code>.</p>
+<p>Select any number of articles with <code class="docutils literal notranslate"><span class="pre">Space</span></code> (the selection survives
+switching views). While a selection is active the article pane header shows
+<code class="docutils literal notranslate"><span class="pre">[N</span> <span class="pre">selected]</span></code>, and these keys act on the whole selection:</p>
 <div class="table-wrapper colwidths-given docutils container">
 <table class="docutils align-default">
 <colgroup>
-<col style="width: 20.0%" />
-<col style="width: 80.0%" />
+<col style="width: 15.0%" />
+<col style="width: 85.0%" />
 </colgroup>
 <thead>
 <tr class="row-odd"><th class="head"><p>Key</p></th>
@@ -426,54 +457,22 @@ article pane header shows <code class="docutils literal notranslate"><span class
 </thead>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">b</span></code></p></td>
-<td><p>Bookmark all selected articles</p></td>
+<td><p>Bookmark every selected article</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">n</span></code></p></td>
-<td><p>Rate all selected articles with a single score</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">W</span></code></p></td>
+<td><p>Rate every selected article with a single score</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">p</span></code></p></td>
-<td><p>Open the project dialog in bulk-add mode — confirming links all selected articles to the checked projects</p></td>
+<td><p>Add every selected article to the checked projects</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">D</span></code></p></td>
-<td><p>Delete all selected articles (confirmation required)</p></td>
+<td><p>Delete every selected article (with confirmation)</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">g</span></code></p></td>
-<td><p>Export selected articles as a Markdown digest + PDF bundle</p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">O</span></code></p></td>
+<td><p>Open every selected article in the browser</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">o</span></code></p></td>
-<td><p>Export selected articles to an Obsidian vault</p></td>
-</tr>
-</tbody>
-</table>
-</div>
-</section>
-<section id="filtering-and-search">
-<h2>Filtering and search<a class="headerlink" href="#filtering-and-search" title="Link to this heading">¶</a></h2>
-<div class="table-wrapper colwidths-given docutils container">
-<table class="docutils align-default">
-<colgroup>
-<col style="width: 20.0%" />
-<col style="width: 30.0%" />
-<col style="width: 50.0%" />
-</colgroup>
-<thead>
-<tr class="row-odd"><th class="head"><p>Key</p></th>
-<th class="head"><p>Action name</p></th>
-<th class="head"><p>Description</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">/</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">search</span></code></p></td>
-<td><p>Open the search dialog</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">r</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">date_range</span></code></p></td>
-<td><p>Set the date range filter (when the <em>Date Range</em> filter is active)</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">t</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">toggle_category</span></code></p></td>
-<td><p>Toggle the category filter</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">g</span></code> / <code class="docutils literal notranslate"><span class="pre">G</span></code> / <code class="docutils literal notranslate"><span class="pre">o</span></code></p></td>
+<td><p>Export the selection (digest, digest archive, Obsidian)</p></td>
 </tr>
 </tbody>
 </table>
@@ -484,9 +483,9 @@ article pane header shows <code class="docutils literal notranslate"><span class
 <div class="table-wrapper colwidths-given docutils container">
 <table class="docutils align-default">
 <colgroup>
-<col style="width: 20.0%" />
+<col style="width: 15.0%" />
 <col style="width: 30.0%" />
-<col style="width: 50.0%" />
+<col style="width: 55.0%" />
 </colgroup>
 <thead>
 <tr class="row-odd"><th class="head"><p>Key</p></th>
@@ -497,7 +496,7 @@ article pane header shows <code class="docutils literal notranslate"><span class
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">p</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">create_project</span></code></p></td>
-<td><p>Assign or remove the current article from projects</p></td>
+<td><p>Add the article (or the selection) to projects, or create one</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">x</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">delete_project</span></code></p></td>
@@ -515,14 +514,54 @@ article pane header shows <code class="docutils literal notranslate"><span class
 </table>
 </div>
 </section>
-<section id="ranking-and-settings">
-<h2>Ranking and settings<a class="headerlink" href="#ranking-and-settings" title="Link to this heading">¶</a></h2>
+<section id="export-share">
+<h2>Export &amp; share<a class="headerlink" href="#export-share" title="Link to this heading">¶</a></h2>
 <div class="table-wrapper colwidths-given docutils container">
 <table class="docutils align-default">
 <colgroup>
-<col style="width: 20.0%" />
+<col style="width: 15.0%" />
 <col style="width: 30.0%" />
-<col style="width: 50.0%" />
+<col style="width: 55.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Key</p></th>
+<th class="head"><p>Action name</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">c</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">export_bibtex</span></code></p></td>
+<td><p>Copy the article’s BibTeX to the clipboard (InspireHEP first, else built from arXiv data); saves <code class="docutils literal notranslate"><span class="pre">&lt;id&gt;.bib</span></code> when no clipboard tool is available</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">X</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">export_digest</span></code></p></td>
+<td><p>Write today’s articles to <code class="docutils literal notranslate"><span class="pre">digest-YYYY-MM-DD.md</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">g</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">export_selected_digest</span></code></p></td>
+<td><p>Export the selection as a Markdown digest plus PDFs (background)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">G</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">export_digest_archive</span></code></p></td>
+<td><p>As <code class="docutils literal notranslate"><span class="pre">g</span></code>, then pack it into a <code class="docutils literal notranslate"><span class="pre">.tar.gz</span></code> (background)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">o</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">export_to_obsidian</span></code></p></td>
+<td><p>Export the selection to the Obsidian vault (background)</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="ranking">
+<h2>Ranking<a class="headerlink" href="#ranking" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper colwidths-given docutils container">
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 15.0%" />
+<col style="width: 30.0%" />
+<col style="width: 55.0%" />
 </colgroup>
 <thead>
 <tr class="row-odd"><th class="head"><p>Key</p></th>
@@ -532,12 +571,44 @@ article pane header shows <code class="docutils literal notranslate"><span class
 </thead>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">R</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">retrain</span></code></p></td>
-<td><p>Force a full cold-start retrain of the ranking model</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">force_retrain</span></code></p></td>
+<td><p>Retrain the ranking model from scratch</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">S</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">K</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">edit_keywords</span></code></p></td>
+<td><p>Edit the interest keywords used for ranking</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="app">
+<h2>App<a class="headerlink" href="#app" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper colwidths-given docutils container">
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 15.0%" />
+<col style="width: 30.0%" />
+<col style="width: 55.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Key</p></th>
+<th class="head"><p>Action name</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">S</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">settings</span></code></p></td>
 <td><p>Open the settings dialog</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">?</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">show_help</span></code></p></td>
+<td><p>Toggle the help overlay (type to filter it)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">q</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">quit</span></code></p></td>
+<td><p>Quit (or close the open dialog)</p></td>
 </tr>
 </tbody>
 </table>
@@ -548,14 +619,15 @@ article pane header shows <code class="docutils literal notranslate"><span class
 <p>Add or override an entry in the <code class="docutils literal notranslate"><span class="pre">key_mappings</span></code> section of
 <code class="docutils literal notranslate"><span class="pre">~/.config/arxiv-tui/config.yml</span></code>:</p>
 <div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">key_mappings</span><span class="p">:</span>
-<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">next</span>
-<span class="w">    </span><span class="nt">key</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">n</span><span class="w">          </span><span class="c1"># remap "next article" from j to n</span>
-<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">previous</span>
-<span class="w">    </span><span class="nt">key</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">p</span><span class="w">          </span><span class="c1"># remap "previous article" from k to p</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bookmark</span>
+<span class="w">    </span><span class="nt">key</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">m</span><span class="w">          </span><span class="c1"># bookmark with m instead of b</span>
 <span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">action</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">quit</span>
-<span class="w">    </span><span class="nt">key</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">q</span>
+<span class="w">    </span><span class="nt">key</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Q</span><span class="w">          </span><span class="c1"># quit with Q, so a stray q does not exit</span>
 </pre></div>
 </div>
+<p>Keys are single characters and case-sensitive. If two actions end up on the
+same key only one of them fires; the help overlay (<code class="docutils literal notranslate"><span class="pre">?</span></code>) lists any such
+conflict.</p>
 </section>
 </section>
 
@@ -616,11 +688,12 @@ article pane header shows <code class="docutils literal notranslate"><span class
             <ul>
 <li><a class="reference internal" href="#">Key Bindings</a><ul>
 <li><a class="reference internal" href="#navigation">Navigation</a></li>
-<li><a class="reference internal" href="#article-actions">Article actions</a></li>
-<li><a class="reference internal" href="#selection-and-bulk-actions">Selection and bulk actions</a></li>
-<li><a class="reference internal" href="#filtering-and-search">Filtering and search</a></li>
+<li><a class="reference internal" href="#articles">Articles</a></li>
+<li><a class="reference internal" href="#selection">Selection</a></li>
 <li><a class="reference internal" href="#projects">Projects</a></li>
-<li><a class="reference internal" href="#ranking-and-settings">Ranking and settings</a></li>
+<li><a class="reference internal" href="#export-share">Export &amp; share</a></li>
+<li><a class="reference internal" href="#ranking">Ranking</a></li>
+<li><a class="reference internal" href="#app">App</a></li>
 <li><a class="reference internal" href="#remapping-a-key">Remapping a key</a></li>
 </ul>
 </li>

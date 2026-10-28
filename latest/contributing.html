@@ -340,6 +340,25 @@ pre-commit<span class="w"> </span>run<span class="w"> </span>--all-files<span cl
 <a class="reference external" href="https://github.com/catchorg/Catch2">Catch2</a> v3 for assertions and
 <a class="reference external" href="https://github.com/rollbear/trompeloeil">trompeloeil</a> for mocks.</p>
 </section>
+<section id="fuzzing">
+<h2>Fuzzing<a class="headerlink" href="#fuzzing" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">test/fuzz/</span></code> holds libFuzzer targets for everything that parses untrusted
+input: RSS/Atom feeds, LaTeX and link/date helpers, <code class="docutils literal notranslate"><span class="pre">config.yml</span></code>, project
+JSON imports, replay logs, <code class="docutils literal notranslate"><span class="pre">ranker.bin</span></code>, the YAML digest round trip, and a
+stateful sequence of database operations. Build and run them with Clang:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>sudo<span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>clang<span class="w"> </span>libclang-rt-dev<span class="w">   </span><span class="c1"># libFuzzer runtime</span>
+<span class="nv">CC</span><span class="o">=</span>clang<span class="w"> </span><span class="nv">CXX</span><span class="o">=</span>clang++<span class="w"> </span>cmake<span class="w"> </span>-B<span class="w"> </span>build-fuzz<span class="w"> </span>-DARXIV_TUI_ENABLE_FUZZING<span class="o">=</span>ON
+cmake<span class="w"> </span>--build<span class="w"> </span>build-fuzz<span class="w"> </span>--target<span class="w"> </span>fuzz_feeds
+./build-fuzz/test/fuzz/fuzz_feeds<span class="w"> </span>test/fuzz/corpus/feeds<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-dict<span class="o">=</span>test/fuzz/dict/feeds.dict<span class="w"> </span>-max_total_time<span class="o">=</span><span class="m">300</span>
+</pre></div>
+</div>
+<p>Every normal test build also compiles each target into
+<code class="docutils literal notranslate"><span class="pre">fuzz_&lt;name&gt;_replay</span></code> and <code class="docutils literal notranslate"><span class="pre">ctest</span></code> replays <code class="docutils literal notranslate"><span class="pre">test/fuzz/corpus/&lt;name&gt;/</span></code>, so
+seeds and past crashers run with any compiler. When the fuzzer finds a crash:
+add the input to the corpus (<code class="docutils literal notranslate"><span class="pre">regress_&lt;what&gt;</span></code>), write a unit test that
+reproduces it, and fix the code.</p>
+</section>
 <section id="architecture-notes">
 <h2>Architecture notes<a class="headerlink" href="#architecture-notes" title="Link to this heading">¶</a></h2>
 <ul class="simple">
@@ -384,6 +403,9 @@ for full naming conventions, header style, and testing guidelines.</p>
 </tr>
 <tr class="row-even"><td><p><strong>REUSE</strong></p></td>
 <td><p>Every file carries a valid SPDX header</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Fuzz</strong></p></td>
+<td><p>libFuzzer, 60 s per target on pull requests, 20 min nightly</p></td>
 </tr>
 </tbody>
 </table>
@@ -454,6 +476,7 @@ for full naming conventions, header style, and testing guidelines.</p>
 <li><a class="reference internal" href="#">Contributing</a><ul>
 <li><a class="reference internal" href="#development-setup">Development setup</a></li>
 <li><a class="reference internal" href="#test-driven-development">Test-driven development</a></li>
+<li><a class="reference internal" href="#fuzzing">Fuzzing</a></li>
 <li><a class="reference internal" href="#architecture-notes">Architecture notes</a></li>
 <li><a class="reference internal" href="#ci-code-quality">CI / Code quality</a></li>
 <li><a class="reference internal" href="#license">License</a></li>
