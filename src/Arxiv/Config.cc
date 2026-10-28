@@ -4,8 +4,11 @@
 
 #include "Arxiv/Config.hh"
 
+#include "Arxiv/AtomicFile.hh"
+
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <type_traits>
 
 #include "spdlog/spdlog.h"
@@ -119,7 +122,7 @@ void Config::load_from_file(const std::string& config_file) {
     }
 }
 
-void Config::save_to_file(const std::string& config_file) const {
+bool Config::save_to_file(const std::string& config_file) const {
     YAML::Node config;
 
     // Save download settings
@@ -158,8 +161,9 @@ void Config::save_to_file(const std::string& config_file) const {
         config["keywords_file"] = keywords_file_;
     }
 
-    std::ofstream fout(config_file);
-    fout << config;
+    std::ostringstream out;
+    out << config;
+    return WriteFileAtomically(config_file, out.str());
 }
 
 } // namespace Arxiv

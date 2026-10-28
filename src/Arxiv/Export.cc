@@ -4,6 +4,7 @@
 
 #include "Arxiv/Export.hh"
 
+#include "Arxiv/AtomicFile.hh"
 #include "Arxiv/Config.hh" // yaml-cpp: included via a project header, see CLAUDE.md
 #include "Arxiv/Fetcher.hh"
 #include "Arxiv/Process.hh"
@@ -11,11 +12,16 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cerrno>
 #include <chrono>
+#include <cstring>
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
+#include <sstream>
 #include <string_view>
+#include <unistd.h>
 
 #include "fmt/format.h"
 #include "spdlog/spdlog.h"
@@ -37,13 +43,22 @@ std::string format_date(const std::chrono::system_clock::time_point& tp) {
 // success because only the open was checked.
 bool write_file(const std::string& path,
                 std::string_view log_subject,
-                const std::function<void(std::ofstream&)>& writer) {
-    std::ofstream file(path);
-    if (!file.is_open())
+                const std::function<void(std::ostream&)>& writer) {
+    // Fail before building the content: a BibTeX writer looks every paper up
+    // on InspireHEP, which is wasted on a path that cannot be written.
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const fs::path target(path);
+    const bool special = fs::exists(target, ec) && !fs::is_regular_file(target, ec);
+    const fs::path dir = target.has_parent_path() ? target.parent_path() : fs::path(".");
+    if (!special && ::access(dir.c_str(), W_OK) != 0) {
+        spdlog::error(
+            "[Export]: Cannot write {} to {}: {}", log_subject, path, std::strerror(errno));
         return false;
+    }
+    std::ostringstream file;
     writer(file);
-    file.flush();
-    if (!file) {
+    if (!WriteFileAtomically(path, file.str())) {
         spdlog::error("[Export]: Writing {} to {} failed", log_subject, path);
         return false;
     }
@@ -121,7 +136,7 @@ bool ProjectMarkdown(const std::string& path,
                      const std::string& project,
                      const std::vector<Article>& articles,
                      const NoteLookup& note_for) {
-    return write_file(path, "project '" + project + "' Markdown", [&](std::ofstream& file) {
+    return write_file(path, "project '" + project + "' Markdown", [&](std::ostream& file) {
         file << "# " << project << "\n\n";
         file << articles.size() << " article(s)\n\n---\n\n";
         for (const auto& article : articles) {
@@ -143,7 +158,7 @@ bool ProjectText(const std::string& path,
                  const std::string& project,
                  const std::vector<Article>& articles,
                  const NoteLookup& note_for) {
-    return write_file(path, "project '" + project + "' plain text", [&](std::ofstream& file) {
+    return write_file(path, "project '" + project + "' plain text", [&](std::ostream& file) {
         file << project << "\n" << std::string(project.size(), '=') << "\n\n";
         file << articles.size() << " article(s)\n\n";
         for (size_t i = 0; i < articles.size(); ++i) {
@@ -164,7 +179,7 @@ bool ProjectJSON(const std::string& path,
                  const std::string& project,
                  const std::vector<Article>& articles,
                  const NoteLookup& note_for) {
-    return write_file(path, "project '" + project + "' JSON", [&](std::ofstream& file) {
+    return write_file(path, "project '" + project + "' JSON", [&](std::ostream& file) {
         nlohmann::json j;
         j["name"] = project;
         j["articles"] = nlohmann::json::array();
@@ -187,7 +202,7 @@ bool ProjectJSON(const std::string& path,
 bool DailyDigestMarkdown(const std::string& path, const std::vector<Article>& articles) {
     return write_file(path,
                       "daily digest (" + std::to_string(articles.size()) + " articles)",
-                      [&](std::ofstream& f) {
+                      [&](std::ostream& f) {
                           f << "# arXiv Daily Digest — " << Today() << "\n\n";
                           if (articles.empty()) {
                               f << "_No articles fetched today._\n";
@@ -230,14 +245,14 @@ bool DailyDigestYAML(const std::string& path,
 
     return write_file(path,
                       "daily digest YAML (" + std::to_string(scored.size()) + " articles)",
-                      [&](std::ofstream& f) { f << out.c_str() << "\n"; });
+                      [&](std::ostream& f) { f << out.c_str() << "\n"; });
 }
 
 bool BibTeXFile(const std::string& path,
                 const std::vector<Article>& articles,
                 const std::function<std::string(const Article&)>& entry_for) {
     return write_file(
-        path, std::to_string(articles.size()) + " article(s) BibTeX", [&](std::ofstream& file) {
+        path, std::to_string(articles.size()) + " article(s) BibTeX", [&](std::ostream& file) {
             for (const auto& a : articles)
                 file << entry_for(a) << "\n";
         });
@@ -260,11 +275,7 @@ std::string SelectedDigest(Fetcher& fetcher,
 
     // Write the markdown digest.
     fs::path md_path = digest_dir / "digest.md";
-    std::ofstream f(md_path);
-    if (!f.is_open()) {
-        spdlog::error("[Export]: Cannot open digest file {}", md_path.string());
-        return "";
-    }
+    std::ostringstream f;
     f << "# arXiv Selected Digest — " << date_dir << "\n\n";
     f << articles.size() << " selected article(s)\n\n---\n\n";
     for (const auto& a : articles) {
@@ -278,7 +289,10 @@ std::string SelectedDigest(Fetcher& fetcher,
             f << "\n" << a.abstract << "\n";
         f << "\n---\n\n";
     }
-    f.close();
+    if (!WriteFileAtomically(md_path, f.str())) {
+        spdlog::error("[Export]: Cannot write digest file {}", md_path.string());
+        return "";
+    }
 
     // Download each PDF next to the digest.
     int ok = 0;
@@ -314,6 +328,60 @@ std::string PackArchive(const std::string& dir) {
     spdlog::info("[Export]: Digest archive written to {}", archive.string());
     return archive.string();
 }
+
+namespace {
+
+// A new paper note: YAML frontmatter, abstract, PDF link or embed, and an
+// empty Reading Notes section for the user.
+std::string obsidian_note(const Article& a,
+                          const std::string& aid,
+                          const std::string& stem,
+                          const std::string& date_str,
+                          bool have_pdf,
+                          const std::string& pdf_url) {
+    std::ostringstream nf;
+    nf << "---\n";
+    nf << "title: " << yaml_quote(a.title) << "\n";
+    nf << "authors: " << yaml_quote(a.authors) << "\n";
+    nf << "arxiv_id: " << yaml_quote(aid) << "\n";
+    nf << "url: " << yaml_quote(a.link) << "\n";
+    if (!a.category.empty()) {
+        nf << "tags: " << yaml_inline_list(a.category) << "\n";
+        nf << "category: " << yaml_quote(a.category) << "\n";
+    }
+    nf << "imported: " << date_str << "\n";
+    nf << "related-projects: []\n";
+    nf << "---\n\n";
+    nf << "# " << a.title << "\n\n";
+    nf << "**Authors:** " << a.authors << "\n\n";
+    nf << "**Link:** [" << a.link << "](" << a.link << ")\n\n";
+    if (have_pdf) {
+        // Obsidian PDF embed: ![[file.pdf]] renders inline when colocated.
+        nf << "![[" << stem << ".pdf]]\n\n";
+    } else {
+        // Link-only mode, or the download failed: never embed a missing file.
+        nf << "[PDF on arXiv](" << pdf_url << ")\n\n";
+    }
+    if (!a.abstract.empty()) {
+        nf << "## Abstract\n\n" << a.abstract << "\n";
+    }
+    nf << "\n## Reading Notes\n\n"
+       << "**Relevance:**\n\n"
+       << "**Key ideas:**\n\n"
+       << "**Open questions:**\n";
+    return nf.str();
+}
+
+// "- [[stem|title]]" for the index; "|" and "]]" would end the wikilink.
+std::string index_entry(const Article& a) {
+    std::string alias = a.title;
+    std::replace(alias.begin(), alias.end(), '|', '/');
+    for (auto pos = alias.find("]]"); pos != std::string::npos; pos = alias.find("]]"))
+        alias.replace(pos, 2, "] ]");
+    return "- [[" + a.file_stem() + "|" + alias + "]]\n";
+}
+
+} // namespace
 
 std::string ObsidianNotes(Fetcher& fetcher,
                           const std::vector<Article>& articles,
@@ -351,70 +419,53 @@ std::string ObsidianNotes(Fetcher& fetcher,
                 ++pdf_ok;
         }
 
-        std::ofstream nf(note_path);
-        if (!nf.is_open()) {
+        // An existing note is the user's: it holds their reading notes.
+        std::error_code exists_error;
+        if (fs::exists(note_path, exists_error)) {
+            spdlog::info("[Export]: Keeping existing note {}", note_path.string());
+        } else if (!WriteFileAtomically(note_path,
+                                        obsidian_note(a,
+                                                      aid,
+                                                      stem,
+                                                      date_str,
+                                                      have_pdf,
+                                                      fetcher.ConstructPaperUrl(aid, "pdf")))) {
             spdlog::error("[Export]: Cannot write note {}", note_path.string());
             if (progress)
                 progress();
             continue;
         }
-        nf << "---\n";
-        nf << "title: " << yaml_quote(a.title) << "\n";
-        nf << "authors: " << yaml_quote(a.authors) << "\n";
-        nf << "arxiv_id: " << yaml_quote(aid) << "\n";
-        nf << "url: " << yaml_quote(a.link) << "\n";
-        if (!a.category.empty()) {
-            nf << "tags: " << yaml_inline_list(a.category) << "\n";
-            nf << "category: " << yaml_quote(a.category) << "\n";
-        }
-        nf << "imported: " << date_str << "\n";
-        nf << "related-projects: []\n";
-        nf << "---\n\n";
-        nf << "# " << a.title << "\n\n";
-        nf << "**Authors:** " << a.authors << "\n\n";
-        nf << "**Link:** [" << a.link << "](" << a.link << ")\n\n";
-        if (have_pdf) {
-            // Obsidian PDF embed: ![[file.pdf]] renders inline when colocated.
-            nf << "![[" << stem << ".pdf]]\n\n";
-        } else {
-            // Link-only mode, or the download failed: never embed a missing file.
-            nf << "[PDF on arXiv](" << fetcher.ConstructPaperUrl(aid, "pdf") << ")\n\n";
-        }
-        if (!a.abstract.empty()) {
-            nf << "## Abstract\n\n" << a.abstract << "\n";
-        }
-        nf << "\n## Reading Notes\n\n"
-           << "**Relevance:**\n\n"
-           << "**Key ideas:**\n\n"
-           << "**Open questions:**\n";
         if (progress)
             progress();
     }
 
-    // Index note that links to every paper imported today.
+    // Index note that links to every paper imported today. A second export
+    // on the same day adds to it rather than replacing the first batch.
     fs::path index_path = note_dir / ("digest-" + date_str + ".md");
-    std::ofstream idx(index_path);
-    if (!idx.is_open()) {
+    std::string index;
+    {
+        std::ifstream existing(index_path);
+        index.assign(std::istreambuf_iterator<char>(existing), std::istreambuf_iterator<char>());
+    }
+    if (index.empty()) {
+        std::ostringstream head;
+        head << "---\n";
+        head << "title: " << yaml_quote("arXiv digest " + date_str) << "\n";
+        head << "tags: [arxiv-digest]\n";
+        head << "date: " << date_str << "\n";
+        head << "---\n\n";
+        head << "# arXiv Digest — " << date_str << "\n\n";
+        index = head.str();
+    } else if (index.back() != '\n') {
+        index += '\n';
+    }
+    for (const auto& a : articles)
+        if (index.find("[[" + a.file_stem() + "|") == std::string::npos)
+            index += index_entry(a);
+    if (!WriteFileAtomically(index_path, index)) {
         spdlog::error("[Export]: Cannot write index note {}", index_path.string());
         return "";
     }
-    idx << "---\n";
-    idx << "title: " << yaml_quote("arXiv digest " + date_str) << "\n";
-    idx << "tags: [arxiv-digest]\n";
-    idx << "date: " << date_str << "\n";
-    idx << "---\n\n";
-    idx << "# arXiv Digest — " << date_str << "\n\n";
-    idx << articles.size() << " paper(s) imported.\n\n";
-    for (const auto& a : articles) {
-        // Wikilink with display text — Obsidian uses [[file|alias]].
-        // "|" and "]]" would end the wikilink early.
-        std::string alias = a.title;
-        std::replace(alias.begin(), alias.end(), '|', '/');
-        for (auto pos = alias.find("]]"); pos != std::string::npos; pos = alias.find("]]"))
-            alias.replace(pos, 2, "] ]");
-        idx << "- [[" << a.file_stem() << "|" << alias << "]]\n";
-    }
-    idx.close();
 
     if (download_pdfs)
         spdlog::info("[Export]: Obsidian digest written to {} ({}/{} PDFs)",

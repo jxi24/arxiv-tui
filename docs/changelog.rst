@@ -7,6 +7,22 @@ Changelog
 Unreleased
 ----------
 
+- **Polite to arXiv** — every request identifies itself
+  (``arxiv-tui/<version> (+https://github.com/jxi24/arxiv-tui)``), and the
+  backfill after missed days waits 3 s between arXiv API pages, as the API
+  terms of use ask.
+
+- **No more half-written files** — ``config.yml``, ``ranker.bin``, the
+  keywords file, exports, Obsidian notes and project ``.bib`` files are
+  written to a temporary file and renamed into place, so a full disk or a
+  crash mid-write leaves the previous version instead of a truncated file.
+  A symlinked ``config.yml`` stays a symlink. Obsidian export no longer
+  overwrites a paper's existing note (and your reading notes in it), and a
+  second export on the same day adds to that day's index instead of
+  replacing it. Importing a project no longer overwrites papers already in
+  the database (their title, authors and category were replaced by the
+  file's, and the category emptied).
+
 - **Security hardening** — a crash no longer hangs, restores the terminal
   and leaves ``SIGTERM`` alone; the crash report holds the end of
   ``replay.jsonl``. The clipboard backend is started without a shell

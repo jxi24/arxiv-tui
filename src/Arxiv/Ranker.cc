@@ -4,6 +4,7 @@
 
 #include "Arxiv/Ranker.hh"
 
+#include "Arxiv/AtomicFile.hh"
 #include "Arxiv/LatexUtils.hh"
 
 #include <algorithm>
@@ -326,10 +327,10 @@ float Ranker::Predict(const Article& article) const {
 //   [4 bytes] b2
 //   [4 bytes] int32 trained flag (0 or 1)
 
-static void write_i32(std::ofstream& f, int32_t v) {
+static void write_i32(std::ostream& f, int32_t v) {
     f.write(reinterpret_cast<const char*>(&v), sizeof(v));
 }
-static void write_f32(std::ofstream& f, float v) {
+static void write_f32(std::ostream& f, float v) {
     f.write(reinterpret_cast<const char*>(&v), sizeof(v));
 }
 static bool read_i32(std::ifstream& f, int32_t& v) {
@@ -342,11 +343,7 @@ static bool read_f32(std::ifstream& f, float& v) {
 }
 
 bool Ranker::Save(const std::string& path) const {
-    std::ofstream f(path, std::ios::binary | std::ios::trunc);
-    if (!f) {
-        spdlog::error("[Ranker]: Cannot open '{}' for writing", path);
-        return false;
-    }
+    std::ostringstream f(std::ios::binary);
 
     // Magic + version
     f.write("RANK", 4);
@@ -372,7 +369,7 @@ bool Ranker::Save(const std::string& path) const {
     write_f32(f, m_b2);
     write_i32(f, m_trained ? 1 : 0);
 
-    if (!f) {
+    if (!WriteFileAtomically(path, f.str())) {
         spdlog::error("[Ranker]: Write error while saving to '{}'", path);
         return false;
     }

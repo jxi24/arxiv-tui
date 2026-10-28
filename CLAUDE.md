@@ -129,7 +129,7 @@ Business logic. Receives `DatabaseManager` and `Fetcher` via `unique_ptr` (depen
 SQLite3 persistence layer. All virtual methods — mock-friendly for testing. File databases use WAL with a 5 s busy timeout (TUI and cron `--fetch` share the file). Every public method holds a recursive mutex (one connection is shared with the background fetch). Statement errors throw (`Stmt::for_each` no longer stops silently); schema additions use `AddColumnIfMissing`; strings are bound and read by length (NUL-safe).
 
 **`Fetcher`** (`Fetcher.hh/cc`)
-Parses arXiv RSS/XML feeds via `cpr` + `pugixml`. Downloads PDFs. All virtual methods.
+Parses arXiv RSS/XML feeds via `cpr` + `pugixml`. Downloads PDFs. All virtual methods. Every request goes through `session_for` (User-Agent `Fetcher::UserAgent()`, timeout); `FetchSince` API pages are spaced 3 s apart by `RequestPacer`. The version comes from the generated `Version.hh` (`Version.hh.in`).
 
 **`Config`** (`Config.hh/cc`)
 Loads `config.yml` from the XDG config path on startup; creates defaults if missing. Stores topics, download directory, key bindings, and runtime file paths (`db_file_`, `ranker_file_`). The db and ranker paths are not written to YAML — they are set programmatically by `main.cc` from `Paths::Resolve()` before the app is constructed.
@@ -148,6 +148,9 @@ Obsidian export, selected digest (and archive) and PDF download run on one worke
 
 **`Export`** (`Export.hh/cc`)
 File formats for every export (project Markdown/text/JSON, daily digest Markdown/YAML, selected digest, Obsidian notes, BibTeX file, tar archive). Pure functions over articles passed in — no DB, selection or UI state; `AppCore` gathers the data and delegates. Writes are checked after the fact (a full disk reports failure).
+
+**`WriteFileAtomically`** (`AtomicFile.hh/cc`)
+Every file the app owns or exports (config, `ranker.bin`, keywords, exports, Obsidian notes, project `.bib`) is written through it: temp file beside the target, fsync, rename. Follows symlinks; writes devices/FIFOs in place. Never write those files with a truncating `std::ofstream`.
 
 **`BibTeX`** (`BibTeX.hh/cc`)
 The single fallback BibTeX builder (`BibTeX::Build`) used by the clipboard and file exports when InspireHEP has no record: escapes `% & #`, balances braces, ASCII cite key, UTC year.
@@ -299,6 +302,7 @@ object programmatically.
 | `test/unit/BackgroundTaskTest.cc` | Non-blocking exports/downloads: `AppCore` background task API and TUI progress |
 | `test/unit/ProcessTest.cc` | `Process::RunAndWait` / `SpawnDetached` (no-shell process launching) |
 | `test/unit/PathsTest.cc` | `Paths::Resolve` fallback when the install prefix is not writable |
+| `test/unit/AtomicFileTest.cc` | Atomic writes: a write failing half way (RLIMIT_FSIZE in a forked child) keeps the old config / ranker / keywords |
 | `test/unit/CrashHandlerTest.cc` | Crash handler in forked children: report, no hang on a busy recorder, terminal restored, SIGTERM untouched |
 
 Tests tagged `[regression]` reproduce bugs found in code review (now fixed); the `[threads]` ones are only meaningful under ThreadSanitizer (the Sanitizers CI workflow). `[background]` covers the background-task API.

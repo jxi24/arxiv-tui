@@ -96,6 +96,11 @@ configure_file(
     "${CMAKE_BINARY_DIR}/include/Arxiv/InstallPaths.hh"
     @ONLY
 )
+configure_file(
+    "${CMAKE_SOURCE_DIR}/include/Arxiv/Version.hh.in"
+    "${CMAKE_BINARY_DIR}/include/Arxiv/Version.hh"
+    @ONLY
+)
 
 # Make the generated header visible to all targets via the existing options lib.
 target_include_directories(arxiv_tui_options INTERFACE

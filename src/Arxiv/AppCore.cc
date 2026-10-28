@@ -4,6 +4,7 @@
 
 #include "Arxiv/AppCore.hh"
 
+#include "Arxiv/AtomicFile.hh"
 #include "Arxiv/AuthorMatch.hh"
 #include "Arxiv/BibTeX.hh"
 #include "Arxiv/Export.hh"
@@ -544,11 +545,8 @@ void AppCore::LinkArticleToProject(const std::string& article_link,
             const bool present = content.find("{" + article->id() + "}") != std::string::npos ||
                                  content.find("\"" + article->id() + "\"") != std::string::npos;
             if (!present) {
-                std::ofstream f(bib_path, std::ios::app);
-                if (f.is_open()) {
-                    f << "\n" << GetBibtex(*article);
+                if (WriteFileAtomically(bib_path, content + "\n" + GetBibtex(*article)))
                     spdlog::info("[AppCore]: Appended BibTeX for {} to {}", article_link, bib_path);
-                }
             }
         }
     }
@@ -1072,19 +1070,22 @@ bool AppCore::ImportProjectJSON(const std::string& input_path) {
                 continue;
             }
 
-            Article article;
-            article.link = link;
-            article.title = string_field(entry, "title");
-            article.authors = string_field(entry, "authors");
-            article.abstract = string_field(entry, "abstract");
-            article.bookmarked = false;
-            std::time_t ts = 0;
-            auto date = entry.find("date");
-            if (date != entry.end() && date->is_number_integer())
-                ts = date->get<std::time_t>();
-            article.date = std::chrono::system_clock::from_time_t(ts);
-
-            m_db->AddArticle(article);
+            // A paper already in the database keeps its stored metadata (the
+            // file has no category and may be old or hand-edited).
+            if (!m_db->GetArticle(link)) {
+                Article article;
+                article.link = link;
+                article.title = string_field(entry, "title");
+                article.authors = string_field(entry, "authors");
+                article.abstract = string_field(entry, "abstract");
+                article.bookmarked = false;
+                std::time_t ts = 0;
+                auto date = entry.find("date");
+                if (date != entry.end() && date->is_number_integer())
+                    ts = date->get<std::time_t>();
+                article.date = std::chrono::system_clock::from_time_t(ts);
+                m_db->AddArticle(article);
+            }
             m_db->LinkArticleToProject(link, project_name);
 
             std::string note = string_field(entry, "note");
@@ -1514,13 +1515,13 @@ bool AppCore::SaveKeywords(const std::vector<std::string>& keywords) {
     if (path.empty())
         return false;
 
-    std::ofstream f(path);
-    if (!f.is_open()) {
+    std::string content;
+    for (const auto& kw : keywords)
+        content += kw + "\n";
+    if (!WriteFileAtomically(path, content)) {
         spdlog::error("[AppCore]: Cannot write keywords file '{}'", path);
         return false;
     }
-    for (const auto& kw : keywords)
-        f << kw << "\n";
 
     m_keywords = keywords;
     {

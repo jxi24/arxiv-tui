@@ -457,6 +457,39 @@ TEST_CASE("AppCore project export", "[app][projects]") {
     }
 }
 
+TEST_CASE("Project import does not overwrite articles already in the database",
+          "[app][projects][regression]") {
+    // An exported project carries title/authors/abstract/date only, and an
+    // import file may be old or hand-edited: the stored paper (category,
+    // replacement flag, current title) wins.
+    auto dir = std::filesystem::temp_directory_path() /
+               ("arxiv_import_keep_" + std::to_string(::getpid()));
+    std::filesystem::create_directories(dir);
+    auto stored = sample_articles[0];
+    stored.category = "hep-ph";
+    auto db = std::make_unique<Arxiv::DatabaseManager>(":memory:");
+    db->AddArticle(stored);
+    auto* db_ptr = db.get();
+    Config config("test/fixtures/test_config.yml");
+    AppCore core(
+        config, std::move(db), std::make_unique<FetcherMock>(), AppCore::FetchMode::Offline);
+
+    auto file = dir / "p.json";
+    std::ofstream(file) << R"({"name":"P","articles":[{"link":")" << stored.link
+                        << R"(","title":"Edited title","authors":"","abstract":""}]})";
+    REQUIRE(core.ImportProjectJSON(file.string()));
+    auto after = db_ptr->GetArticle(stored.link);
+
+    SECTION("title kept") { REQUIRE(after->title == stored.title); }
+    SECTION("authors kept") { REQUIRE(after->authors == stored.authors); }
+    SECTION("category kept") { REQUIRE(after->category == "hep-ph"); }
+    SECTION("still linked to the project") {
+        auto projects = db_ptr->GetProjectsForArticle(stored.link);
+        REQUIRE(std::find(projects.begin(), projects.end(), "P") != projects.end());
+    }
+    std::filesystem::remove_all(dir);
+}
+
 TEST_CASE("AppCore project import", "[app][projects]") {
     Config config("test/fixtures/test_config.yml");
     auto db = std::make_unique<DatabaseManagerMock>();
@@ -988,6 +1021,80 @@ TEST_CASE("AppCore::ExportSelectedDigest", "[app][export]") {
 
         std::filesystem::remove_all(tmp_dir);
     }
+}
+
+namespace {
+// AppCore over the sample articles exporting to `vault` (PDFs linked only).
+std::unique_ptr<AppCore> obsidian_core(const std::filesystem::path& vault) {
+    Config config("test/fixtures/test_config.yml");
+    config.set_obsidian_vault(vault.string());
+    auto db = std::make_unique<Arxiv::DatabaseManager>(":memory:");
+    for (const auto& a : sample_articles)
+        db->AddArticle(a);
+    auto core = std::make_unique<AppCore>(
+        config, std::move(db), std::make_unique<FetcherMock>(), AppCore::FetchMode::Offline);
+    core->SetFilterIndex(AppCore::FilterView::All);
+    return core;
+}
+
+std::string read_all(const std::filesystem::path& p) {
+    std::ifstream f(p);
+    std::stringstream ss;
+    ss << f.rdbuf();
+    return ss.str();
+}
+} // namespace
+
+TEST_CASE("Obsidian export keeps reading notes written in an existing note",
+          "[app][export][obsidian][regression]") {
+    auto vault = std::filesystem::temp_directory_path() /
+                 ("arxiv_obsidian_keep_" + std::to_string(::getpid()));
+    std::filesystem::remove_all(vault);
+    auto core = obsidian_core(vault);
+    core->ToggleSelection(sample_articles[0].link);
+    auto index = core->ExportSelectedToObsidian();
+    REQUIRE_FALSE(index.empty());
+    auto note =
+        std::filesystem::path(index).parent_path() / (sample_articles[0].file_stem() + ".md");
+    {
+        std::ofstream(note, std::ios::app) << "My thoughts on this paper.\n";
+    }
+
+    REQUIRE_FALSE(core->ExportSelectedToObsidian().empty());
+
+    REQUIRE_THAT(read_all(note), ContainsSubstring("My thoughts on this paper."));
+    std::filesystem::remove_all(vault);
+}
+
+TEST_CASE("Obsidian export on the same day keeps earlier papers in the index",
+          "[app][export][obsidian][regression]") {
+    auto vault = std::filesystem::temp_directory_path() /
+                 ("arxiv_obsidian_index_" + std::to_string(::getpid()));
+    std::filesystem::remove_all(vault);
+    auto core = obsidian_core(vault);
+
+    core->ToggleSelection(sample_articles[0].link);
+    REQUIRE_FALSE(core->ExportSelectedToObsidian().empty());
+    core->ClearSelections();
+    core->ToggleSelection(sample_articles[1].link);
+    auto index = core->ExportSelectedToObsidian();
+    REQUIRE_FALSE(index.empty());
+
+    auto content = read_all(index);
+    SECTION("first batch still linked") {
+        REQUIRE_THAT(content, ContainsSubstring("[[" + sample_articles[0].file_stem() + "|"));
+    }
+    SECTION("second batch linked") {
+        REQUIRE_THAT(content, ContainsSubstring("[[" + sample_articles[1].file_stem() + "|"));
+    }
+    SECTION("re-exporting a paper does not list it twice") {
+        core->ClearSelections();
+        core->ToggleSelection(sample_articles[1].link);
+        content = read_all(core->ExportSelectedToObsidian());
+        const std::string link = "[[" + sample_articles[1].file_stem() + "|";
+        REQUIRE(content.find(link) == content.rfind(link));
+    }
+    std::filesystem::remove_all(vault);
 }
 
 // Settings edited in the dialog must reach AppCore without a restart.
@@ -1871,7 +1978,7 @@ TEST_CASE("AppCore: re-linking an article does not duplicate it in the project's
 TEST_CASE("AppCore: an export whose writes fail reports failure", "[app][export]") {
     // /dev/full opens fine and then fails every write (like a full disk);
     // the export used to report success regardless.
-    if (!std::filesystem::exists("/dev/full"))
+    if (!std::filesystem::is_character_file("/dev/full"))
         SKIP("/dev/full not available");
     auto article = make_article("2401.00060", "J. Doe", "hep-ph");
     auto core = make_memory_core({article});

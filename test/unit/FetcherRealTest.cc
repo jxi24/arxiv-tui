@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 #include <Arxiv/Fetcher.hh>
+#include <Arxiv/Version.hh>
 #include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
@@ -13,6 +14,7 @@
 #include <fstream>
 #include <iterator>
 #include <unistd.h>
+#include <vector>
 
 using namespace Arxiv;
 using namespace Catch::Matchers;
@@ -690,4 +692,51 @@ TEST_CASE("PdfWriter: an empty body is not a PDF", "[fetcher][pdf]") {
     auto dir = pdf_dir();
     PdfWriter out(dir / "paper.pdf");
     REQUIRE_FALSE(out.Commit());
+}
+
+// ---------------------------------------------------------------------------
+// arXiv API etiquette: identify the client and keep requests 3 s apart.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Fetcher::UserAgent names the program, its version and a contact URL",
+          "[fetcher][etiquette]") {
+    const std::string ua = Fetcher::UserAgent();
+    REQUIRE_THAT(ua, StartsWith("arxiv-tui/" + std::string(Arxiv::kVersion)));
+    REQUIRE_THAT(ua, ContainsSubstring("https://github.com/jxi24/arxiv-tui"));
+}
+
+TEST_CASE("RequestPacer spaces requests by the interval", "[fetcher][etiquette]") {
+    using namespace std::chrono_literals;
+    using Clock = RequestPacer::Clock;
+    Clock::time_point now{};
+    std::vector<Clock::duration> slept;
+    RequestPacer pacer(
+        3s,
+        [&](Clock::duration d) {
+            slept.push_back(d);
+            now += d;
+        },
+        [&] { return now; });
+
+    SECTION("the first request goes out at once") {
+        pacer.Wait();
+        REQUIRE(slept.empty());
+    }
+    SECTION("a request right after the previous one waits the full interval") {
+        pacer.Wait();
+        pacer.Wait();
+        REQUIRE(slept == std::vector<Clock::duration>{3s});
+    }
+    SECTION("only the remainder is waited") {
+        pacer.Wait();
+        now += 1s;
+        pacer.Wait();
+        REQUIRE(slept == std::vector<Clock::duration>{2s});
+    }
+    SECTION("no wait once the interval has passed") {
+        pacer.Wait();
+        now += 5s;
+        pacer.Wait();
+        REQUIRE(slept.empty());
+    }
 }

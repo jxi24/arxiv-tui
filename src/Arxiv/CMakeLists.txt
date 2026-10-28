@@ -11,6 +11,7 @@ add_library(libarxiv-tui
     Export.cc
     Clipboard.cc
     Process.cc
+    AtomicFile.cc
     Fetcher.cc
     DatabaseManager.cc
     Config.cc
@@ -72,7 +73,8 @@ install(DIRECTORY ${CMAKE_SOURCE_DIR}/include/Arxiv
     PATTERN "*.hh.in" EXCLUDE
 )
 
-# Install the generated InstallPaths.hh alongside the source headers.
+# Install the generated headers alongside the source headers.
 install(FILES ${CMAKE_BINARY_DIR}/include/Arxiv/InstallPaths.hh
+              ${CMAKE_BINARY_DIR}/include/Arxiv/Version.hh
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/Arxiv
 )

@@ -7,10 +7,13 @@
 
 #include <chrono>
 #include <filesystem>
+#include <functional>
+#include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 namespace Arxiv {
@@ -61,6 +64,30 @@ class PdfWriter {
     bool Fail(std::string why);
 };
 
+/// Keeps successive requests at least `interval` apart. arXiv's API terms
+/// ask for no more than one request every three seconds. Thread-safe.
+class RequestPacer {
+  public:
+    using Clock = std::chrono::steady_clock;
+    using SleepFn = std::function<void(Clock::duration)>;
+    using NowFn = std::function<Clock::time_point()>;
+
+    explicit RequestPacer(
+        Clock::duration interval,
+        SleepFn sleep = [](Clock::duration d) { std::this_thread::sleep_for(d); },
+        NowFn now = [] { return Clock::now(); });
+
+    /// Block until the interval since the previous call has passed.
+    void Wait();
+
+  private:
+    Clock::duration m_interval;
+    SleepFn m_sleep;
+    NowFn m_now;
+    std::optional<Clock::time_point> m_last;
+    std::mutex m_mutex;
+};
+
 class Fetcher {
   public:
     explicit Fetcher(const std::vector<std::string>& topics,
@@ -96,6 +123,10 @@ class Fetcher {
     /// True if `url` is an https URL on inspirehep.net — the only place the
     /// BibTeX link from a search response is allowed to point.
     static bool IsInspireUrl(const std::string& url);
+
+    /// "arxiv-tui/<version> (+<project URL>)": sent with every request so
+    /// arXiv and InspireHEP can tell who is calling.
+    static std::string UserAgent();
 
     /// Concatenate today's RSS announcement with the API backfill, announcement
     /// first. The two feeds date a paper differently — RSS carries the
@@ -139,6 +170,9 @@ class Fetcher {
 
     std::optional<std::string> FetchFeeds();
     std::filesystem::path base_path;
+    // FetchSince pages through export.arxiv.org; its terms of use ask for
+    // at most one request every three seconds.
+    RequestPacer m_api_pacer{std::chrono::seconds(3)};
 };
 
 } // namespace Arxiv
