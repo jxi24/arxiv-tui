@@ -7,8 +7,16 @@ Changelog
 Unreleased
 ----------
 
+- **GUI restyle** — ``arxiv-gui`` has a dark theme with one accent colour,
+  a system sans font (Inter, Noto Sans, Cantarell or DejaVu Sans;
+  ``ARXIV_GUI_FONT`` overrides), a header with search and Refresh, a sidebar
+  of views with counts, article cards (unread dot, bookmark star, category
+  chip), a detail pane with clickable stars and action buttons, and
+  keyboard navigation (``j``/``k``, ``/``, ``b``, ``o``). Greek, maths and
+  accented characters in titles and author names render instead of ``?``.
+
 - **GUI catches up** — ``arxiv-gui`` opens at once and fetches in the
-  background (it used to fetch before showing the window), File → Refresh
+  background (it used to fetch before showing the window), Refresh
   fetches from arXiv instead of re-reading the database, and downloads no
   longer freeze the window. Papers can be rated, tagged and added to
   projects; read papers are dimmed, the filter list shows counts and

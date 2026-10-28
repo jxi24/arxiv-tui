@@ -542,6 +542,7 @@ A brief record of what has been implemented. Consult `README.md` for user-facing
 - **Rename / move** — `E` (`Rename`) and `M` (`MoveProject`), `Views/RenameDialog.cc`; `DatabaseManager::RenameProject/RenameTag` (cascades), `AppCore::RenameProject/RenameTag/ParentCandidates` (no cycles); replay `rename_project` / `rename_tag`.
 - **Project JSON** — `Export::ProjectExtras` (parent, tags, rating) written and restored by import; missing dates become now; blank names refused; `AppCore::AddProject` returns the trimmed name.
 - **GUI** — Async AppCore + `TryRefetchIfNeeded` per frame, `AppCore::StartRefresh` for Refresh, downloads via `StartDownloadArticle`, ratings/tags/projects, read dimming, counts, status bar; `imgui.ini` in the state dir.
+- **GUI look** — `src/GUI/Style.hh/.cc`: one `Palette` (never ad-hoc colours in `main.cc`), `LoadFonts()` (system sans, `ARXIV_GUI_FONT`; glyph ranges cover Greek, maths, combining marks), `ApplyStyle()`. `main.cc`'s `ArxivGuiApp` draws header, sidebar, clipped card list, detail pane and status bar.
 
 ### Unreleased — TUI polish (claude/next-steps)
 - **Settings cancel** — `q` restores the config snapshot taken on open (`m_settings_on_open`) and the theme; Esc in a field discards the edit.
