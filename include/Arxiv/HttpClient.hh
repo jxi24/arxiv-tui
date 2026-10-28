@@ -30,6 +30,9 @@ class HttpClient {
     virtual HttpResponse Download(const std::string& url,
                                   std::chrono::milliseconds timeout,
                                   const std::function<bool(std::string_view)>& sink) = 0;
+    /// Abort the request in flight, if any, and fail every later one
+    /// (status 0). Called from another thread when the app quits.
+    virtual void Cancel() {}
 };
 
 /// The real client (cpr/libcurl).

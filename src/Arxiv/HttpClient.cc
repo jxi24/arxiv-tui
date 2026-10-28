@@ -6,6 +6,7 @@
 
 #include "Arxiv/Fetcher.hh"
 
+#include <atomic>
 #include <curl/curl.h>
 
 #include "cpr/cpr.h"
@@ -16,8 +17,17 @@ namespace {
 
 // User-Agent and timeout on a Session: cpr's variadic Get/Download with
 // three options trips -Wduplicated-branches inside cpr's own header.
-cpr::Session session_for(const std::string& url, std::chrono::milliseconds timeout) {
+cpr::Session session_for(const std::string& url,
+                         std::chrono::milliseconds timeout,
+                         const std::atomic<bool>& cancelled) {
     cpr::Session session;
+    // libcurl calls this about once a second even while no data arrives;
+    // returning false aborts the transfer, so Cancel ends a stalled request.
+    session.SetProgressCallback(cpr::ProgressCallback{
+        [&cancelled](
+            cpr::cpr_pf_arg_t, cpr::cpr_pf_arg_t, cpr::cpr_pf_arg_t, cpr::cpr_pf_arg_t, intptr_t) {
+            return !cancelled.load();
+        }});
     session.SetUrl(cpr::Url{url});
     session.SetUserAgent(cpr::UserAgent{Fetcher::UserAgent()});
     session.SetTimeout(cpr::Timeout{timeout});
@@ -48,20 +58,22 @@ class CprHttpClient : public HttpClient {
         : m_max_body(max_body_bytes) {}
 
     HttpResponse Get(const std::string& url, std::chrono::milliseconds timeout) override {
+        if (m_cancelled)
+            return Cancelled();
         // Collect the body ourselves so an endless or huge response is cut
         // off at m_max_body instead of filling memory.
         std::string body;
         bool too_large = false;
-        auto out = convert(
-            session_for(url, timeout).Download(cpr::WriteCallback{[&](std::string data, intptr_t) {
-                if (body.size() + data.size() > m_max_body) {
-                    too_large = true;
-                    return false; // abort the transfer
-                }
-                body += data;
-                return true;
-            }}),
-            false);
+        auto out = convert(session_for(url, timeout, m_cancelled)
+                               .Download(cpr::WriteCallback{[&](std::string data, intptr_t) {
+                                   if (body.size() + data.size() > m_max_body) {
+                                       too_large = true;
+                                       return false; // abort the transfer
+                                   }
+                                   body += data;
+                                   return true;
+                               }}),
+                           false);
         if (too_large) {
             out.status = 0;
             out.error = "response larger than " + std::to_string(m_max_body) + " bytes";
@@ -73,14 +85,21 @@ class CprHttpClient : public HttpClient {
     HttpResponse Download(const std::string& url,
                           std::chrono::milliseconds timeout,
                           const std::function<bool(std::string_view)>& sink) override {
-        return convert(session_for(url, timeout)
+        if (m_cancelled)
+            return Cancelled();
+        return convert(session_for(url, timeout, m_cancelled)
                            .Download(cpr::WriteCallback{
                                [&sink](std::string data, intptr_t) { return sink(data); }}),
                        false);
     }
 
+    void Cancel() override { m_cancelled = true; }
+
   private:
+    static HttpResponse Cancelled() { return {0, "", "cancelled"}; }
+
     std::size_t m_max_body;
+    std::atomic<bool> m_cancelled{false};
 };
 
 } // namespace

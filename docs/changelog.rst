@@ -7,6 +7,19 @@ Changelog
 Unreleased
 ----------
 
+- **Quitting no longer waits for the network** — closing the app during the
+  start-up fetch, a missed-days backfill, an auto-refresh or a PDF download
+  used to wait for it to finish (a backfill pauses 3 s between API pages, and
+  a stalled request could take its whole 15–120 s timeout). Quitting now
+  abandons the request in flight; nothing half-fetched is recorded, so the
+  next start fetches those days again.
+
+- **Today over the weekend** — Today, Recommended and the daily digests
+  (``X``, ``--export-today``, ``--export-yaml``) show the latest arXiv
+  mailing instead of the last 24 hours. arXiv does not announce on weekends
+  or holidays, so they used to be empty from Saturday morning until Monday's
+  mailing; now they show Friday's papers until the next one arrives.
+
 - **GUI restyle** — ``arxiv-gui`` has a dark theme with one accent colour,
   a system sans font (Inter, Noto Sans, Cantarell or DejaVu Sans;
   ``ARXIV_GUI_FONT`` overrides), a header with search and Refresh, a sidebar

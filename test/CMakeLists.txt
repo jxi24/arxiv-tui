@@ -42,6 +42,8 @@ add_executable(unit_tests
     unit/FuzzySearchTest.cc
     unit/BackgroundRefreshTest.cc
     unit/NewArticlesTest.cc
+    unit/TodayViewTest.cc
+    unit/ShutdownTest.cc
     unit/KeyBindingsTest.cc
     unit/ConfigTest.cc
     unit/AppTuiTest.cc

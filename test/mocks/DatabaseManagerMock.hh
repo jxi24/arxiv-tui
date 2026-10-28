@@ -23,6 +23,8 @@ class DatabaseManagerMock : public Arxiv::DatabaseManager {
         m_expectations.push_back(
             NAMED_ALLOW_CALL(*this, GetRecent(ANY(int))).RETURN(std::vector<Arxiv::Article>{}));
         m_expectations.push_back(
+            NAMED_ALLOW_CALL(*this, GetLatestMailing()).RETURN(std::vector<Arxiv::Article>{}));
+        m_expectations.push_back(
             NAMED_ALLOW_CALL(*this, ListBookmarked()).RETURN(std::vector<Arxiv::Article>{}));
         // Default: look the link up among the articles given to setArticles.
         m_expectations.push_back(
@@ -110,6 +112,7 @@ class DatabaseManagerMock : public Arxiv::DatabaseManager {
     MAKE_MOCK1(AddArticle, void(const Arxiv::Article&), override);
     MAKE_MOCK1(AddArticles, void(const std::vector<Arxiv::Article>&), override);
     MAKE_MOCK1(GetRecent, std::vector<Arxiv::Article>(int), override);
+    MAKE_MOCK0(GetLatestMailing, std::vector<Arxiv::Article>(), override);
     MAKE_MOCK1(GetArticle, std::optional<Arxiv::Article>(const std::string&), override);
     MAKE_MOCK0(ListBookmarked, std::vector<Arxiv::Article>(), override);
     MAKE_MOCK1(GetArticlesForProject, std::vector<Arxiv::Article>(const std::string&), override);
@@ -176,6 +179,7 @@ class DatabaseManagerMock : public Arxiv::DatabaseManager {
     void setArticles(const std::vector<Arxiv::Article>& articles) {
         m_articles = articles;
         m_expectations.push_back(NAMED_ALLOW_CALL(*this, GetRecent(ANY(int))).RETURN(articles));
+        m_expectations.push_back(NAMED_ALLOW_CALL(*this, GetLatestMailing()).RETURN(articles));
     }
 
     void setBookmarkedArticles(const std::vector<Arxiv::Article>& articles) {

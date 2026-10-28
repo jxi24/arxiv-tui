@@ -18,6 +18,7 @@
 #include <iterator>
 #include <memory>
 #include <string>
+#include <thread>
 #include <unistd.h>
 #include <vector>
 
@@ -245,4 +246,46 @@ TEST_CASE("FetchBibTeX accepts only a plausible BibTeX entry",
         body = "\n  @article{Doe:2024abc, title={X}}\n";
         REQUIRE_THAT(net.fetcher->FetchBibTeX("2401.00001"), ContainsSubstring("Doe:2024abc"));
     }
+}
+
+TEST_CASE("Cancel ends the pause between API pages", "[fetcher][net][shutdown]") {
+    // Quitting during a backfill must not sit out the 3 s gap between pages.
+    Net net;
+    net.fetcher->SetApiPacer(std::make_unique<RequestPacer>(std::chrono::seconds(3)));
+    net.Answer("rss.arxiv.org", [](const std::string&) { return HttpResponse{200, kRss, ""}; });
+    net.Answer("start=0&",
+               [](const std::string&) { return HttpResponse{200, atom_page(0, 200), ""}; });
+    net.Answer("start=200&",
+               [](const std::string&) { return HttpResponse{200, atom_page(200, 5), ""}; });
+
+    std::thread quit([&] {
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        net.fetcher->Cancel();
+    });
+    const auto start = std::chrono::steady_clock::now();
+    CHECK_THROWS_AS(net.fetcher->FetchSince("2026-05-01"), FetchError);
+    const auto elapsed = std::chrono::steady_clock::now() - start;
+    quit.join();
+
+    CHECK(elapsed < std::chrono::seconds(2));
+    CHECK(net.Count("start=200&") == 0);
+}
+
+TEST_CASE("A cancelled fetcher makes no more requests", "[fetcher][net][shutdown]") {
+    Net net;
+    net.Answer("rss.arxiv.org", [](const std::string&) { return HttpResponse{200, kRss, ""}; });
+    net.Answer("export.arxiv.org",
+               [](const std::string&) { return HttpResponse{200, atom_page(0, 5), ""}; });
+    net.Answer("/pdf/", [](const std::string&) { return HttpResponse{200, "%PDF-1.4 x", ""}; });
+    net.fetcher->Cancel();
+
+    SECTION("Fetch") { CHECK_THROWS_AS(net.fetcher->Fetch(), FetchError); }
+    SECTION("FetchSince") { CHECK_THROWS_AS(net.fetcher->FetchSince("2026-05-01"), FetchError); }
+    SECTION("DownloadPaper") {
+        const auto dir = std::filesystem::temp_directory_path() / "arxiv_cancelled_download";
+        std::filesystem::create_directories(dir);
+        CHECK_FALSE(net.fetcher->DownloadPaper("2605.10000", (dir / "p.pdf").string()));
+        std::filesystem::remove_all(dir);
+    }
+    CHECK(net.requests.empty());
 }

@@ -62,7 +62,7 @@ TEST_CASE("AppCore::ExportDailyDigest writes Markdown with article titles", "[di
     fs::remove(tmp);
 
     auto articles = arxiv_tui::test::fixtures::sample_articles;
-    ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(articles);
+    ALLOW_CALL(*db_ptr, GetLatestMailing()).RETURN(articles);
 
     bool ok = core->ExportDailyDigest(tmp.string());
     REQUIRE(ok);
@@ -83,7 +83,7 @@ TEST_CASE("AppCore::ExportDailyDigest includes date header", "[digest]") {
     fs::path tmp = fs::temp_directory_path() / "digest_header_test.md";
     fs::remove(tmp);
 
-    ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(std::vector<Arxiv::Article>{});
+    ALLOW_CALL(*db_ptr, GetLatestMailing()).RETURN(std::vector<Arxiv::Article>{});
 
     bool ok = core->ExportDailyDigest(tmp.string());
     REQUIRE(ok);
@@ -103,7 +103,7 @@ TEST_CASE("AppCore::ExportDailyDigest with empty articles writes only header", "
     fs::path tmp = fs::temp_directory_path() / "digest_empty_test.md";
     fs::remove(tmp);
 
-    ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(std::vector<Arxiv::Article>{});
+    ALLOW_CALL(*db_ptr, GetLatestMailing()).RETURN(std::vector<Arxiv::Article>{});
 
     bool ok = core->ExportDailyDigest(tmp.string());
     REQUIRE(ok);
@@ -118,7 +118,7 @@ TEST_CASE("AppCore::ExportDailyDigest returns false for unwritable path", "[dige
     FetcherMock* fetcher_ptr = nullptr;
     auto core = make_core(db_ptr, fetcher_ptr);
 
-    ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(std::vector<Arxiv::Article>{});
+    ALLOW_CALL(*db_ptr, GetLatestMailing()).RETURN(std::vector<Arxiv::Article>{});
 
     bool ok = core->ExportDailyDigest("/no_such_dir/digest.md");
     REQUIRE_FALSE(ok);
@@ -137,7 +137,7 @@ TEST_CASE("AppCore::ExportDailyDigestYAML writes YAML with article data", "[dige
     fs::remove(tmp);
 
     auto articles = arxiv_tui::test::fixtures::sample_articles;
-    ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(articles);
+    ALLOW_CALL(*db_ptr, GetLatestMailing()).RETURN(articles);
 
     bool ok = core->ExportDailyDigestYAML(tmp.string());
     REQUIRE(ok);
@@ -156,7 +156,7 @@ TEST_CASE("AppCore::ExportDailyDigestYAML returns false for unwritable path", "[
     FetcherMock* fetcher_ptr = nullptr;
     auto core = make_core(db_ptr, fetcher_ptr);
 
-    ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(std::vector<Arxiv::Article>{});
+    ALLOW_CALL(*db_ptr, GetLatestMailing()).RETURN(std::vector<Arxiv::Article>{});
 
     bool ok = core->ExportDailyDigestYAML("/no_such_dir/digest.yaml");
     REQUIRE_FALSE(ok);
@@ -174,7 +174,7 @@ TEST_CASE("AppCore::ExportDailyDigestYAML escapes quotes in article fields", "[d
     Arxiv::Article special = arxiv_tui::test::fixtures::sample_articles[0];
     special.title = "A \"quoted\" title";
     special.authors = "O'Brien, \"Alias\"";
-    ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(std::vector<Arxiv::Article>{special});
+    ALLOW_CALL(*db_ptr, GetLatestMailing()).RETURN(std::vector<Arxiv::Article>{special});
 
     bool ok = core->ExportDailyDigestYAML(tmp.string());
     REQUIRE(ok);
@@ -192,7 +192,7 @@ TEST_CASE("AppCore::ExportDailyDigestYAML includes arXiv id, category and score"
 
     fs::path tmp = fs::temp_directory_path() / "digest_fields_test.yaml";
     fs::remove(tmp);
-    ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(arxiv_tui::test::fixtures::sample_articles);
+    ALLOW_CALL(*db_ptr, GetLatestMailing()).RETURN(arxiv_tui::test::fixtures::sample_articles);
 
     REQUIRE(core->ExportDailyDigestYAML(tmp.string()));
     std::string content = read_file(tmp);
@@ -217,7 +217,7 @@ TEST_CASE("AppCore::ExportDailyDigestYAML lists articles by predicted score, hig
     cfg.set_topics({"cs.AI"});
     cfg.set_download_dir("/tmp");
     cfg.set_keywords_file(keywords.string());
-    ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(arxiv_tui::test::fixtures::sample_articles);
+    ALLOW_CALL(*db_ptr, GetLatestMailing()).RETURN(arxiv_tui::test::fixtures::sample_articles);
     auto core = std::make_unique<Arxiv::AppCore>(cfg, std::move(db), std::move(fetcher));
     core->ReloadKeywords();
 
@@ -297,7 +297,7 @@ TEST_CASE("AppCore::ExportDailyDigestYAML leaves out replacements (new versions 
 
     fs::path tmp = fs::temp_directory_path() / "digest_no_replacements_test.yaml";
     fs::remove(tmp);
-    ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(std::vector<Arxiv::Article>{replaced, fresh});
+    ALLOW_CALL(*db_ptr, GetLatestMailing()).RETURN(std::vector<Arxiv::Article>{replaced, fresh});
 
     REQUIRE(core->ExportDailyDigestYAML(tmp.string()));
     std::string content = read_file(tmp);
@@ -326,7 +326,7 @@ TEST_CASE("Digest regression: YAML digest stays valid when fields contain LaTeX 
     Arxiv::Article article = arxiv_tui::test::fixtures::sample_articles[0];
     article.title = R"(Bounds on $\mu\to e\gamma$)";
     article.abstract = "Line one\nwith \\textbf{bold} and a tab\there";
-    ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(std::vector<Arxiv::Article>{article});
+    ALLOW_CALL(*db_ptr, GetLatestMailing()).RETURN(std::vector<Arxiv::Article>{article});
 
     fs::path tmp = fs::temp_directory_path() / "digest_regression_latex.yaml";
     fs::remove(tmp);

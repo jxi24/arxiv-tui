@@ -21,7 +21,8 @@ a cron job:
    # or schedule with cron
    0 7 * * 1-5  arxiv-tui --fetch
 
-Today's articles can also be exported without the TUI. ``--export-yaml``
+Today's articles (the latest mailing, as in the Today view) can also be
+exported without the TUI. ``--export-yaml``
 writes them ranked by predicted score (the trained model blended with the
 interest keywords), highest first, with ``id``, ``title``, ``authors``,
 ``link``, ``category``, ``score`` and ``abstract`` per article, so another
@@ -55,7 +56,8 @@ their own **Tags** and **Projects** headings:
    * - **Bookmarks**
      - Articles you have bookmarked
    * - **Today**
-     - Articles submitted or updated today
+     - The latest arXiv mailing (over a weekend or holiday, the last one
+       announced, e.g. Friday's)
    * - **Range**
      - Articles within a custom date range (press ``r`` to set the range)
    * - **Search**

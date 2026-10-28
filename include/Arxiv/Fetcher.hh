@@ -7,7 +7,9 @@
 
 #include "Arxiv/HttpClient.hh"
 
+#include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstddef>
 #include <filesystem>
 #include <functional>
@@ -78,11 +80,13 @@ class RequestPacer {
 
     explicit RequestPacer(
         Clock::duration interval,
-        SleepFn sleep = [](Clock::duration d) { std::this_thread::sleep_for(d); },
+        SleepFn sleep = nullptr, // null: a real sleep that Cancel interrupts
         NowFn now = [] { return Clock::now(); });
 
     /// Block until the interval since the previous call has passed.
     void Wait();
+    /// End the current Wait and make later ones return at once.
+    void Cancel();
 
   private:
     Clock::duration m_interval;
@@ -90,6 +94,8 @@ class RequestPacer {
     NowFn m_now;
     std::optional<Clock::time_point> m_last;
     std::mutex m_mutex;
+    std::condition_variable m_cv;
+    bool m_cancelled = false;
 };
 
 class Fetcher {
@@ -113,6 +119,10 @@ class Fetcher {
     /// Fetch BibTeX for an arXiv paper. Tries InspireHEP first; returns an
     /// empty string if the lookup fails (caller should generate fallback BibTeX).
     virtual std::string FetchBibTeX(const std::string& paper_id);
+    /// Give up: the request or API pause in progress ends, and this and every
+    /// later fetch or download fails (FetchError / false). Thread-safe; the
+    /// app calls it when quitting so it need not wait for a backfill.
+    virtual void Cancel();
 
     /// Longer than any real arXiv link (ids are at most ~30 characters). Longer
     /// input is never a paper, and is refused before any regex sees it:
@@ -193,6 +203,8 @@ class Fetcher {
     std::vector<std::string> m_topics;
 
     std::optional<std::string> FetchFeeds();
+    void ThrowIfCancelled() const;
+    std::atomic<bool> m_cancelled{false};
     std::filesystem::path base_path;
     // FetchSince pages through export.arxiv.org; its terms of use ask for
     // at most one request every three seconds.

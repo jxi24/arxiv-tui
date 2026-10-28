@@ -20,6 +20,7 @@ class FetcherMock : public Arxiv::Fetcher {
         : Arxiv::Fetcher({}) {
         m_expectations.push_back(
             NAMED_ALLOW_CALL(*this, Fetch()).RETURN(std::vector<Arxiv::Article>{}));
+        m_expectations.push_back(NAMED_ALLOW_CALL(*this, Cancel()));
         m_expectations.push_back(NAMED_ALLOW_CALL(*this, FetchSince(ANY(std::string)))
                                      .RETURN(std::vector<Arxiv::Article>{}));
     }
@@ -29,6 +30,7 @@ class FetcherMock : public Arxiv::Fetcher {
     MAKE_MOCK1(FetchSince, std::vector<Arxiv::Article>(const std::string&), override);
     MAKE_MOCK2(DownloadPaper, bool(const std::string&, const std::string&), override);
     MAKE_MOCK1(FetchBibTeX, std::string(const std::string&), override);
+    MAKE_MOCK0(Cancel, void(), override);
 
     // Helper methods for testing
     void setFetchResponse(const std::vector<Arxiv::Article>& articles) {

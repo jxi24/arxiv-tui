@@ -113,3 +113,37 @@ TEST_CASE("HttpClient: redirects to plain http are not followed", "[http][securi
     // Let the target's accept() return.
     (void)Arxiv::MakeCprHttpClient()->Get(target.Url(), kTimeout);
 }
+
+TEST_CASE("HttpClient: Cancel aborts a request the server never answers", "[http][shutdown]") {
+    // A stalled connection would otherwise hold the app's exit for the whole
+    // timeout.
+    ::setenv("NO_PROXY", "127.0.0.1", 1);
+    ::setenv("no_proxy", "127.0.0.1", 1);
+    const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    ::bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
+    socklen_t len = sizeof(addr);
+    ::getsockname(fd, reinterpret_cast<sockaddr*>(&addr), &len);
+    ::listen(fd, 4); // connections queue up but are never answered
+    const std::string url = "http://127.0.0.1:" + std::to_string(ntohs(addr.sin_port)) + "/";
+    auto http = Arxiv::MakeCprHttpClient();
+
+    std::thread quit([&] {
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        http->Cancel();
+    });
+    const auto start = std::chrono::steady_clock::now();
+    const auto r = http->Get(url, std::chrono::milliseconds(10000));
+    const auto elapsed = std::chrono::steady_clock::now() - start;
+    quit.join();
+
+    CHECK(r.status != 200);
+    CHECK(elapsed < std::chrono::seconds(3));
+    // ... and later requests fail at once (the socket still accepts).
+    const auto again = std::chrono::steady_clock::now();
+    CHECK(http->Get(url, std::chrono::milliseconds(10000)).status == 0);
+    CHECK(std::chrono::steady_clock::now() - again < std::chrono::seconds(1));
+    ::close(fd);
+}
