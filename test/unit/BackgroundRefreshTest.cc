@@ -97,12 +97,14 @@ TEST_CASE("AppCore::StopAutoRefresh: is safe to call when not running", "[refres
 TEST_CASE("AppCore destructor: auto-refresh thread is joined cleanly", "[refresh][appcore]") {
     DatabaseManagerMock* db = nullptr;
     FetcherMock* fetcher = nullptr;
+    const auto start = std::chrono::steady_clock::now();
     {
         auto core = make_core(db, fetcher, 60);
         core->StartAutoRefresh();
-        // Let the destructor stop the thread — should not hang or crash
+        // The destructor stops the thread at once, not after the 60-minute
+        // interval it is sleeping through.
     }
-    REQUIRE(true); // reached here without deadlock
+    REQUIRE(std::chrono::steady_clock::now() - start < std::chrono::seconds(2));
 }
 
 TEST_CASE("AppCore::GetAutoRefreshMinutes: returns configured value",

@@ -1841,7 +1841,9 @@ TEST_CASE("AppCore regression: Recommended view does not race the training threa
         core.SetFilterIndex(AppCore::FilterView::Recommended);
     }
 
-    SUCCEED("no data race reported");
+    // The view still works after the retrain (the race itself is reported by
+    // ThreadSanitizer, not by an assertion).
+    REQUIRE(core.GetFilterView() == AppCore::FilterView::Recommended);
 }
 
 TEST_CASE("AppCore regression: a failed backfill does not mark the missed days as fetched",
