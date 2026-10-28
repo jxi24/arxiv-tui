@@ -118,6 +118,11 @@ class Stmt {
     std::string_view m_op;
 };
 
+bool row_exists(sqlite3* db, const char* sql, const std::string& key) {
+    Stmt stmt(db, sql, "row_exists");
+    return stmt.bind(1, key).step() == SQLITE_ROW;
+}
+
 } // namespace
 
 DatabaseManager::DatabaseManager(const std::string& path) {
@@ -681,6 +686,17 @@ void DatabaseManager::AddTag(const std::string& name) {
     stmt.bind(1, name).step_done();
 }
 
+bool DatabaseManager::RenameTag(const std::string& old_name, const std::string& new_name) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    constexpr const char* exists = "SELECT 1 FROM tags WHERE name = ?";
+    if (new_name.empty() || !row_exists(db, exists, old_name) || row_exists(db, exists, new_name))
+        return false;
+    // article_tags follows through ON UPDATE CASCADE.
+    Stmt rename(db, "UPDATE tags SET name = ? WHERE name = ?", "RenameTag");
+    rename.bind(1, new_name).bind(2, old_name).step_done();
+    return true;
+}
+
 void DatabaseManager::RemoveTag(const std::string& name) {
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
     Stmt at(db, "DELETE FROM article_tags WHERE tag_name = ?", "RemoveTag/at");
@@ -903,6 +919,28 @@ void DatabaseManager::AddProject(const std::string& project_name) {
     // its parent and bib_path to their defaults.
     Stmt stmt(db, "INSERT OR IGNORE INTO projects (name) VALUES (?)", "AddProject");
     stmt.bind(1, project_name).step_done();
+}
+
+bool DatabaseManager::RenameProject(const std::string& old_name, const std::string& new_name) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    constexpr const char* exists = "SELECT 1 FROM projects WHERE name = ?";
+    if (new_name.empty() || !row_exists(db, exists, old_name) || row_exists(db, exists, new_name))
+        return false;
+    ExecuteSQL("BEGIN TRANSACTION");
+    try {
+        // Memberships and notes follow through ON UPDATE CASCADE; the
+        // parent column is plain text.
+        Stmt rename(db, "UPDATE projects SET name = ? WHERE name = ?", "RenameProject");
+        rename.bind(1, new_name).bind(2, old_name).step_done();
+        Stmt children(
+            db, "UPDATE projects SET parent = ? WHERE parent = ?", "RenameProject/parent");
+        children.bind(1, new_name).bind(2, old_name).step_done();
+        ExecuteSQL("COMMIT");
+    } catch (...) {
+        ExecuteSQL("ROLLBACK");
+        throw;
+    }
+    return true;
 }
 
 void DatabaseManager::RemoveProject(const std::string& project_name) {

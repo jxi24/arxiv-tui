@@ -42,6 +42,7 @@ add_library(libarxiv-tui
     Views/CategoryFilterDialog.cc
     Views/SettingsDialog.cc
     Views/NewProjectDialog.cc
+    Views/RenameDialog.cc
     Views/MainRenderer.cc
     Views/Theme.cc
 )

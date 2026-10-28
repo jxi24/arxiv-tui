@@ -2511,3 +2511,45 @@ TEST_CASE("Un-bookmarking in the Bookmarks view removes the paper from it",
 
     REQUIRE(core->GetCurrentArticles().size() == 2);
 }
+
+namespace {
+std::vector<std::string> sorted(std::vector<std::string> v) {
+    std::sort(v.begin(), v.end());
+    return v;
+}
+} // namespace
+
+TEST_CASE("Renaming and moving projects and tags", "[appcore][rename]") {
+    auto core = core_with_papers(2);
+    core->AddProject("thesis");
+    core->AddProject("chapter");
+    core->SetProjectParent("chapter", "thesis");
+    core->AddProject("section");
+    core->SetProjectParent("section", "chapter");
+    core->AddTag("qcd");
+
+    auto select = [&](const std::string& entry) {
+        const auto& options = core->GetFilterOptions();
+        const auto it = std::find_if(options.begin(), options.end(), [&](const std::string& o) {
+            return o.find(entry) != std::string::npos;
+        });
+        core->SetFilterIndex(static_cast<int>(it - options.begin()));
+    };
+
+    SECTION("a renamed project stays selected") {
+        select("thesis");
+        REQUIRE(core->RenameProject("thesis", "  dissertation "));
+        REQUIRE(core->CurrentProject() == "dissertation");
+    }
+    SECTION("a taken name is refused") { REQUIRE_FALSE(core->RenameProject("thesis", "chapter")); }
+    SECTION("a renamed tag stays selected") {
+        select("#qcd");
+        REQUIRE(core->RenameTag("qcd", "lattice"));
+        REQUIRE(core->CurrentTag() == "lattice");
+    }
+    SECTION("a project cannot move under itself or its sub-projects") {
+        REQUIRE(sorted(core->ParentCandidates("thesis")) == std::vector<std::string>{""});
+        REQUIRE(sorted(core->ParentCandidates("section")) ==
+                std::vector<std::string>{"", "chapter", "thesis"});
+    }
+}

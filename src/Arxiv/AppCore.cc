@@ -536,6 +536,72 @@ void AppCore::UnlinkArticleFromProject(const std::string& article_link,
     NotifyArticleUpdate();
 }
 
+namespace {
+std::string trimmed(const std::string& s) {
+    const auto first = s.find_first_not_of(" \t");
+    if (first == std::string::npos)
+        return "";
+    return s.substr(first, s.find_last_not_of(" \t") - first + 1);
+}
+} // namespace
+
+bool AppCore::RenameProject(const std::string& old_name, const std::string& new_name) {
+    const std::string name = trimmed(new_name);
+    const bool viewing = CurrentProject() == old_name;
+    if (name.empty() || !m_db->RenameProject(old_name, name))
+        return false;
+    RefreshFilterOptions();
+    if (viewing) {
+        // RefreshFilterOptions lost the old name; follow the new one.
+        auto it = std::find(m_filter_project_names.begin(), m_filter_project_names.end(), name);
+        if (it != m_filter_project_names.end())
+            m_filter_index =
+                m_project_start_index + static_cast<int>(it - m_filter_project_names.begin());
+    }
+    if (m_project_update_callback)
+        m_project_update_callback();
+    FetchArticles();
+    return true;
+}
+
+bool AppCore::RenameTag(const std::string& old_name, const std::string& new_name) {
+    const std::string name = trimmed(new_name);
+    const bool viewing = CurrentTag() == old_name;
+    if (name.empty() || !m_db->RenameTag(old_name, name))
+        return false;
+    RefreshFilterOptions();
+    if (viewing) {
+        auto it = std::find(m_filter_tag_names.begin(), m_filter_tag_names.end(), name);
+        if (it != m_filter_tag_names.end())
+            m_filter_index = kFirstTagIndex + static_cast<int>(it - m_filter_tag_names.begin());
+    }
+    FetchArticles();
+    return true;
+}
+
+std::string AppCore::GetProjectParent(const std::string& project) const {
+    return m_db->GetProjectParent(project);
+}
+
+std::vector<std::string> AppCore::ParentCandidates(const std::string& project) const {
+    // A project may not move under itself or anything below it (a cycle
+    // would hide the whole branch).
+    auto below_project = [&](std::string name) {
+        std::set<std::string> seen;
+        while (!name.empty() && seen.insert(name).second) {
+            if (name == project)
+                return true;
+            name = m_db->GetProjectParent(name);
+        }
+        return false;
+    };
+    std::vector<std::string> out{""};
+    for (const auto& name : m_projects.All())
+        if (!below_project(name))
+            out.push_back(name);
+    return out;
+}
+
 std::vector<std::string> AppCore::GetProjects() const { return m_projects.All(); }
 
 // ---------------------------------------------------------------------------

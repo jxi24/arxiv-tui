@@ -49,7 +49,9 @@ class KeyBindings {
         RateSelection,
         FollowAuthors,
         TagArticle,
-        ClearSelection
+        ClearSelection,
+        Rename,
+        MoveProject
     };
 
     KeyBindings() = default;

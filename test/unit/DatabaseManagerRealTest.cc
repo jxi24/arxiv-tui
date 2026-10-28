@@ -1473,3 +1473,38 @@ TEST_CASE("A deleted paper stays deleted", "[database][real][regression]") {
     }
     std::filesystem::remove(file);
 }
+
+TEST_CASE("Projects and tags can be renamed", "[database][real][rename]") {
+    DatabaseManager db(":memory:");
+    const auto& paper = sample_articles[0];
+    db.AddArticle(paper);
+    db.AddProject("thesis");
+    db.AddProject("chapter");
+    db.SetProjectParent("chapter", "thesis");
+    db.LinkArticleToProject(paper.link, "thesis");
+    db.SetProjectNote("thesis", paper.link, "key paper");
+    db.SetProjectBibPath("thesis", "/tmp/thesis.bib");
+    db.LinkArticleToTag(paper.link, "qcd");
+
+    SECTION("a project keeps its papers, notes, .bib and sub-projects") {
+        REQUIRE(db.RenameProject("thesis", "dissertation"));
+        REQUIRE(db.GetArticlesForProject("dissertation").size() == 1);
+        REQUIRE(db.GetProjectNote("dissertation", paper.link) == "key paper");
+        REQUIRE(db.GetProjectBibPath("dissertation") == "/tmp/thesis.bib");
+        REQUIRE(db.GetProjectParent("chapter") == "dissertation");
+        REQUIRE(db.GetArticlesForProject("thesis").empty());
+    }
+    SECTION("a project cannot take a name in use") {
+        REQUIRE_FALSE(db.RenameProject("thesis", "chapter"));
+        REQUIRE(db.GetArticlesForProject("thesis").size() == 1);
+    }
+    SECTION("a tag keeps its papers") {
+        REQUIRE(db.RenameTag("qcd", "lattice"));
+        REQUIRE(db.GetArticlesForTag("lattice").size() == 1);
+        REQUIRE(db.GetTagsForArticle(paper.link) == std::vector<std::string>{"lattice"});
+    }
+    SECTION("a tag cannot take a name in use") {
+        db.AddTag("other");
+        REQUIRE_FALSE(db.RenameTag("qcd", "other"));
+    }
+}

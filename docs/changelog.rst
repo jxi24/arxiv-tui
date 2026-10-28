@@ -7,6 +7,11 @@ Changelog
 Unreleased
 ----------
 
+- **Rename and move** — ``E`` renames the project or tag selected in the
+  filter pane (papers, notes, sub-projects and an exported ``.bib`` follow the
+  new name); ``M`` moves a project under another one or back to the top
+  level. A project cannot be moved under itself or its own sub-projects.
+
 - **Clear the selection** — ``C`` deselects everything. The selection is
   kept when you switch views, so bulk actions could apply to papers no longer
   on screen and there was no way to drop it. The footer shows the key while

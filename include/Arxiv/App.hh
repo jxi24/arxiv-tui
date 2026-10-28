@@ -48,6 +48,8 @@ enum class Dialog {
     ConfigWarning = 16,
     FollowAuthors = 17,
     Tags = 18,
+    Rename = 19,
+    MoveProject = 20,
 };
 
 class ArxivApp {
@@ -258,6 +260,19 @@ class ArxivApp {
     bool HandleHelpEvent(ftxui::Event event);
     ftxui::Element RenderNewProjectDialog();
     bool HandleNewProjectEvent(ftxui::Event event);
+    // Rename the selected project/tag (E), move a project (M): RenameDialog.cc
+    void OpenRenameDialog();
+    ftxui::Element RenderRenameDialog();
+    bool HandleRenameEvent(ftxui::Event event);
+    void OpenMoveProjectDialog();
+    ftxui::Element RenderMoveProjectDialog();
+    bool HandleMoveProjectEvent(ftxui::Event event);
+    std::string rename_target;
+    std::string rename_buffer;
+    bool rename_is_tag = false;
+    std::string move_project;
+    std::vector<std::string> move_candidates;
+    int move_index = 0;
     bool HandleAssignProjectEvent(ftxui::Event event);
     bool HandleDateRangeEvent(ftxui::Event event);
     bool HandleSearchEvent(ftxui::Event event);

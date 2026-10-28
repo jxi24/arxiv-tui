@@ -1476,3 +1476,69 @@ TEST_CASE("C clears the selection", "[tui][selection]") {
 
     REQUIRE(t.app->GetCore().GetSelectionCount() == 0);
 }
+
+// ---------------------------------------------------------------------------
+// E renames the project or tag selected in the filter pane; M moves a
+// project under another one.
+// ---------------------------------------------------------------------------
+
+namespace {
+void select_filter(ArxivApp& app, const std::string& entry) {
+    auto& core = app.GetCore();
+    const auto& options = core.GetFilterOptions();
+    const auto it = std::find_if(options.begin(), options.end(), [&](const std::string& o) {
+        return o.find(entry) != std::string::npos;
+    });
+    core.SetFilterIndex(static_cast<int>(it - options.begin()));
+}
+} // namespace
+
+TEST_CASE("Renaming projects and tags from the filter pane", "[tui][rename]") {
+    RealDbApp t;
+    auto& core = t.app->GetCore();
+    auto handler = t.app->GetEventHandler();
+    core.AddProject("thesis");
+    core.LinkArticleToTag(arxiv_tui::test::fixtures::sample_articles[0].link, "qcd");
+    auto retype = [&](const std::string& old_name, const std::string& name) {
+        for (std::size_t i = 0; i < old_name.size(); ++i)
+            handler->OnEvent(Event::Backspace);
+        type_text(*t.app, name);
+    };
+
+    SECTION("a project") {
+        select_filter(*t.app, "thesis");
+        handler->OnEvent(Event::Character("E"));
+        retype("thesis", "dissertation");
+        handler->OnEvent(Event::Return);
+        REQUIRE(core.GetProjects() == std::vector<std::string>{"dissertation"});
+    }
+    SECTION("a tag") {
+        select_filter(*t.app, "#qcd");
+        handler->OnEvent(Event::Character("E"));
+        retype("qcd", "lattice");
+        handler->OnEvent(Event::Return);
+        REQUIRE(core.GetTags() == std::vector<std::string>{"lattice"});
+    }
+    SECTION("Esc cancels") {
+        select_filter(*t.app, "thesis");
+        handler->OnEvent(Event::Character("E"));
+        retype("thesis", "other");
+        handler->OnEvent(Event::Escape);
+        REQUIRE(core.GetProjects() == std::vector<std::string>{"thesis"});
+    }
+}
+
+TEST_CASE("Moving a project under another", "[tui][rename]") {
+    RealDbApp t;
+    auto& core = t.app->GetCore();
+    auto handler = t.app->GetEventHandler();
+    core.AddProject("thesis");
+    core.AddProject("chapter");
+    select_filter(*t.app, "chapter");
+
+    handler->OnEvent(Event::Character("M"));
+    handler->OnEvent(Event::Character("j")); // (top level) -> thesis
+    handler->OnEvent(Event::Return);
+
+    REQUIRE(t.db->GetProjectParent("chapter") == "thesis");
+}

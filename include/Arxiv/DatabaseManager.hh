@@ -80,6 +80,9 @@ class DatabaseManager {
     // Project management
     virtual void AddProject(const std::string& project_name);
     virtual void RemoveProject(const std::string& project_name);
+    /// Papers, notes, the .bib path and sub-projects follow the new name.
+    /// False (nothing changed) if `new_name` is taken or `old_name` unknown.
+    virtual bool RenameProject(const std::string& old_name, const std::string& new_name);
     virtual std::vector<std::string> GetProjects();
     virtual std::string GetProjectParent(const std::string& project_name);
     virtual void SetProjectParent(const std::string& project_name, const std::string& parent);
@@ -105,6 +108,8 @@ class DatabaseManager {
     // Tag management
     virtual void AddTag(const std::string& name);
     virtual void RemoveTag(const std::string& name);
+    /// False (nothing changed) if `new_name` is taken or `old_name` unknown.
+    virtual bool RenameTag(const std::string& old_name, const std::string& new_name);
     virtual std::vector<std::string> GetTags();
     virtual std::vector<std::string> GetTagsForArticle(const std::string& article_link);
     virtual void LinkArticleToTag(const std::string& article_link, const std::string& tag_name);

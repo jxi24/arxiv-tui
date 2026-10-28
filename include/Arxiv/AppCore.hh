@@ -130,6 +130,15 @@ class AppCore {
     void LinkArticleToProject(const std::string& article_link, const std::string& project_name);
     void UnlinkArticleFromProject(const std::string& article_link, const std::string& project_name);
     std::vector<std::string> GetProjects() const;
+    /// Rename (trimmed). The view follows a renamed project or tag. False if
+    /// the name is empty or taken.
+    bool RenameProject(const std::string& old_name, const std::string& new_name);
+    bool RenameTag(const std::string& old_name, const std::string& new_name);
+    /// Where `project` may move: "" (top level) and every project that is
+    /// not `project` itself or one of its sub-projects.
+    std::vector<std::string> ParentCandidates(const std::string& project) const;
+    /// "" for a top-level project.
+    std::string GetProjectParent(const std::string& project) const;
     std::vector<Article> GetArticlesForProject(const std::string& project_name) const;
     std::vector<std::string> GetProjectsForArticle(const std::string& article_link) const;
 

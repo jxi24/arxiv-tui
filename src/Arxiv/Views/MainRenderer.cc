@@ -163,6 +163,10 @@ void ArxivApp::SetupMainRenderer() {
 
         if (dialog_depth == Dialog::NewProject) {
             document = dbox({document, RenderNewProjectDialog()});
+        } else if (dialog_depth == Dialog::Rename) {
+            document = dbox({document, RenderRenameDialog()});
+        } else if (dialog_depth == Dialog::MoveProject) {
+            document = dbox({document, RenderMoveProjectDialog()});
         } else if (dialog_depth == Dialog::AssignProject) {
             document = dbox({document, project_dialog->Render()});
         } else if (dialog_depth == Dialog::Error) {
@@ -344,6 +348,12 @@ bool ArxivApp::HandleDialogEvent(ftxui::Event event) {
         break;
     case Dialog::AssignProject:
         HandleAssignProjectEvent(event);
+        break;
+    case Dialog::Rename:
+        HandleRenameEvent(event);
+        break;
+    case Dialog::MoveProject:
+        HandleMoveProjectEvent(event);
         break;
     case Dialog::DateRange:
         HandleDateRangeEvent(event);
@@ -531,6 +541,15 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
         // the core's startup copy used to discard them.
         m_settings_on_open = m_config;
         dialog_depth = Dialog::Settings;
+        return true;
+    }
+
+    if (key_bindings.matches(event, KeyBindings::Action::Rename)) {
+        OpenRenameDialog();
+        return true;
+    }
+    if (key_bindings.matches(event, KeyBindings::Action::MoveProject)) {
+        OpenMoveProjectDialog();
         return true;
     }
 

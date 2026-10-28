@@ -85,6 +85,11 @@ class DatabaseManagerMock : public Arxiv::DatabaseManager {
         m_expectations.push_back(
             NAMED_ALLOW_CALL(*this, CountFilters()).RETURN(Arxiv::DatabaseManager::FilterCounts{}));
         m_expectations.push_back(NAMED_ALLOW_CALL(*this, AddTag(ANY(std::string))));
+        m_expectations.push_back(
+            NAMED_ALLOW_CALL(*this, RenameProject(ANY(std::string), ANY(std::string)))
+                .RETURN(false));
+        m_expectations.push_back(
+            NAMED_ALLOW_CALL(*this, RenameTag(ANY(std::string), ANY(std::string))).RETURN(false));
         m_expectations.push_back(NAMED_ALLOW_CALL(*this, RemoveTag(ANY(std::string))));
         m_expectations.push_back(NAMED_ALLOW_CALL(*this, GetTagsForArticle(ANY(std::string)))
                                      .RETURN(std::vector<std::string>{}));
@@ -133,6 +138,8 @@ class DatabaseManagerMock : public Arxiv::DatabaseManager {
     MAKE_MOCK1(AddTag, void(const std::string&), override);
     MAKE_MOCK1(RemoveTag, void(const std::string&), override);
     MAKE_MOCK0(GetTags, std::vector<std::string>(), override);
+    MAKE_MOCK2(RenameProject, bool(const std::string&, const std::string&), override);
+    MAKE_MOCK2(RenameTag, bool(const std::string&, const std::string&), override);
     MAKE_MOCK0(CountFilters, Arxiv::DatabaseManager::FilterCounts(), override);
     MAKE_MOCK1(GetTagsForArticle, std::vector<std::string>(const std::string&), override);
     MAKE_MOCK2(LinkArticleToTag, void(const std::string&, const std::string&), override);
