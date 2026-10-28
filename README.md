@@ -6,7 +6,7 @@
 [![Coverage](https://codecov.io/gh/jxi24/arxiv-tui/branch/main/graph/badge.svg)](https://codecov.io/gh/jxi24/arxiv-tui)
 [![REUSE compliant](https://api.reuse.software/badge/github.com/jxi24/arxiv-tui)](https://api.reuse.software/info/github.com/jxi24/arxiv-tui)
 
-A keyboard-driven terminal user interface for browsing, managing, and downloading arXiv research papers — built in C++17 with [FTXUI](https://github.com/ArthurSonzogni/FTXUI).
+A keyboard-driven terminal user interface for browsing, managing, and downloading arXiv research papers — built in C++17 with [FTXUI](https://github.com/ArthurSonzogni/FTXUI). An optional desktop window (`arxiv-gui`) works on the same papers, settings and database.
 
 ---
 
@@ -14,30 +14,38 @@ A keyboard-driven terminal user interface for browsing, managing, and downloadin
 
 - **Live feed fetching** — pulls articles from arXiv RSS feeds for any set of categories
 - **Local persistence** — stores articles in a SQLite database so they remain available offline
-- **Filtering** — switch between All Articles, Bookmarks, Today, a custom date range, text search, or Recommended
-- **Full-text search** — search across titles, authors, and abstracts
-- **Fuzzy search** — in-process fuzzy matching surfaces near-miss results in the search filter
-- **Author subscriptions** — follow specific authors in addition to category feeds
+- **Views** — All Articles, Bookmarks, Today (the latest arXiv mailing — Friday's over the weekend), New Articles (everything stored since your last session, including days you missed), Updated, Unread, Followed Authors, a date range, search, Recommended, and every tag and project; the filter pane shows how many papers each holds
+- **Full-text search** — search titles, authors, abstracts, or any combination
+- **Fuzzy search** — when nothing matches exactly, near misses are shown
+- **Author subscriptions** — `f` follows or unfollows the focused paper's authors or a typed name; Followed Authors lists their papers
 - **Bookmarks** — mark papers for later reading; bulk-bookmark multiple articles at once
 - **Multi-article selection** — select articles with `Space`, then apply bulk actions: bookmark, add to project, or delete
 - **Article deletion** — remove individual articles or entire selections from the local database
-- **Projects** — group related articles into named collections with sub-projects, per-article notes, and export/import (Markdown, plain text, JSON)
-- **PDF download** — fetch papers directly to a configurable local directory
-- **Configurable key bindings** — remap every action via a YAML file
+- **Projects** — group related articles into named collections with sub-projects, per-article notes, and export/import (Markdown, plain text, BibTeX, JSON — the JSON keeps sub-project parents, tags and ratings)
+- **Tags** — `#` toggles tags on the focused paper or the selection, creates and deletes them
+- **Rename and move** — `E` renames a project or tag (papers, notes and an exported `.bib` follow); `M` moves a project under another one
+- **Mouse support** — click views and articles, scroll with the wheel
+- **PDF download** — fetch papers directly to a configurable local directory; downloads and exports run in the background with a progress badge, so the TUI never freezes
+- **Configurable key bindings** — remap every action via a YAML file or the Settings dialog
+- **Settings dialog** — `S` edits every option in the app; changes apply at once (topics on the next start), `q` cancels
+- **Themes** — `frappe` (default), `latte`, `mocha`, `high-contrast` or `terminal`, with per-colour overrides
 - **Configurable article list columns** — choose which columns appear in the article list (title, authors, date, category, score, id) and in what order via `article_columns` in `config.yml`
 - **Scrolling detail pane** — read full titles and abstracts without leaving the terminal
 - **Personalised ranking** — rate articles 1–5 stars with `n`; bulk-rate an entire selection with `W`; a lightweight neural network learns your preferences and surfaces today's most relevant papers in the Recommended filter
 - **Open in browser** — press `O` to open the focused article (or all selected articles) directly in the system default browser via `xdg-open`
 - **BibTeX export** — generate `.bib` files for individual articles, selections, or entire projects, with automatic InspireHEP lookup and metadata fallback
 - **Read/unread tracking** — articles are marked read when the detail pane opens, when you navigate while the detail pane is open, or when a PDF is downloaded; read articles render dimmer so unread papers stand out; an **Unread** filter shows everything not yet read
-- **Auto-refresh** — configurable background feed refresh interval (0 = disabled)
-- **`--fetch` headless mode** — `arxiv-tui --fetch` updates the database and exits without opening the TUI, enabling cron-based refresh
+- **Auto-refresh** — configurable background feed refresh interval (0 = disabled); when arXiv cannot be reached the footer says so and the stored papers stay available
+- **`--fetch` headless mode** — `arxiv-tui --fetch` updates the database and exits without opening the TUI, enabling cron-based refresh; papers it stores still show as new in the next session
+- **Headless digests** — `--export-today` writes the latest mailing as Markdown and `--export-yaml` as YAML ranked by your ratings and keywords, ready for other tools
 - **Database pruning** — optional `max_article_age_days` config key automatically removes old articles on startup unless they are bookmarked, rated, or in a project
 - **Replay system and crash handler** — all UI actions are recorded to a JSONL replay log; on a crash, a report with backtrace and full replay is saved for debugging
 - **Link deduplication** — incoming RSS and Atom feeds are normalised to a canonical URL form on ingestion, and any existing duplicates are cleaned up automatically on first run
 - **Undo delete** — press `u` to restore the last deleted article (or entire bulk-deleted selection) including its rating, project memberships, notes, and tags; a configurable ring buffer (default 10 steps) keeps the last N operations available for undo
 - **Help overlay search** — type while the `?` overlay is open to filter key bindings in real time; Backspace trims the query, Escape clears it, a second Escape closes the overlay
 - **Export digest as archive** — `G` packs the selected-articles digest (Markdown + PDFs) into a portable `.tar.gz` file
+- **Desktop GUI** — optional `arxiv-gui` window (Dear ImGui) with the same views, search, ratings, tags, projects and downloads; dark theme, and icons when a Nerd Font is installed
+- **Careful with your files** — every file the app writes is written atomically (a full disk never leaves a half-written config or export); the database, logs and replay log are private to you (mode 0600); external programs are started without a shell; network responses, redirects and API paging are bounded
 
 ---
 
@@ -86,6 +94,50 @@ the install step as root:
 cmake -B build
 cmake --build build -j$(nproc)
 sudo cmake --install build
+```
+
+### Desktop GUI (optional)
+
+`arxiv-gui` is built on request. It needs OpenGL and X11 development headers
+(on Debian/Ubuntu: `libgl-dev libx11-dev libxrandr-dev libxinerama-dev
+libxcursor-dev libxi-dev libxkbcommon-dev`):
+
+```bash
+cmake -B build -DARXIV_TUI_BUILD_GUI=ON
+cmake --build build --target arxiv-gui
+./build/src/GUI/arxiv-gui
+```
+
+It uses the same `config.yml` and database as the TUI. It picks up Inter,
+Noto Sans, Cantarell or DejaVu Sans (`ARXIV_GUI_FONT` / `ARXIV_GUI_FONT_BOLD`
+choose another), and draws icons when a [Nerd Font](https://www.nerdfonts.com)
+is installed — the icon-only *Symbols Nerd Font* is enough
+(`ARXIV_GUI_ICON_FONT` picks the file; an empty value turns icons off).
+
+---
+
+## Command Line
+
+```
+arxiv-tui [--trace] [MODE]
+```
+
+| Option | Effect |
+|--------|--------|
+| *(none)* | Open the TUI |
+| `--fetch` | Fetch new papers into the database and exit (for cron) |
+| `--export-today FILE` | Write the latest mailing as a Markdown digest |
+| `--export-yaml FILE` | Write the latest mailing, ranked, as YAML (`id`, `title`, `authors`, `link`, `category`, `score`, `abstract`) |
+| `--replay FILE` | Replay a `replay.jsonl` log or a crash report on an in-memory copy of the database |
+| `--trace` | Log at trace level |
+| `-h`, `--help` / `-V`, `--version` | Show help / the version |
+
+`--export-today` and `--export-yaml` may be combined; other modes may not.
+A typical headless setup:
+
+```bash
+# crontab: fetch on weekdays, then write a ranked digest
+0 7 * * 1-5  arxiv-tui --fetch && arxiv-tui --export-yaml ~/notes/arxiv-today.yml
 ```
 
 ---
@@ -151,7 +203,15 @@ key_mappings:
 
 **`export_dir`** is where exports started from the TUI go: project exports (`e`), the daily digest (`X`) and the BibTeX file written when no clipboard is available (`c`). Default: `~/.local/share/arxiv-tui/exports`; also set in the Settings dialog (`S` → Export → Export folder).
 
-**`obsidian_download_pdfs`** controls what each exported note points to. `false` (the default) adds a `[PDF on arXiv](https://arxiv.org/pdf/<id>)` link and downloads nothing, which keeps git-synced vaults small. `true` downloads the PDF next to the note and embeds it (`![[<id>.pdf]]`). It's also toggled in the Settings dialog (`S` → Export → Download PDFs). Default: `false`.
+**`obsidian_download_pdfs`** controls what each exported note points to. `false` (the default) adds a `[PDF on arXiv](https://arxiv.org/pdf/<id>)` link and downloads nothing, which keeps git-synced vaults small. `true` downloads the PDF next to the note and embeds it (`![[<id>.pdf]]`); if a download fails, that note links to arXiv instead. It's also toggled in the Settings dialog (`S` → Export → Download PDFs). Default: `false`.
+
+**`keywords_file`** is the interest-keywords file edited with `K` and used to rank papers before you have rated any. Default: `~/.local/share/arxiv-tui/keywords.txt`.
+
+**`undo_buffer_size`** is how many deletions `u` can undo. Default: `10`.
+
+**`theme`** selects the colour theme: `frappe` (default), `latte`, `mocha`, `high-contrast` or `terminal`. **`theme_colors`** overrides individual colours of the chosen theme. Settings → General → Theme cycles them live.
+
+**`clipboard_backend`** forces the program used for copying (`xclip`, `xsel`, `wl-copy` or `pbcopy`); empty picks one automatically. The `ARXIV_TUI_CLIPBOARD` environment variable does the same.
 
 **`article_columns`** controls which columns are shown in the article list and in what order. Available values:
 
@@ -265,10 +325,18 @@ variables: `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, and `XDG_STATE_HOME`.
 | `config.yml` | Configuration (created on first run in `~/.config/arxiv-tui/`) |
 | `articles.db` | SQLite database of fetched articles, ratings, projects, and notes |
 | `ranker.bin` | Saved ranking model weights (created after first retrain) |
+| `keywords.txt` | Interest keywords (`K`) |
 | `downloads/` | Default PDF download directory |
+| `exports/` | Project exports, daily digests and BibTeX files written from the TUI |
 | `arxiv_tui.log` | Rotating application log (up to 3 × 5 MB files) |
-| `replay.jsonl` | UI action replay log for crash reporting |
-| `crash_*.txt` | Crash reports with backtrace and session replay |
+| `replay.jsonl` | UI action replay log for crash reporting (moved to `replay.jsonl.1` at start-up once over 5 MiB) |
+| `crash_*.txt` | Crash reports: a JSON header (version, signal, time), backtrace and session replay |
+| `arxiv_gui.log`, `imgui.ini` | GUI log and window layout |
+
+The database, logs and replay log are created readable only by you (mode
+0600) and new data/state directories mode 0700. Files from older versions
+keep their permissions; `chmod 600 ~/.local/share/arxiv-tui/articles.db
+~/.local/state/arxiv-tui/*` tightens them.
 
 ---
 
@@ -284,18 +352,24 @@ arxiv-tui/
 ├── include/Arxiv/          # Public headers
 │   ├── App.hh              # TUI shell and event loop
 │   ├── AppCore.hh          # Business logic, filtering, state
-│   ├── Article.hh          # Article data structure
-│   ├── Components.hh       # FTXUI component wrappers
+│   ├── RankingService.hh   # Ranking model, training thread, keywords
+│   ├── ProjectService.hh   # Projects: membership, notes, export/import
+│   ├── Export.hh           # Every export file format
+│   ├── DatabaseManager.hh  # SQLite3 persistence (schema version 2)
+│   ├── Fetcher.hh          # arXiv RSS/API fetcher, PDF downloader
+│   ├── HttpClient.hh       # Injected HTTP client (cpr by default)
 │   ├── Config.hh           # YAML config loader/saver
-│   ├── DatabaseManager.hh  # SQLite3 persistence interface
-│   ├── Fetcher.hh          # arXiv RSS fetcher / PDF downloader
-│   ├── FuzzyMatch.hh       # In-process fuzzy search
+│   ├── Paths.hh            # XDG / install-prefix file locations
 │   ├── KeyBindings.hh      # Keyboard action mapping
 │   ├── Ranker.hh           # TF-IDF + MLP article ranking model
 │   ├── Replay.hh           # JSONL action recorder and player
-│   └── CrashHandler.hh     # Signal-based crash handler with backtrace
-├── src/Arxiv/              # Implementations
-└── test/                   # Catch2 unit tests + trompeloeil mocks
+│   ├── CrashHandler.hh     # Async-signal-safe crash reports
+│   ├── AtomicFile.hh       # Write-to-temp-and-rename for every file
+│   ├── Process.hh          # Shell-free process launching
+│   └── ...                 # Article, BibTeX, AuthorMatch, FuzzyMatch, Utf8, ...
+├── src/Arxiv/              # Implementations; Views/ holds the TUI panes and dialogs
+├── src/GUI/                # Optional ImGui desktop window (arxiv-gui)
+└── test/                   # Catch2 unit tests, trompeloeil mocks, libFuzzer targets (fuzz/)
 ```
 
 ---
@@ -312,6 +386,8 @@ arxiv-tui/
 | [yaml-cpp](https://github.com/jbeder/yaml-cpp) | 0.7.0 | YAML configuration |
 | [nlohmann/json](https://github.com/nlohmann/json) | 3.11.3 | JSON export/import and replay logs |
 | [SQLite3](https://sqlite.org) | system | Article persistence |
+| [Dear ImGui](https://github.com/ocornut/imgui) | v1.91.9b | Desktop GUI (only with `-DARXIV_TUI_BUILD_GUI=ON`) |
+| [GLFW](https://github.com/glfw/glfw) | 3.4 | GUI windowing (only with `-DARXIV_TUI_BUILD_GUI=ON`) |
 | [Catch2](https://github.com/catchorg/Catch2) | 3.5.0 | Test framework |
 | [trompeloeil](https://github.com/rollbear/trompeloeil) | v47 | Mock objects |
 
@@ -352,6 +428,11 @@ The repository enforces quality gates on every push and pull request via GitHub 
 | **Static Analysis** | clang-tidy on project sources only (CPM dependencies are excluded) |
 | **clang-format** | Code style checked against `.clang-format` (clang-format v20) |
 | **REUSE** | Every file carries a valid SPDX `FileCopyrightText` and `License-Identifier` (checked via `pip install reuse && reuse lint`) |
+| **Fuzzing** | libFuzzer targets (feeds, config, project import, replay, database operations, digests, ranker files, text) with inputs up to 256 KiB; every test build also replays the checked-in corpus |
+| **GUI build** | `arxiv-gui` builds against the library |
+| **Coverage** | Test coverage uploaded to Codecov |
+| **Docs** | The Sphinx site builds; versioned docs deploy to GitHub Pages |
+| **Release** | Pushing a `v*` tag builds a Linux tarball and publishes a GitHub Release |
 
 Build artefacts are cached with ccache (per-job namespaces) and CPM dependencies are cached by `Dependencies.txt` hash to keep CI times short.
 
@@ -389,7 +470,7 @@ Hooks: trailing whitespace, LF line endings, valid YAML/TOML, clang-format, REUS
 - **`--fetch` headless mode** (v0.8) — `arxiv-tui --fetch` updates the database and exits, enabling cron-based feed refresh without opening the TUI
 - **Database pruning** (v0.8) — `max_article_age_days` config key (default 0 = off) automatically removes old unprotected articles on startup, keeping the database lean
 - **Clipboard integration** (v0.9) — pressing `c` copies BibTeX directly to the system clipboard via `xclip`, `xsel`, or `wl-clipboard`; `ARXIV_TUI_CLIPBOARD` env var selects the backend; file export remains available as a fallback
-- **FTS5 full-text search** (v0.9) — SQLite FTS5 extension replaces `LIKE '%query%'` with ranked, stemmed full-text search over titles, authors, and abstracts; no new dependency required
+- **FTS5 full-text search** (v0.9) — SQLite FTS5 extension replaces `LIKE '%query%'` with ranked full-text search over titles, authors, and abstracts; no new dependency required
 - **Tag system** (v0.9) — user-defined labels outside the project hierarchy; articles can carry multiple tags; tags appear as filters alongside projects and are included in BibTeX exports
 - **Auto-update project `.bib`** (v0.9) — adding an article to a project that has a previously exported `.bib` automatically appends the new entry without a manual re-export
 - **Bulk rating** (v0.9) — with a selection active, a single dialog applies the chosen score to all selected articles in one operation, triggering a single model retrain check (binding changed to `W` in v1.1)
@@ -400,10 +481,16 @@ Hooks: trailing whitespace, LF line endings, valid YAML/TOML, clang-format, REUS
 - **Configurable article list columns** (v0.9.7) — `article_columns` config key selects which columns appear in the article list and in what order; available: `title`, `date`, `authors`, `category`, `id`, `score`; default `[title, date]`; a column header row is always shown
 - **Settings dialog** (v1.0) — `S` opens a five-section in-app settings editor (General, Topics, Ranker, Export, Keys) allowing every config value to be changed without editing YAML; Escape saves and closes, `q` closes without saving
 - **Category filter** (v1.0) — `t` opens a dialog to toggle individual arXiv categories on or off; only articles matching an active category are shown; `a` activates all, `n` deactivates all; articles with no category always pass through
-- **Obsidian vault export** (v1.0) — `o` exports selected articles as Obsidian-formatted Markdown notes (wikilinks, a link to the PDF on arXiv, frontmatter) into the configured `obsidian_vault` directory; vault path is set via the Settings dialog or directly in `config.yml`. Set `obsidian_download_pdfs: true` to download and embed the PDFs instead (unreleased; previously always on)
+- **Obsidian vault export** (v1.0) — `o` exports selected articles as Obsidian-formatted Markdown notes (wikilinks, a link to the PDF on arXiv, frontmatter) into the configured `obsidian_vault` directory; vault path is set via the Settings dialog or directly in `config.yml`. Set `obsidian_download_pdfs: true` to download and embed the PDFs instead (v1.2; previously always on)
 - **Keyword boosts** (v1.0) — `K` opens the interest-keyword editor; keywords are saved to a plain-text file and used by the ranker as a cold-start signal before any star ratings exist; useful for seeding recommendations immediately after install
 - **Open in browser** (v1.1) — `O` opens the focused article in the system default browser via `xdg-open`; with a selection active, all selected articles are opened; links are drawn from the selection set if non-empty, otherwise the focused article
 - **Separate rate-article and rate-selection bindings** (v1.1) — `n` now always rates the single focused article regardless of any active selection; `W` (configurable) is the dedicated "Rate Selection" binding that opens the bulk-rating dialog; this allows rating individual papers while a multi-article selection is active
+- **Tags, rename and move** (v1.2) — `#` tags the focused paper or selection; `E` renames projects and tags; `M` re-parents projects; `C` clears the selection
+- **Background work** (v1.2) — exports and downloads run on a worker thread with a progress badge; auto-refresh fetches for real; quitting cancels any fetch or download in flight
+- **Today is the latest mailing** (v1.2) — Today, Recommended and the daily digests show Friday's papers over the weekend instead of nothing; New Articles covers every missed day, including papers stored by a cron `--fetch`
+- **Desktop GUI** (v1.2) — `arxiv-gui` shares the TUI's files, fetches in the background, and has a modern dark look with optional Nerd Font icons
+- **Robustness and security** (v1.2) — atomic file writes, private file modes, shell-free process launching, bounded network responses and redirects, crash reports with a JSON header and one replay path, schema-versioned database with enforced foreign keys and remembered deletions, eight libFuzzer targets in CI
+- **TUI polish** (v1.2) — modal dialogs that get every key first, mouse support, themes, footer hints, non-blocking toasts, filter-pane counts and sections, a richer detail pane, and a cursor that stays put across reloads
 
 ---
 

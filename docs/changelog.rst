@@ -4,8 +4,8 @@
 Changelog
 =========
 
-Unreleased
-----------
+v1.2.0
+------
 
 - **Quitting no longer waits for the network** — closing the app during the
   start-up fetch, a missed-days backfill, an auto-refresh or a PDF download

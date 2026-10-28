@@ -204,7 +204,7 @@ same actions.
 
 The first line of a report is a one-line JSON header for tools and scripts::
 
-   {"arxiv_tui_crash_report":1,"version":"1.1.0","signal":"SIGSEGV","signum":11,
+   {"arxiv_tui_crash_report":1,"version":"1.2.0","signal":"SIGSEGV","signum":11,
     "time":"2026-10-26T05:09:35Z","pid":2745,"replay_log":"/home/you/.local/state/arxiv-tui/replay.jsonl"}
 
 (on one line in the file). The backtrace and the replay log follow as text.

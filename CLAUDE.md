@@ -498,13 +498,13 @@ A brief record of what has been implemented. Consult `README.md` for user-facing
 - **Read-on-scroll** — articles are now marked read whenever the user navigates (`j`/`k`) while the detail pane is open, not only when the pane is first opened (`src/Arxiv/Views/ArticlePane.cc`).
 - **Bulk rating** — pressing `n` with a selection active opens a "Rate Selection" dialog and applies the score to all selected articles in one operation.
 
-### Unreleased — Ranked headless YAML digest
+### v1.2.0 — Ranked headless YAML digest
 - **`--export-yaml` ranked** — `AppCore::ExportDailyDigestYAML` sorts today's articles by `Ranker::PredictBlended` (highest first) and writes `id`, `category` and `score` alongside title/authors/link/abstract; replacements (new versions of older papers, `is_replacement`) are left out, so the digest holds only papers first posted today (cross-lists stay); `main.cc` calls `ReloadKeywords()` before headless exports so keyword boosts apply. Tests: `DigestTest.cc` (`[digest]`).
 
-### Unreleased — keywords_file config key
+### v1.2.0 — keywords_file config key
 - **`keywords_file`** — YAML key for the interest-keywords file (`Config` load/save); defaults to `<data_dir>/keywords.txt` in `main.cc`. Before this the path was never set, so keyword boosts and the keyword editor had no file. Lets headless installs (a Raspberry Pi running `--fetch` + `--export-yaml`) share a keywords list kept elsewhere. Tests: `ConfigTest.cc` (`keywords_file` read and round-trip).
 
-### Unreleased — Obsidian export without PDFs
+### v1.2.0 — Obsidian export without PDFs
 - **Settings reach `AppCore`** — `AppCore` keeps its own `Config` copy; closing the Settings dialog now calls `AppCore::ApplyConfig(m_config)`, which replaces that copy and the cached retrain interval / recommend threshold, resizes the undo buffer and restarts auto-refresh when its interval changed. Topics and the `Fetcher` download dir (used by `d`) are still read only at startup. Tests: `AppTest.cc` (`AppCore::ApplyConfig`).
 - **`obsidian_download_pdfs`** (default `false`) — Obsidian export writes `[PDF on arXiv](https://arxiv.org/pdf/<id>)` into each note and never calls `Fetcher::DownloadPaper`; `true` restores downloading the PDF next to the note with a `![[<id>.pdf]]` embed. Toggled in the Settings dialog (Export section, second field; Enter flips it). Tests: `AppTest.cc` (`ExportSelectedToObsidian` link-only / download sections), `ConfigTest.cc` (default and round-trip).
 - **Download-failure fallback** — with `obsidian_download_pdfs: true`, the PDF is downloaded before the note is written; the `![[<id>.pdf]]` embed is used only if `DownloadPaper` succeeded, otherwise the note gets the arXiv link (built with `Fetcher::ConstructPaperUrl`). Lives in `Export::ObsidianNotes`. Test: `AppTest.cc` (`Falls back to the arXiv link when the PDF download fails`).
@@ -540,7 +540,7 @@ A brief record of what has been implemented. Consult `README.md` for user-facing
   anchor's second; with `>=` those papers (dozens to hundreds per day) were replayed as
   new the following day.
 
-### Unreleased — missing features (claude/missing-features)
+### v1.2.0 — missing features (claude/missing-features)
 - **Offline notice** — `AppCore::LastFetchError()` (set by the initial fetch and auto-refresh, cleared on success); the footer shows it in place of the topics.
 - **Selection** — `C` (`ClearSelection`, recorded as `clear_selection`); un-bookmarking in the Bookmarks view reloads it.
 - **Rename / move** — `E` (`Rename`) and `M` (`MoveProject`), `Views/RenameDialog.cc`; `DatabaseManager::RenameProject/RenameTag` (cascades), `AppCore::RenameProject/RenameTag/ParentCandidates` (no cycles); replay `rename_project` / `rename_tag`.
@@ -548,11 +548,11 @@ A brief record of what has been implemented. Consult `README.md` for user-facing
 - **GUI** — Async AppCore + `TryRefetchIfNeeded` per frame, `AppCore::StartRefresh` for Refresh, downloads via `StartDownloadArticle`, ratings/tags/projects, read dimming, counts, status bar; `imgui.ini` in the state dir.
 - **GUI look** — `src/GUI/Style.hh/.cc`: one `Palette` (never ad-hoc colours in `main.cc`), `LoadFonts()` (system sans, `ARXIV_GUI_FONT`; glyph ranges cover Greek, maths, combining marks), `ApplyStyle()`. `main.cc`'s `ArxivGuiApp` draws header, sidebar, clipped card list, detail pane and status bar. Nerd Font icons: `FontSearch.hh/.cc` (no ImGui; built into `unit_tests`, `FontSearchTest.cc`) finds one under the XDG font dirs (`ARXIV_GUI_ICON_FONT` overrides, empty = off); `LoadFonts` merges only the `Icon::*` code points into each font and sets `Fonts::icons`; labels go through `ArxivGuiApp::label(icon, text)`, so without one the GUI is text-only.
 
-### Unreleased — bug fixes (claude/today-and-quit)
+### v1.2.0 — bug fixes (claude/today-and-quit)
 - **Today = latest mailing** — Today, Recommended and both daily digests use `DatabaseManager::GetLatestMailing()` (papers in the 24 h up to the newest non-future date, open at the start), not `GetRecent(1)`, which was empty on weekends and holidays. Tests: `TodayViewTest.cc` (`[today]`).
 - **Quit cancels the network** — `Fetcher::Cancel()` (virtual; mocked) wakes `RequestPacer::Cancel()` and calls `HttpClient::Cancel()` (cpr: a progress callback aborts the transfer, later requests fail at once); `~AppCore` calls it before joining its threads. Cancelled fetches throw `FetchError`, so no fetch marker moves. Tests: `ShutdownTest.cc`, `FetcherNetTest.cc`, `HttpClientTest.cc` (`[shutdown]`).
 
-### Unreleased — TUI polish (claude/next-steps)
+### v1.2.0 — TUI polish (claude/next-steps)
 - **Settings cancel** — `q` restores the config snapshot taken on open (`m_settings_on_open`) and the theme; Esc in a field discards the edit.
 - **Tags dialog** — `#` (`TagArticle`): toggle/add/delete tags on the focused article or selection (`AppCore::TagCoverage`, `ToggleTagOnTargets`).
 - **Layout** — pane widths/rows from `reflect`ed boxes (`m_screen_box`, `m_article_box`, `m_filter_box`), not `Terminal::Size()`; status column (`+` selected, `★` bookmarked).
