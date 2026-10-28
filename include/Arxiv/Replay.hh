@@ -88,9 +88,14 @@ class ReplayRecorder {
     /// Number of entries recorded so far.
     std::size_t GetCount() const;
 
+    /// The replay file being streamed to, or "" in in-memory mode. Fixed at
+    /// construction, so the crash handler can read it without locking.
+    const std::string& GetFilePath() const { return m_file_path; }
+
   private:
     std::deque<std::string> m_entries; // newest kMaxEntries
     std::ofstream m_file;
+    std::string m_file_path;
     mutable std::mutex m_mutex;
 
     void Record(const std::string& json_line);
@@ -105,6 +110,13 @@ class ReplayRecorder {
 // ---------------------------------------------------------------------------
 class ReplayPlayer {
   public:
+    struct Options {
+        /// Run actions that read or write files, download or touch the
+        /// keyword/ranker files (exports, import, downloads, save_keywords).
+        /// Off by default: a replay file may come from someone else.
+        bool file_actions = false;
+    };
+
     struct Result {
         int total = 0;
         int replayed = 0;
@@ -112,14 +124,20 @@ class ReplayPlayer {
         std::string error;
     };
 
-    /// Replay from a JSONL string.
+    /// Replay from a JSONL string, or from a crash report (its Replay Log
+    /// section is replayed).
     static Result FromString(const std::string& jsonl, AppCore& core);
+    static Result FromString(const std::string& jsonl, AppCore& core, const Options& options);
 
-    /// Replay from a JSONL file.
+    /// Replay from a JSONL file or a crash report file.
     static Result FromFile(const std::string& path, AppCore& core);
+    static Result FromFile(const std::string& path, AppCore& core, const Options& options);
 
   private:
-    static bool DispatchAction(const std::string& json_line, AppCore& core, std::string& error_out);
+    static bool DispatchAction(const std::string& json_line,
+                               AppCore& core,
+                               const Options& options,
+                               std::string& error_out);
 };
 
 } // namespace Arxiv

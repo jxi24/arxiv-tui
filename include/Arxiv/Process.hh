@@ -16,6 +16,11 @@ namespace Arxiv::Process {
 /// killed by a signal.
 int RunAndWait(const std::vector<std::string>& argv);
 
+/// Like RunAndWait, but `input` is written to the program's stdin (then
+/// closed). A program that exits without reading it all is not an error for
+/// the caller: no SIGPIPE reaches this process.
+int RunWithInput(const std::vector<std::string>& argv, const std::string& input);
+
 /// Like RunAndWait but returns as soon as the program has started; the child
 /// is reaped in the background. Returns false if it could not be started.
 bool SpawnDetached(const std::vector<std::string>& argv);

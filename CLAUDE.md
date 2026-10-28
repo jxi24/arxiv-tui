@@ -156,7 +156,10 @@ The single fallback BibTeX builder (`BibTeX::Build`) used by the clipboard and f
 Followed-author matching: whole last names (particles included), first initial (and first name when both spelled out), middle initials only when both give one; last name alone matches that last name.
 
 **`Process`** (`Process.hh/cc`)
-Starts external programs (`xdg-open`, `tar`) via `posix_spawnp` with an argument vector and stdio on `/dev/null`. Never build shell command strings from article data.
+Starts external programs (`xdg-open`, `tar`, the clipboard backend) via `posix_spawnp` with an argument vector and stdio on `/dev/null` (`RunWithInput` feeds stdin through a socket, so no SIGPIPE). Never build shell command strings from article data or config.
+
+**Replay** (`Replay.hh/cc`, `--replay`)
+`ReplayPlayer` takes a JSONL log or a crash report (it replays the report's Replay Log section) and skips file/download actions unless `Options::file_actions`; `main.cc` replays on `DatabaseManager::InMemoryCopyOf` with ranker/keywords copied to a scratch dir. The crash handler (`CrashHandler.cc`) is async-signal-safe: it copies the tail of the replay *file*, never touches the recorder's lock.
 
 ### Database Schema
 
@@ -296,6 +299,7 @@ object programmatically.
 | `test/unit/BackgroundTaskTest.cc` | Non-blocking exports/downloads: `AppCore` background task API and TUI progress |
 | `test/unit/ProcessTest.cc` | `Process::RunAndWait` / `SpawnDetached` (no-shell process launching) |
 | `test/unit/PathsTest.cc` | `Paths::Resolve` fallback when the install prefix is not writable |
+| `test/unit/CrashHandlerTest.cc` | Crash handler in forked children: report, no hang on a busy recorder, terminal restored, SIGTERM untouched |
 
 Tests tagged `[regression]` reproduce bugs found in code review (now fixed); the `[threads]` ones are only meaningful under ThreadSanitizer (the Sanitizers CI workflow). `[background]` covers the background-task API.
 

@@ -13,27 +13,29 @@ class ReplayRecorder;
 // ---------------------------------------------------------------------------
 // CrashHandler
 //
-// Installs POSIX signal handlers that, on a fatal signal, write a crash
-// report to disk and then re-raise the signal with the default handler so
-// the OS can record a core dump and the process exits cleanly.
+// Installs POSIX signal handlers that, on a fatal signal, restore the
+// terminal, write a crash report to disk and then re-raise the signal with
+// the default action so the OS can record a core dump. The handler only uses
+// async-signal-safe calls; everything it needs is prepared at install time.
 //
 // The crash report contains:
 //   - Timestamp
 //   - Signal name and number
-//   - Backtrace (via execinfo.h backtrace_symbols)
-//   - Replay log (if a ReplayRecorder was provided)
+//   - Backtrace (via execinfo.h backtrace_symbols_fd)
+//   - The end of the replay file (if the ReplayRecorder streams to one)
 // ---------------------------------------------------------------------------
 
-/// Install signal handlers for SIGSEGV, SIGABRT, SIGFPE, SIGILL, SIGBUS,
-/// SIGTERM.  `recorder` may be nullptr (no replay log will be written).
-/// `crash_dir` is the directory where crash reports are written; defaults to
-/// the current working directory.
+/// Install signal handlers for SIGSEGV, SIGABRT, SIGFPE, SIGILL and SIGBUS
+/// (SIGTERM keeps its default: it is a request to stop, not a crash). The
+/// terminal mode of stdin at this point is what a crash restores. `recorder`
+/// may be nullptr (no replay log in the report). `crash_dir` is the
+/// directory where crash reports are written.
 void InstallCrashHandler(ReplayRecorder* recorder, const std::string& crash_dir = ".");
 
 /// Write a crash report for signal `signum` to `crash_dir`.  Returns the
 /// path of the written file, or an empty string if writing failed.
-/// This function is intentionally kept as a free function so it can be called
-/// from tests without installing signal handlers.
+/// Not for use inside a signal handler: an in-memory recorder's entries are
+/// read under its lock.
 std::string WriteCrashReport(int signum, ReplayRecorder* recorder, const std::string& crash_dir);
 
 } // namespace Arxiv

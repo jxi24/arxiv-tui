@@ -10,8 +10,11 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
 #include <chrono>
+#include <cstring>
 #include <ctime>
+#include <fcntl.h>
 #include <fstream>
 #include <iomanip>
 #include <iterator>
@@ -19,6 +22,7 @@
 #include <regex>
 #include <sstream>
 #include <string_view>
+#include <unistd.h>
 #include <utility>
 #include <vector>
 
@@ -92,29 +96,105 @@ std::vector<Article> Fetcher::Fetch() {
     return all_articles;
 }
 
+// ---------------------------------------------------------------------------
+// PdfWriter
+// ---------------------------------------------------------------------------
+
+namespace {
+constexpr std::string_view kPdfMagic = "%PDF-";
+}
+
+Arxiv::PdfWriter::PdfWriter(std::filesystem::path target, std::size_t max_bytes)
+    : m_target(std::move(target))
+    , m_max_bytes(max_bytes) {
+    std::string temp = m_target.string() + ".part-XXXXXX";
+    m_fd = ::mkostemp(temp.data(), O_CLOEXEC);
+    if (m_fd < 0)
+        Fail(fmt::format("cannot create a temporary file beside {}: {}",
+                         m_target.string(),
+                         std::strerror(errno)));
+    else
+        m_temp = temp;
+}
+
+Arxiv::PdfWriter::~PdfWriter() {
+    if (m_fd >= 0)
+        ::close(m_fd);
+    if (!m_committed && !m_temp.empty()) {
+        std::error_code ec;
+        std::filesystem::remove(m_temp, ec);
+    }
+}
+
+bool Arxiv::PdfWriter::Fail(std::string why) {
+    m_failed = true;
+    if (m_error.empty())
+        m_error = std::move(why);
+    return false;
+}
+
+bool Arxiv::PdfWriter::Write(std::string_view chunk) {
+    if (m_failed)
+        return false;
+    if (chunk.size() > m_max_bytes - m_size)
+        return Fail(fmt::format("larger than {} bytes", m_max_bytes));
+    if (m_head.size() < kPdfMagic.size()) {
+        m_head.append(chunk.substr(0, kPdfMagic.size() - m_head.size()));
+        if (kPdfMagic.compare(0, m_head.size(), m_head) != 0)
+            return Fail("the server did not send a PDF");
+    }
+    while (!chunk.empty()) {
+        ssize_t n = ::write(m_fd, chunk.data(), chunk.size());
+        if (n < 0 && errno == EINTR)
+            continue;
+        if (n <= 0)
+            return Fail(fmt::format("write failed: {}", std::strerror(errno)));
+        chunk.remove_prefix(static_cast<std::size_t>(n));
+        m_size += static_cast<std::size_t>(n);
+    }
+    return true;
+}
+
+bool Arxiv::PdfWriter::Commit() {
+    if (m_failed)
+        return false;
+    if (m_head != kPdfMagic)
+        return Fail("the server did not send a PDF");
+    // Data on disk before the rename, so a crash leaves the old file or the
+    // whole new one.
+    if (::fsync(m_fd) != 0)
+        return Fail(fmt::format("write failed: {}", std::strerror(errno)));
+    ::close(m_fd);
+    m_fd = -1;
+    std::error_code ec;
+    std::filesystem::rename(m_temp, m_target, ec);
+    if (ec)
+        return Fail(fmt::format("cannot move the download into place: {}", ec.message()));
+    m_committed = true;
+    return true;
+}
+
 bool Fetcher::DownloadPaper(const std::string& paper_id, const std::string& output_path) {
     try {
         auto url = ConstructPaperUrl(paper_id, "pdf");
-        auto response = cpr::Get(cpr::Url{url}, cpr::Timeout{120000});
+        // Stream to disk instead of holding the whole PDF in memory.
+        PdfWriter out(base_path / output_path);
+        auto response = cpr::Download(
+            cpr::WriteCallback{[&out](std::string data, intptr_t) { return out.Write(data); }},
+            cpr::Url{url},
+            cpr::Timeout{120000});
 
-        if (response.status_code == 200) {
-            std::ofstream file(base_path / output_path, std::ios::binary);
-            if (file.is_open()) {
-                file.write(response.text.c_str(),
-                           static_cast<std::streamsize>(response.text.size()));
-                file.close();
-                spdlog::info(
-                    "[Fetcher]: Successfully downloaded paper {} to {}", paper_id, output_path);
-                return true;
-            } else {
-                spdlog::error("[Fetcher]: Failed to open output file {}", output_path);
-                return false;
-            }
-        } else {
+        if (response.status_code != 200) {
             spdlog::error(
                 "[Fetcher]: Failed to download paper {}: HTTP {}", paper_id, response.status_code);
             return false;
         }
+        if (!out.Commit()) {
+            spdlog::error("[Fetcher]: Failed to download paper {}: {}", paper_id, out.Error());
+            return false;
+        }
+        spdlog::info("[Fetcher]: Successfully downloaded paper {} to {}", paper_id, output_path);
+        return true;
     } catch (const std::exception& e) {
         spdlog::error("[Fetcher]: Error downloading paper {}: {}", paper_id, e.what());
         return false;
@@ -796,13 +876,34 @@ std::optional<Arxiv::time_point> Fetcher::ParseAtomDate(const std::string& date)
     return std::chrono::system_clock::from_time_t(timegm(&tm));
 }
 
+std::optional<std::string> Fetcher::InspireSearchUrl(const std::string& paper_id) {
+    // New style (2401.12345) or old style (hep-ph/0101001, math.AG/0101001),
+    // optionally versioned. Anything else could smuggle query syntax.
+    static const std::regex arxiv_id(
+        R"(^(?:\d{4}\.\d{4,5}|[A-Za-z-]+(?:\.[A-Za-z]{2})?/\d{7})(?:v\d+)?$)");
+    if (!std::regex_match(paper_id, arxiv_id))
+        return std::nullopt;
+    std::string encoded;
+    for (char c : paper_id)
+        encoded += (c == '/') ? std::string("%2F") : std::string(1, c);
+    return "https://inspirehep.net/api/literature?q=eprint%20" + encoded + "&fields=texkeys&size=1";
+}
+
+bool Fetcher::IsInspireUrl(const std::string& url) {
+    constexpr std::string_view origin = "https://inspirehep.net/";
+    return url.compare(0, origin.size(), origin) == 0;
+}
+
 std::string Fetcher::FetchBibTeX(const std::string& paper_id) {
     // --- 1. Try InspireHEP ---
     // Query the literature search API for the arXiv eprint.
-    const std::string inspire_search =
-        "https://inspirehep.net/api/literature?q=eprint+" + paper_id + "&fields=texkeys&size=1";
+    const auto inspire_search = InspireSearchUrl(paper_id);
+    if (!inspire_search) {
+        spdlog::warn("[Fetcher]: Not an arXiv id, skipping InspireHEP: {}", paper_id);
+        return {};
+    }
     try {
-        auto search_resp = cpr::Get(cpr::Url{inspire_search}, cpr::Timeout{5000});
+        auto search_resp = cpr::Get(cpr::Url{*inspire_search}, cpr::Timeout{5000});
 
         if (search_resp.status_code == 200) {
             auto js = nlohmann::json::parse(search_resp.text);
@@ -810,6 +911,13 @@ std::string Fetcher::FetchBibTeX(const std::string& paper_id) {
             if (!hits.empty()) {
                 // The hit object carries a links.bibtex URL
                 std::string bibtex_url = hits[0].at("links").at("bibtex").get<std::string>();
+                // The response chooses the next URL; only follow it to
+                // InspireHEP itself.
+                if (!IsInspireUrl(bibtex_url)) {
+                    spdlog::warn("[Fetcher]: Ignoring BibTeX link outside InspireHEP: {}",
+                                 bibtex_url);
+                    return {};
+                }
 
                 auto bib_resp = cpr::Get(cpr::Url{bibtex_url}, cpr::Timeout{5000});
                 if (bib_resp.status_code == 200 && !bib_resp.text.empty()) {

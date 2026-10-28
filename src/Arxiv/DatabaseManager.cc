@@ -131,6 +131,26 @@ DatabaseManager::DatabaseManager(const std::string& path) {
     spdlog::info("[Database]: Initialized");
 }
 
+std::unique_ptr<DatabaseManager> DatabaseManager::InMemoryCopyOf(const std::string& path) {
+    sqlite3* source = nullptr;
+    if (sqlite3_open_v2(path.c_str(), &source, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK) {
+        std::string error = source ? sqlite3_errmsg(source) : "out of memory";
+        sqlite3_close(source);
+        throw std::runtime_error("[Database]: Can't open " + path + ": " + error);
+    }
+    auto copy = std::make_unique<DatabaseManager>(":memory:");
+    std::lock_guard<std::recursive_mutex> lock(copy->m_mutex);
+    sqlite3_backup* backup = sqlite3_backup_init(copy->db, "main", source, "main");
+    int rc = backup ? sqlite3_backup_step(backup, -1) : SQLITE_ERROR;
+    sqlite3_backup_finish(backup);
+    std::string error = sqlite3_errmsg(copy->db);
+    sqlite3_close(source);
+    if (rc != SQLITE_DONE)
+        throw std::runtime_error("[Database]: Can't copy " + path + ": " + error);
+    copy->Initialise(); // migrate a copy of an older file like the file itself
+    return copy;
+}
+
 void DatabaseManager::Initialise() {
     sqlite3_trace_v2(db, SQLITE_TRACE_STMT, DatabaseManager::TraceCallback, nullptr);
     // The TUI and a headless --fetch (cron) may use the file at the same

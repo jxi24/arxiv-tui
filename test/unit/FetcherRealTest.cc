@@ -11,6 +11,8 @@
 #include <filesystem>
 #include <fixtures/test_data.hh>
 #include <fstream>
+#include <iterator>
+#include <unistd.h>
 
 using namespace Arxiv;
 using namespace Catch::Matchers;
@@ -564,4 +566,128 @@ TEST_CASE("Fetcher: an RSS item with a /pdf/ link is kept", "[fetcher][links]") 
     auto articles = fetcher.ParseFeed(feed);
     REQUIRE(articles.size() == 1);
     REQUIRE(articles[0].link == "https://arxiv.org/abs/2403.12345");
+}
+
+// ---------------------------------------------------------------------------
+// InspireHEP lookup: the paper id goes into a query string and the response
+// names the next URL to fetch — both come from outside.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Fetcher::InspireSearchUrl", "[fetcher][inspire][regression]") {
+    SECTION("new-style id") {
+        REQUIRE(
+            Fetcher::InspireSearchUrl("2401.12345") ==
+            "https://inspirehep.net/api/literature?q=eprint%202401.12345&fields=texkeys&size=1");
+    }
+    SECTION("old-style id has its slash encoded") {
+        REQUIRE(Fetcher::InspireSearchUrl("hep-ph/0101001") ==
+                "https://inspirehep.net/api/"
+                "literature?q=eprint%20hep-ph%2F0101001&fields=texkeys&size=1");
+    }
+    SECTION("rejects an id that would add query parameters") {
+        REQUIRE_FALSE(Fetcher::InspireSearchUrl("2401.12345&size=1000").has_value());
+    }
+    SECTION("rejects an id with spaces") {
+        REQUIRE_FALSE(Fetcher::InspireSearchUrl("2401.12345 or title x").has_value());
+    }
+    SECTION("rejects an empty id") { REQUIRE_FALSE(Fetcher::InspireSearchUrl("").has_value()); }
+}
+
+TEST_CASE("Fetcher::IsInspireUrl only accepts inspirehep.net over https",
+          "[fetcher][inspire][regression]") {
+    SECTION("the API's own bibtex link") {
+        REQUIRE(Fetcher::IsInspireUrl("https://inspirehep.net/api/literature/123?format=bibtex"));
+    }
+    SECTION("another host") { REQUIRE_FALSE(Fetcher::IsInspireUrl("https://evil.example/x")); }
+    SECTION("a host that only starts with inspirehep.net") {
+        REQUIRE_FALSE(Fetcher::IsInspireUrl("https://inspirehep.net.evil.example/x"));
+    }
+    SECTION("user-info trick") {
+        REQUIRE_FALSE(Fetcher::IsInspireUrl("https://inspirehep.net@evil.example/x"));
+    }
+    SECTION("plain http") {
+        REQUIRE_FALSE(Fetcher::IsInspireUrl("http://inspirehep.net/api/literature/1"));
+    }
+    SECTION("a local file") { REQUIRE_FALSE(Fetcher::IsInspireUrl("file:///etc/passwd")); }
+}
+
+// ---------------------------------------------------------------------------
+// PdfWriter: DownloadPaper streams the response through it, so a failed or
+// bogus download never leaves a file at (or clobbers) the target path.
+// ---------------------------------------------------------------------------
+
+namespace {
+std::filesystem::path pdf_dir() {
+    static int counter = 0;
+    auto dir = std::filesystem::temp_directory_path() /
+               ("arxiv_pdf_" + std::to_string(::getpid()) + "_" + std::to_string(counter++));
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
+    return dir;
+}
+std::string slurp(const std::filesystem::path& p) {
+    std::ifstream f(p, std::ios::binary);
+    return {std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>()};
+}
+std::size_t entries(const std::filesystem::path& dir) {
+    return static_cast<std::size_t>(std::distance(std::filesystem::directory_iterator(dir),
+                                                  std::filesystem::directory_iterator()));
+}
+} // namespace
+
+TEST_CASE("PdfWriter: a PDF arriving in pieces is committed to the target", "[fetcher][pdf]") {
+    auto dir = pdf_dir();
+    auto target = dir / "paper.pdf";
+    {
+        PdfWriter out(target);
+        REQUIRE(out.Write("%PD"));
+        REQUIRE(out.Write("F-1.7\nbody"));
+        REQUIRE(out.Commit());
+    }
+    REQUIRE(slurp(target) == "%PDF-1.7\nbody");
+    REQUIRE(entries(dir) == 1); // no temp file left behind
+}
+
+TEST_CASE("PdfWriter: rejects a body that is not a PDF", "[fetcher][pdf][regression]") {
+    // arXiv answers some requests (rate limiting, withdrawn papers) with an
+    // HTML page and status 200.
+    auto dir = pdf_dir();
+    auto target = dir / "paper.pdf";
+    {
+        PdfWriter out(target);
+        CHECK_FALSE(out.Write("<!DOCTYPE html><html>"));
+        CHECK_FALSE(out.Commit());
+    }
+    REQUIRE_FALSE(std::filesystem::exists(target));
+    REQUIRE(entries(dir) == 0);
+}
+
+TEST_CASE("PdfWriter: a failed download keeps the previous file", "[fetcher][pdf][regression]") {
+    auto dir = pdf_dir();
+    auto target = dir / "paper.pdf";
+    {
+        std::ofstream(target) << "%PDF-old";
+    }
+    {
+        PdfWriter out(target);
+        REQUIRE(out.Write("%PDF-1.7 trunc")); // connection drops: no Commit
+    }
+    REQUIRE(slurp(target) == "%PDF-old");
+    REQUIRE(entries(dir) == 1);
+}
+
+TEST_CASE("PdfWriter: stops at the size limit", "[fetcher][pdf][regression]") {
+    auto dir = pdf_dir();
+    auto target = dir / "paper.pdf";
+    PdfWriter out(target, 16);
+    REQUIRE(out.Write("%PDF-0123456789"));
+    REQUIRE_FALSE(out.Write("too much"));
+    REQUIRE_FALSE(out.Commit());
+    REQUIRE_FALSE(std::filesystem::exists(target));
+}
+
+TEST_CASE("PdfWriter: an empty body is not a PDF", "[fetcher][pdf]") {
+    auto dir = pdf_dir();
+    PdfWriter out(dir / "paper.pdf");
+    REQUIRE_FALSE(out.Commit());
 }

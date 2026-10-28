@@ -55,7 +55,9 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     auto core = arxiv_fuzz::make_core(seed_articles());
     const std::string jsonl = sandbox_paths(std::string(reinterpret_cast<const char*>(data), size));
     try {
-        Arxiv::ReplayPlayer::FromString(jsonl, *core);
+        Arxiv::ReplayPlayer::Options options;
+        options.file_actions = true; // paths are sandboxed above
+        Arxiv::ReplayPlayer::FromString(jsonl, *core, options);
     } catch (...) {
         arxiv_fuzz::fail("ReplayPlayer::FromString threw");
     }

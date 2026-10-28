@@ -7,6 +7,20 @@ Changelog
 Unreleased
 ----------
 
+- **Security hardening** — a crash no longer hangs, restores the terminal
+  and leaves ``SIGTERM`` alone; the crash report holds the end of
+  ``replay.jsonl``. The clipboard backend is started without a shell
+  (``ARXIV_TUI_CLIPBOARD`` names a program, not a command line). The
+  InspireHEP lookup only sends real arXiv ids and only follows BibTeX links
+  back to ``https://inspirehep.net/``. PDF downloads are streamed to a
+  temporary file, must start with ``%PDF-`` and stay under 256 MiB, and
+  replace the target only when complete — an HTML error page or a dropped
+  connection no longer leaves a broken ``.pdf`` behind. ``--replay`` accepts a
+  crash report as well as ``replay.jsonl`` (it never could: the report's
+  text header stopped it at line 1), and runs on
+  an in-memory copy of the database and skips exports, imports, downloads
+  and keyword saves. Project import files over 64 MiB are refused.
+
 - **Exports and downloads no longer freeze the TUI** — ``o`` (Obsidian),
   ``g`` (selected digest), ``G`` (digest archive) and ``d`` (download PDF)
   run in the background. A badge in the bottom-right corner shows progress

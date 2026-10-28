@@ -1022,6 +1022,13 @@ bool AppCore::ExportProjectJSON(const std::string& project_name,
 }
 
 bool AppCore::ImportProjectJSON(const std::string& input_path) {
+    std::error_code size_error;
+    auto size = std::filesystem::file_size(input_path, size_error);
+    if (!size_error && size > kMaxImportBytes) {
+        spdlog::error(
+            "[AppCore]: Import file {} is larger than {} bytes", input_path, kMaxImportBytes);
+        return false;
+    }
     std::ifstream file(input_path);
     if (!file.is_open()) {
         spdlog::error("[AppCore]: Cannot open import file: {}", input_path);

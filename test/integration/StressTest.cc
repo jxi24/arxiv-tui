@@ -38,6 +38,9 @@ using namespace Catch::Matchers;
 using FetcherMock = arxiv_tui::test::FetcherMock;
 namespace fs = std::filesystem;
 
+// These scripts exercise exports and imports into temp directories.
+static const Arxiv::ReplayPlayer::Options kWithFiles{true};
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -128,7 +131,7 @@ TEST_CASE("Stress: browsing and bookmarking session", "[integration][stress]") {
     script += jline(R"({"ts":4000,"action":"toggle_bookmark","article_link":")" + articles[5].link +
                     R"("})");
 
-    auto result = Arxiv::ReplayPlayer::FromString(script, *core);
+    auto result = Arxiv::ReplayPlayer::FromString(script, *core, kWithFiles);
     REQUIRE(result.error.empty());
     REQUIRE(result.replayed > 0);
     // State is consistent — we can still query articles
@@ -205,7 +208,7 @@ TEST_CASE("Stress: full project lifecycle", "[integration][stress]") {
     // Switch back to All
     script += jline(R"({"ts":8000,"action":"set_filter_index","index":0})");
 
-    auto result = Arxiv::ReplayPlayer::FromString(script, *core);
+    auto result = Arxiv::ReplayPlayer::FromString(script, *core, kWithFiles);
     REQUIRE(result.error.empty());
     REQUIRE(result.replayed > 0);
 
@@ -255,7 +258,7 @@ TEST_CASE("Stress: rating and ranking workflow", "[integration][stress]") {
     // Switch back to All
     script += jline(R"({"ts":7000,"action":"set_filter_index","index":0})");
 
-    auto result = Arxiv::ReplayPlayer::FromString(script, *core);
+    auto result = Arxiv::ReplayPlayer::FromString(script, *core, kWithFiles);
     REQUIRE(result.error.empty());
     REQUIRE(result.replayed > 0);
 
@@ -302,7 +305,7 @@ TEST_CASE("Stress: search and date-range filtering", "[integration][stress]") {
     // Switch back to All
     script += jline(R"({"ts":5000,"action":"set_filter_index","index":0})");
 
-    auto result = Arxiv::ReplayPlayer::FromString(script, *core);
+    auto result = Arxiv::ReplayPlayer::FromString(script, *core, kWithFiles);
     REQUIRE(result.error.empty());
     REQUIRE(result.replayed > 0);
 
@@ -336,7 +339,7 @@ TEST_CASE("Stress: rapid filter and index cycling", "[integration][stress]") {
                         R"(,"action":"set_article_index","index":)" + std::to_string(i) + "}");
     }
 
-    auto result = Arxiv::ReplayPlayer::FromString(script, *core);
+    auto result = Arxiv::ReplayPlayer::FromString(script, *core, kWithFiles);
     REQUIRE(result.error.empty());
     REQUIRE(result.replayed > 0);
 
@@ -372,7 +375,7 @@ TEST_CASE("Stress: record actions then replay into a fresh core", "[integration]
 
     // Phase 2: replay into a fresh AppCore
     auto [core, fetcher, tmp] = make_core(articles);
-    auto result = Arxiv::ReplayPlayer::FromString(jsonl, *core);
+    auto result = Arxiv::ReplayPlayer::FromString(jsonl, *core, kWithFiles);
     REQUIRE(result.error.empty());
     REQUIRE(result.replayed == 15);
     REQUIRE(result.skipped == 0);
@@ -406,7 +409,7 @@ TEST_CASE("Stress: export project as JSON then import into fresh core", "[integr
     setup += jline(R"({"ts":3000,"action":"export_project_json","project":"RoundTrip","path":")" +
                    json_path + R"("})");
 
-    auto r1 = Arxiv::ReplayPlayer::FromString(setup, *core1);
+    auto r1 = Arxiv::ReplayPlayer::FromString(setup, *core1, kWithFiles);
     REQUIRE(r1.error.empty());
     REQUIRE(fs::exists(json_path));
 
@@ -416,7 +419,7 @@ TEST_CASE("Stress: export project as JSON then import into fresh core", "[integr
     import_script +=
         jline(R"({"ts":4000,"action":"import_project_json","path":")" + json_path + R"("})");
 
-    auto r2 = Arxiv::ReplayPlayer::FromString(import_script, *core2);
+    auto r2 = Arxiv::ReplayPlayer::FromString(import_script, *core2, kWithFiles);
     REQUIRE(r2.error.empty());
     REQUIRE(r2.replayed == 1);
 
@@ -455,7 +458,7 @@ TEST_CASE("Stress: BibTeX export for single and project articles", "[integration
         jline(R"({"ts":3000,"action":"export_project_bibtex","project":"BibProject","path":")" +
               project_bib + R"("})");
 
-    auto result = Arxiv::ReplayPlayer::FromString(script, *core);
+    auto result = Arxiv::ReplayPlayer::FromString(script, *core, kWithFiles);
     REQUIRE(result.error.empty());
 
     REQUIRE(fs::exists(single_bib));
@@ -538,7 +541,7 @@ TEST_CASE("Stress: edge cases do not crash", "[integration][stress]") {
     // Return to safe state
     script += jline(R"({"ts":9999,"action":"set_filter_index","index":0})");
 
-    auto result = Arxiv::ReplayPlayer::FromString(script, *core);
+    auto result = Arxiv::ReplayPlayer::FromString(script, *core, kWithFiles);
     // We expect all actions to replay (no parse errors), even if some are no-ops
     REQUIRE(result.error.empty());
     REQUIRE(result.replayed > 0);
@@ -647,7 +650,7 @@ TEST_CASE("Stress: full realistic session combining all features", "[integration
     script +=
         jline(R"({"ts":)" + std::to_string(ts++) + R"(,"action":"set_filter_index","index":0})");
 
-    auto result = Arxiv::ReplayPlayer::FromString(script, *core);
+    auto result = Arxiv::ReplayPlayer::FromString(script, *core, kWithFiles);
     REQUIRE(result.error.empty());
     REQUIRE(result.replayed > 30);
 

@@ -127,9 +127,10 @@ suitable for a cron job:
 Replaying a crash report
 -------------------------
 
-If a crash report is saved to ``~/.local/state/arxiv-tui/``, you can replay
-the session to reproduce the crash:
+If arxiv-tui crashes, a report is saved to ``~/.local/state/arxiv-tui/``.
+Replay it to reproduce the crash (your database is not changed; see
+:doc:`features`):
 
 .. code-block:: bash
 
-   arxiv-tui --replay ~/.local/state/arxiv-tui/crash_20260101_120000_SIGSEGV.txt
+   arxiv-tui --replay ~/.local/state/arxiv-tui/crash_20260101_120000_SIGSEGV_1234.txt

@@ -155,6 +155,9 @@ and the values derived from ``CMAKE_INSTALL_PREFIX``:
      - State directory: logs, replay, crash reports (default: ``~/.local/state``)
 
 ``ARXIV_TUI_CLIPBOARD``
-    Force a specific clipboard backend. Accepted values: ``xclip``,
-    ``xsel``, ``wl-clipboard``. When unset, arxiv-tui probes for
-    available backends in that order.
+    Force a specific clipboard backend: ``wl-copy``, ``xclip``, ``xsel`` or
+    ``pbcopy``, or any program that reads the text from stdin, optionally
+    followed by arguments (``my-copy --primary``). It is run directly, not
+    through a shell, so quoting and ``;``/``|`` have no special meaning.
+    When unset, arxiv-tui probes for ``wl-copy``, ``xclip``, ``xsel`` and
+    ``pbcopy`` on ``PATH`` in that order.

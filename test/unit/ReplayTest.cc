@@ -9,6 +9,7 @@
 #include "Arxiv/CrashHandler.hh"
 #include "Arxiv/DatabaseManager.hh"
 
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <csignal>
@@ -16,6 +17,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <unistd.h>
 
 #include "fixtures/test_data.hh"
 #include "mocks/DatabaseManagerMock.hh"
@@ -340,9 +342,8 @@ TEST_CASE("WriteCrashReport handles unwritable directory gracefully", "[crashhan
     // Pass a path that doesn't exist and can't be created (no permissions)
     // On Linux /proc is read-only for non-root
     std::string path = Arxiv::WriteCrashReport(SIGSEGV, nullptr, "/proc/no_such_subdir");
-    // Should return empty string or a fallback path — either way, not crash
-    // Just verify it doesn't throw
-    (void)path;
+    // No report rather than one dropped into the working directory.
+    REQUIRE(path.empty());
 }
 
 // ---------------------------------------------------------------------------
@@ -539,4 +540,123 @@ TEST_CASE("ReplayRecorder keeps a bounded in-memory history", "[replay][recorder
     const std::string last = std::to_string(Arxiv::ReplayRecorder::kMaxEntries + 499);
     REQUIRE_THAT(recorder.GetJSONL(), ContainsSubstring("\"detail\":\"" + last + "\""));
     REQUIRE_THAT(recorder.GetJSONL(), !ContainsSubstring("\"detail\":\"0\""));
+}
+
+// ---------------------------------------------------------------------------
+// Replay sandbox: a replay file can come from someone else's bug report. By
+// default it only drives in-app state; actions that read or write files (or
+// download) are skipped.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+std::unique_ptr<Arxiv::AppCore> real_core(const fs::path& dir) {
+    Arxiv::Config cfg;
+    cfg.set_topics({"cs.AI"});
+    cfg.set_download_dir(dir.string());
+    cfg.set_ranker_file((dir / "ranker.bin").string());
+    cfg.set_keywords_file((dir / "keywords.txt").string());
+    return std::make_unique<Arxiv::AppCore>(cfg,
+                                            std::make_unique<Arxiv::DatabaseManager>(":memory:"),
+                                            std::make_unique<FetcherMock>(),
+                                            Arxiv::AppCore::FetchMode::Offline);
+}
+
+fs::path replay_dir() {
+    static int counter = 0;
+    auto dir = fs::temp_directory_path() / ("arxiv_replay_sandbox_" + std::to_string(::getpid()) +
+                                            "_" + std::to_string(counter++));
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+    return dir;
+}
+
+} // namespace
+
+TEST_CASE("ReplayPlayer: file actions are skipped by default", "[replay][regression]") {
+    auto dir = replay_dir();
+    auto core = real_core(dir);
+    core->AddProject("P");
+    auto out = dir / "out.md";
+    auto keywords = dir / "keywords.txt";
+    const std::string jsonl = R"({"action":"export_project_markdown","project":"P","path":")" +
+                              out.string() + "\"}\n" +
+                              R"({"action":"save_keywords","keywords":["x"]})" + "\n" +
+                              R"({"action":"add_project","name":"Q"})" + "\n";
+
+    auto result = Arxiv::ReplayPlayer::FromString(jsonl, *core);
+
+    SECTION("no file written") {
+        REQUIRE_FALSE(fs::exists(out));
+        REQUIRE_FALSE(fs::exists(keywords));
+    }
+    SECTION("counted as skipped") { REQUIRE(result.skipped == 2); }
+    SECTION("state actions still replay") { REQUIRE(result.replayed == 1); }
+    fs::remove_all(dir);
+}
+
+TEST_CASE("ReplayPlayer: file actions run when allowed", "[replay]") {
+    auto dir = replay_dir();
+    auto core = real_core(dir);
+    core->AddProject("P");
+    auto out = dir / "out.md";
+    const std::string jsonl =
+        R"({"action":"export_project_markdown","project":"P","path":")" + out.string() + "\"}\n";
+
+    Arxiv::ReplayPlayer::Options options;
+    options.file_actions = true;
+    auto result = Arxiv::ReplayPlayer::FromString(jsonl, *core, options);
+
+    REQUIRE(result.replayed == 1);
+    REQUIRE(fs::exists(out));
+    fs::remove_all(dir);
+}
+
+// A crash report is what users have after a crash, so --replay takes it
+// directly: the player replays its Replay Log section.
+namespace {
+std::string read_file(const std::string& path) {
+    std::ifstream f(path);
+    std::stringstream ss;
+    ss << f.rdbuf();
+    return ss.str();
+}
+} // namespace
+
+TEST_CASE("ReplayPlayer replays the log inside a crash report", "[replay][crashhandler]") {
+    fs::path dir = fs::temp_directory_path() / ("crash_replay_" + std::to_string(::getpid()));
+    fs::create_directories(dir);
+    auto core = make_real_replay_core();
+
+    SECTION("in-memory recorder") {
+        Arxiv::ReplayRecorder recorder;
+        recorder.RecordAddProject("FromCrash");
+        recorder.RecordAddProject("Second");
+        auto report = Arxiv::WriteCrashReport(SIGSEGV, &recorder, dir.string());
+
+        auto result = Arxiv::ReplayPlayer::FromString(read_file(report), *core);
+
+        REQUIRE(result.error.empty());
+        REQUIRE(result.replayed == 2);
+    }
+    SECTION("replay file longer than the copied tail") {
+        // Only the end of the file is copied; the cut must not leave half a
+        // JSON line at the start of the log.
+        auto replay = dir / "replay.jsonl";
+        {
+            Arxiv::ReplayRecorder recorder(replay.string());
+            for (int i = 0; i < 2000; ++i)
+                recorder.RecordEvent("tick", std::string(60, 'x'));
+            recorder.RecordAddProject("FromCrash");
+            auto report = Arxiv::WriteCrashReport(SIGABRT, &recorder, dir.string());
+
+            auto result = Arxiv::ReplayPlayer::FromString(read_file(report), *core);
+
+            REQUIRE(result.error.empty());
+            REQUIRE(result.replayed == 1);
+        }
+    }
+    auto projects = core->GetProjects();
+    REQUIRE(std::find(projects.begin(), projects.end(), "FromCrash") != projects.end());
+    fs::remove_all(dir);
 }

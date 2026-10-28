@@ -11,6 +11,7 @@
 #include <chrono>
 #include <fstream>
 #include <functional>
+#include <set>
 #include <sstream>
 #include <string_view>
 #include <unordered_map>
@@ -177,6 +178,50 @@ const std::unordered_map<std::string, Handler>& dispatch_table() {
     return table;
 }
 
+// A crash report (CrashHandler) carries the session's replay log between a
+// "--- Replay Log" line and "=== End of Report ==="; anything else is taken
+// to be a plain JSONL replay file.
+std::string ReplayLogOf(const std::string& text) {
+    constexpr std::string_view kReportHeader = "=== arxiv-tui Crash Report ===";
+    if (text.compare(0, kReportHeader.size(), kReportHeader) != 0)
+        return text;
+    std::istringstream in(text);
+    std::string line, log;
+    bool inside = false;
+    while (std::getline(in, line)) {
+        if (!inside) {
+            inside = line.rfind("--- Replay Log", 0) == 0;
+            continue;
+        }
+        if (line.rfind("=== End of Report", 0) == 0)
+            break;
+        if (line == "(earlier entries omitted)")
+            continue;
+        log += line;
+        log += '\n';
+    }
+    return log;
+}
+
+// Actions that read or write files outside the database, or download.
+bool touches_files(const std::string& action) {
+    static const std::set<std::string_view> file_actions = {
+        ActionName::DownloadArticle,
+        ActionName::ExportProjectMarkdown,
+        ActionName::ExportProjectText,
+        ActionName::ExportProjectJSON,
+        ActionName::ImportProjectJSON,
+        ActionName::ExportProjectBibTeX,
+        ActionName::ExportArticleBibTeX,
+        ActionName::ExportArticlesBibTeX,
+        ActionName::ExportSelectedDigest,
+        ActionName::ExportToObsidian,
+        ActionName::ExportDailyDigest,
+        ActionName::SaveKeywords,
+    };
+    return file_actions.count(action) != 0;
+}
+
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -187,9 +232,9 @@ ReplayRecorder::ReplayRecorder() = default;
 
 ReplayRecorder::ReplayRecorder(const std::string& file_path)
     : m_file(file_path, std::ios::out | std::ios::app) {
-    if (!m_file.is_open()) {
-        // Non-fatal: fall back to in-memory only
-    }
+    // If the file cannot be opened the recorder stays in-memory only.
+    if (m_file.is_open())
+        m_file_path = file_path;
 }
 
 ReplayRecorder::~ReplayRecorder() {
@@ -448,7 +493,9 @@ void ReplayRecorder::RecordEvent(const std::string& name, const std::string& det
 
 bool ReplayPlayer::DispatchAction(const std::string& json_line,
                                   AppCore& core,
+                                  const Options& options,
                                   std::string& error_out) {
+
     json j;
     try {
         j = json::parse(json_line);
@@ -468,6 +515,8 @@ bool ReplayPlayer::DispatchAction(const std::string& json_line,
         // Unknown action — caller treats this as skipped, not error
         return false;
     }
+    if (!options.file_actions && touches_files(it->first))
+        return false; // skipped, like an unknown action
     // Handlers read fields with json::value(), which throws type_error when a
     // field has the wrong type; a malformed line is an error, not a crash.
     try {
@@ -480,7 +529,13 @@ bool ReplayPlayer::DispatchAction(const std::string& json_line,
 }
 
 ReplayPlayer::Result ReplayPlayer::FromString(const std::string& jsonl, AppCore& core) {
+    return FromString(jsonl, core, Options{});
+}
+
+ReplayPlayer::Result
+ReplayPlayer::FromString(const std::string& text, AppCore& core, const Options& options) {
     Result result;
+    const std::string jsonl = ReplayLogOf(text);
     if (jsonl.empty())
         return result;
 
@@ -491,7 +546,7 @@ ReplayPlayer::Result ReplayPlayer::FromString(const std::string& jsonl, AppCore&
             continue;
         ++result.total;
         std::string err;
-        if (!DispatchAction(line, core, err)) {
+        if (!DispatchAction(line, core, options, err)) {
             if (!err.empty()) {
                 // Parse error or structural error
                 result.error = err;
@@ -507,6 +562,11 @@ ReplayPlayer::Result ReplayPlayer::FromString(const std::string& jsonl, AppCore&
 }
 
 ReplayPlayer::Result ReplayPlayer::FromFile(const std::string& path, AppCore& core) {
+    return FromFile(path, core, Options{});
+}
+
+ReplayPlayer::Result
+ReplayPlayer::FromFile(const std::string& path, AppCore& core, const Options& options) {
     std::ifstream f(path);
     if (!f.is_open()) {
         Result r;
@@ -515,7 +575,7 @@ ReplayPlayer::Result ReplayPlayer::FromFile(const std::string& path, AppCore& co
     }
     std::stringstream ss;
     ss << f.rdbuf();
-    return FromString(ss.str(), core);
+    return FromString(ss.str(), core, options);
 }
 
 } // namespace Arxiv
