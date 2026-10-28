@@ -7,6 +7,14 @@ Changelog
 Unreleased
 ----------
 
+- **GUI catches up** — ``arxiv-gui`` opens at once and fetches in the
+  background (it used to fetch before showing the window), File → Refresh
+  fetches from arXiv instead of re-reading the database, and downloads no
+  longer freeze the window. Papers can be rated, tagged and added to
+  projects; read papers are dimmed, the filter list shows counts and
+  headings, and a status bar reports fetches, downloads and offline state.
+  Its ``imgui.ini`` goes to the state directory, not the working directory.
+
 - **Project JSON round-trips** — the export now carries the project's parent
   and each paper's category, tags and rating, and the import restores them
   (without overriding a rating you already gave). A paper without a date is

@@ -125,7 +125,12 @@ libxcursor-dev libxi-dev libxkbcommon-dev``):
    ./build/src/GUI/arxiv-gui
 
 It reads ``config.yml`` and ``articles.db`` from the locations above and logs
-to ``arxiv_gui.log`` in the state directory.
+to ``arxiv_gui.log`` (and keeps its window layout, ``imgui.ini``) in the state
+directory. The window opens at once and fills in when the fetch finishes;
+File → Refresh fetches again in the background. Right-click a paper (or use
+the detail pane) to bookmark, rate, download, tag it or add it to projects;
+read papers are dimmed, and the status bar shows fetches, downloads and when
+arXiv cannot be reached.
 
 Command line
 ------------

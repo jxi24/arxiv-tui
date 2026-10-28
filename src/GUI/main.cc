@@ -8,8 +8,10 @@
 #include "Arxiv/Fetcher.hh"
 #include "Arxiv/Logging.hh"
 #include "Arxiv/Paths.hh"
+#include "Arxiv/Utf8.hh"
 
 #include <GLFW/glfw3.h>
+#include <algorithm>
 #include <chrono>
 #include <ctime>
 #include <filesystem>
@@ -49,6 +51,10 @@ class ArxivGuiApp {
         : m_core(core) {}
 
     void render() {
+        // Results of the background fetch, refresh and downloads.
+        m_core.TryRefetchIfNeeded();
+        mark_focused_read();
+
         const ImGuiIO& io = ImGui::GetIO();
         const float W = io.DisplaySize.x;
         const float H = io.DisplaySize.y;
@@ -78,6 +84,7 @@ class ArxivGuiApp {
         render_article_panel(article_w, panel_h);
         ImGui::SameLine();
         render_detail_panel(detail_w, panel_h);
+        render_status_bar();
 
         ImGui::End();
 
@@ -92,6 +99,77 @@ class ArxivGuiApp {
     bool m_show_search_dialog{false};
     char m_search_buf[512]{};
     std::string m_status_msg;
+    std::string m_last_focused; // marked read when it changes
+
+    const Arxiv::Article* focused(const std::vector<Arxiv::Article>& articles) const {
+        const int idx = m_core.GetArticleIndex();
+        if (idx < 0 || idx >= static_cast<int>(articles.size()))
+            return nullptr;
+        return &articles[static_cast<std::size_t>(idx)];
+    }
+
+    // Opening a paper reads it, as in the TUI's detail pane.
+    void mark_focused_read() {
+        const auto& articles = m_core.GetCurrentArticles();
+        const auto* a = focused(articles);
+        if (!a || a->link == m_last_focused)
+            return;
+        m_last_focused = a->link;
+        if (!a->read)
+            m_core.MarkArticleRead(a->link);
+    }
+
+    void download(const Arxiv::Article& a) {
+        // A background task: the window keeps drawing while the PDF arrives.
+        if (!m_core.StartDownloadArticle(a.link))
+            m_status_msg = "Busy: " + m_core.GetBackgroundTaskStatus().label;
+    }
+
+    // Tags and projects for the focused paper (context menu and detail pane).
+    void tag_and_project_menus(const Arxiv::Article& a) {
+        if (ImGui::BeginMenu("Tags")) {
+            const auto mine = m_core.GetTagsForArticle(a.link);
+            for (const auto& tag : m_core.GetTags()) {
+                const bool on = std::find(mine.begin(), mine.end(), tag) != mine.end();
+                if (ImGui::MenuItem(("#" + tag).c_str(), nullptr, on)) {
+                    if (on)
+                        m_core.UnlinkArticleFromTag(a.link, tag);
+                    else
+                        m_core.LinkArticleToTag(a.link, tag);
+                }
+            }
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu("Projects")) {
+            const auto mine = m_core.GetProjectsForArticle(a.link);
+            for (const auto& project : m_core.GetProjects()) {
+                const bool in = std::find(mine.begin(), mine.end(), project) != mine.end();
+                if (ImGui::MenuItem(project.c_str(), nullptr, in)) {
+                    if (in)
+                        m_core.UnlinkArticleFromProject(a.link, project);
+                    else
+                        m_core.LinkArticleToProject(a.link, project);
+                }
+            }
+            ImGui::EndMenu();
+        }
+    }
+
+    void render_status_bar() {
+        std::string status;
+        if (m_core.IsFetching())
+            status = "Fetching new articles...";
+        else if (!m_core.LastFetchError().empty())
+            status = "Offline: showing stored papers";
+        const auto task = m_core.GetBackgroundTaskStatus();
+        if (task.running)
+            status += (status.empty() ? "" : "   ") + task.label + "...";
+        else if (!task.message.empty())
+            status += (status.empty() ? "" : "   ") + task.message;
+        if (!m_status_msg.empty())
+            status += (status.empty() ? "" : "   ") + m_status_msg;
+        ImGui::TextDisabled("%s", status.c_str());
+    }
 
     // ---------------------------------------------------------------------------
     void render_menu_bar() {
@@ -99,8 +177,8 @@ class ArxivGuiApp {
             return;
 
         if (ImGui::BeginMenu("File")) {
-            if (ImGui::MenuItem("Refresh", "F5"))
-                m_core.FetchArticles();
+            if (ImGui::MenuItem("Refresh", "F5", false, !m_core.IsFetching()))
+                m_core.StartRefresh(); // from arXiv, in the background
             ImGui::Separator();
             if (ImGui::MenuItem("Quit", "Ctrl+Q"))
                 glfwSetWindowShouldClose(glfwGetCurrentContext(), GLFW_TRUE);
@@ -138,15 +216,21 @@ class ArxivGuiApp {
         ImGui::TextDisabled("Filters");
         ImGui::Separator();
 
-        const auto& opts = m_core.GetFilterOptions();
+        const auto opts = m_core.GetFilterOptions();
         for (int i = 0; i < static_cast<int>(opts.size()); ++i) {
-            bool selected = (m_core.GetFilterIndex() == i);
-            if (ImGui::Selectable(opts[static_cast<size_t>(i)].c_str(),
-                                  selected,
-                                  ImGuiSelectableFlags_None,
-                                  {width - 12.0f, 0})) {
-                m_core.SetFilterIndex(i);
+            if (const auto section = m_core.GetFilterSection(i); !section.empty()) {
+                ImGui::Spacing();
+                ImGui::TextDisabled("%s", section.c_str());
             }
+            std::string label = opts[static_cast<size_t>(i)];
+            if (const auto count = m_core.GetFilterCount(i))
+                label += "  (" + std::to_string(*count) + ")";
+            bool selected = (m_core.GetFilterIndex() == i);
+            ImGui::PushID(i);
+            if (ImGui::Selectable(
+                    label.c_str(), selected, ImGuiSelectableFlags_None, {width - 12.0f, 0}))
+                m_core.SetFilterIndex(i);
+            ImGui::PopID();
         }
 
         ImGui::EndChild();
@@ -161,7 +245,7 @@ class ArxivGuiApp {
         const auto articles = m_core.GetCurrentArticles();
 
         ImGui::TextDisabled(
-            "%zu article(s)  —  %s",
+            "%zu article(s)  |  %s",
             articles.size(),
             m_core.GetFilterOptions()[static_cast<size_t>(m_core.GetFilterIndex())].c_str());
         ImGui::Separator();
@@ -186,11 +270,13 @@ class ArxivGuiApp {
                 a.bookmarked ? ImVec4{1, 0.8f, 0.2f, 1} : ImVec4{0.5f, 0.5f, 0.5f, 1}, "%s", bm);
             ImGui::SameLine();
 
-            // Title (truncated)
-            std::string title = a.title;
-            if (title.size() > 80)
-                title = title.substr(0, 77) + "...";
-            ImGui::TextUnformatted(title.c_str());
+            // Title (cut by character, not byte); read papers are dimmed.
+            const std::string title =
+                Arxiv::Utf8::Truncate(a.title.empty() ? "(no title)" : a.title, 80);
+            if (a.read)
+                ImGui::TextDisabled("%s", title.c_str());
+            else
+                ImGui::TextUnformatted(title.c_str());
 
             // Second line: authors + date
             ImGui::SetCursorScreenPos(
@@ -203,9 +289,10 @@ class ArxivGuiApp {
                 if (ImGui::MenuItem(a.bookmarked ? "Remove bookmark" : "Bookmark"))
                     m_core.ToggleBookmark(a.link);
                 if (ImGui::MenuItem("Download PDF"))
-                    m_core.DownloadArticle(a.id());
+                    download(a);
                 if (ImGui::MenuItem("Copy link"))
                     ImGui::SetClipboardText(a.link.c_str());
+                tag_and_project_menus(a);
                 ImGui::EndPopup();
             }
             ImGui::PopID();
@@ -272,11 +359,34 @@ class ArxivGuiApp {
         ImGui::Spacing();
         ImGui::Separator();
 
+        // Rating: 1-5 stars, the same ratings that train the ranker.
+        const int rating = m_core.GetArticleRating(a.link);
+        ImGui::TextDisabled("Rating:");
+        for (int star = 1; star <= 5; ++star) {
+            ImGui::SameLine();
+            ImGui::PushID(star);
+            if (ImGui::SmallButton(star <= rating ? "*" : "."))
+                m_core.RateArticle(a.link, star);
+            ImGui::PopID();
+        }
+        const auto tags = m_core.GetTagsForArticle(a.link);
+        const auto projects = m_core.GetProjectsForArticle(a.link);
+        std::string tag_line, project_line;
+        for (const auto& t : tags)
+            tag_line += (tag_line.empty() ? "#" : ", #") + t;
+        for (const auto& p : projects)
+            project_line += (project_line.empty() ? "" : ", ") + p;
+        if (!tag_line.empty())
+            ImGui::TextDisabled("Tags: %s", tag_line.c_str());
+        if (!project_line.empty())
+            ImGui::TextDisabled("Projects: %s", project_line.c_str());
+        ImGui::Spacing();
+
         if (ImGui::SmallButton(a.bookmarked ? "Remove bookmark" : "Bookmark"))
             m_core.ToggleBookmark(a.link);
         ImGui::SameLine();
         if (ImGui::SmallButton("Download PDF"))
-            m_core.DownloadArticle(a.id());
+            download(a);
         ImGui::SameLine();
         if (ImGui::SmallButton("Copy link"))
             ImGui::SetClipboardText(a.link.c_str());
@@ -348,7 +458,10 @@ int main(int /*argc*/, char** /*argv*/) {
 
     auto db = std::make_unique<Arxiv::DatabaseManager>(config.get_db_file());
     auto fetcher = std::make_unique<Arxiv::Fetcher>(config.get_topics(), config.get_download_dir());
-    Arxiv::AppCore core(config, std::move(db), std::move(fetcher));
+    // Async: the window opens at once and the list fills in when the fetch
+    // is done (render() picks it up through TryRefetchIfNeeded).
+    Arxiv::AppCore core(
+        config, std::move(db), std::move(fetcher), Arxiv::AppCore::FetchMode::Async);
     core.ReloadKeywords();
 
     // GLFW / OpenGL
@@ -375,6 +488,10 @@ int main(int /*argc*/, char** /*argv*/) {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
+    // ImGui saves window layout to "imgui.ini" in the working directory by
+    // default; keep it with the rest of the state instead.
+    const std::string imgui_ini = (paths.state_dir / "imgui.ini").string();
+    io.IniFilename = imgui_ini.c_str();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     ImGui::StyleColorsDark();
 
