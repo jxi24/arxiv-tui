@@ -5,6 +5,7 @@
 #include "Arxiv/CrashHandler.hh"
 
 #include "Arxiv/Replay.hh"
+#include "Arxiv/Version.hh"
 
 #include <csignal>
 #include <cstring>
@@ -101,8 +102,9 @@ void append_number(char* buf, std::size_t cap, std::size_t& pos, long long value
     buf[pos] = '\0';
 }
 
-// "YYYYmmdd_HHMMSS" in UTC without gmtime (which is not signal-safe).
-void append_timestamp(char* buf, std::size_t cap, std::size_t& pos, std::time_t now) {
+// A UTC time without gmtime (which is not signal-safe): "YYYYmmdd_HHMMSS"
+// for file names, or ISO 8601 ("YYYY-mm-ddTHH:MM:SSZ") for the header.
+void append_time(char* buf, std::size_t cap, std::size_t& pos, std::time_t now, bool iso) {
     long long days = static_cast<long long>(now) / 86400;
     long long secs = static_cast<long long>(now) % 86400;
     // Civil-from-days (Howard Hinnant).
@@ -116,12 +118,43 @@ void append_timestamp(char* buf, std::size_t cap, std::size_t& pos, std::time_t 
     long long m = mp < 10 ? mp + 3 : mp - 9;
     long long y = yoe + era * 400 + (m <= 2 ? 1 : 0);
     append_number(buf, cap, pos, y, 4);
+    append(buf, cap, pos, iso ? "-" : "");
     append_number(buf, cap, pos, m, 2);
+    append(buf, cap, pos, iso ? "-" : "");
     append_number(buf, cap, pos, d, 2);
-    append(buf, cap, pos, "_");
+    append(buf, cap, pos, iso ? "T" : "_");
     append_number(buf, cap, pos, secs / 3600, 2);
+    append(buf, cap, pos, iso ? ":" : "");
     append_number(buf, cap, pos, (secs / 60) % 60, 2);
+    append(buf, cap, pos, iso ? ":" : "");
     append_number(buf, cap, pos, secs % 60, 2);
+    append(buf, cap, pos, iso ? "Z" : "");
+}
+
+// Write `s` as a JSON string (quotes included), escaping as it goes.
+void put_json_string(int fd, const char* s) {
+    put(fd, "\"");
+    for (; *s; ++s) {
+        const auto c = static_cast<unsigned char>(*s);
+        if (c == '"' || c == '\\') {
+            const char esc[2] = {'\\', static_cast<char>(c)};
+            put(fd, esc, 2);
+        } else if (c < 0x20) {
+            const char* hex = "0123456789abcdef";
+            const char esc[6] = {'\\', 'u', '0', '0', hex[c >> 4], hex[c & 0xF]};
+            put(fd, esc, 6);
+        } else {
+            put(fd, s, 1);
+        }
+    }
+    put(fd, "\"");
+}
+
+void put_number(int fd, long long value) {
+    char num[24];
+    std::size_t np = 0;
+    append_number(num, sizeof(num), np, value, 1);
+    put(fd, num);
 }
 
 // Copy the last kReplayTailBytes of a regular file into `out`.
@@ -162,9 +195,13 @@ void copy_tail(int out, const char* path) {
 
 // Write a report to `dir` and return its fd (still open) and path, or -1.
 int write_report(int signum, const char* dir, const char* replay_path, char (&path)[kPathMax]) {
+    const std::time_t now = std::time(nullptr);
     char stamp[32];
     std::size_t sp = 0;
-    append_timestamp(stamp, sizeof(stamp), sp, std::time(nullptr));
+    append_time(stamp, sizeof(stamp), sp, now, false);
+    char iso[32];
+    std::size_t ip = 0;
+    append_time(iso, sizeof(iso), ip, now, true);
 
     auto build_path = [&](const char* base) {
         std::size_t pos = 0;
@@ -183,6 +220,22 @@ int write_report(int signum, const char* dir, const char* replay_path, char (&pa
     int fd = ::open(path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
     if (fd < 0)
         return -1;
+
+    // First line: a JSON header for tools and --replay (ReplayLog::Parse).
+    // The text below it is for people.
+    put(fd, "{\"arxiv_tui_crash_report\":1,\"version\":");
+    put_json_string(fd, kVersion.data());
+    put(fd, ",\"signal\":");
+    put_json_string(fd, SignalName(signum));
+    put(fd, ",\"signum\":");
+    put_number(fd, signum);
+    put(fd, ",\"time\":");
+    put_json_string(fd, iso);
+    put(fd, ",\"pid\":");
+    put_number(fd, ::getpid());
+    put(fd, ",\"replay_log\":");
+    put_json_string(fd, replay_path ? replay_path : "");
+    put(fd, "}\n");
 
     put(fd, "=== arxiv-tui Crash Report ===\nTimestamp : ");
     put(fd, stamp);

@@ -192,12 +192,24 @@ or the full log:
    arxiv-tui --replay ~/.local/state/arxiv-tui/replay.jsonl
 
 A crash report carries the last 64 KiB of the log, which covers the actions
-leading up to the crash; replay ``replay.jsonl`` for the whole history.
+leading up to the crash; replay ``replay.jsonl`` for the whole history. Both
+are read and replayed by the same code, so they give the same result for the
+same actions.
+
+The first line of a report is a one-line JSON header for tools and scripts::
+
+   {"arxiv_tui_crash_report":1,"version":"1.1.0","signal":"SIGSEGV","signum":11,
+    "time":"2026-10-26T05:09:35Z","pid":2745,"replay_log":"/home/you/.local/state/arxiv-tui/replay.jsonl"}
+
+(on one line in the file). The backtrace and the replay log follow as text.
+``--replay`` prints the signal, time and version from the header, and warns
+when the report came from a different version than the one replaying it.
 
 A replay never changes your data: it runs on an in-memory copy of the
 database (the ranker and keywords are copied to a scratch directory), and
 actions that write files or download — exports, imports, PDF downloads,
-saving keywords — are skipped and counted as such. A replay log from
+saving keywords — are skipped and counted as such. A replay makes no
+network requests and never touches a project's exported ``.bib`` file. A replay log from
 someone else's bug report is therefore safe to run.
 
 Database pruning

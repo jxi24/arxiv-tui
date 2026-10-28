@@ -5,9 +5,14 @@
 #include "Arxiv/Replay.hh"
 
 #include "Arxiv/AppCore.hh"
+#include "Arxiv/Config.hh"
+#include "Arxiv/DatabaseManager.hh"
+#include "Arxiv/Fetcher.hh"
+#include "Arxiv/HttpClient.hh"
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -15,6 +20,7 @@
 #include <set>
 #include <sstream>
 #include <string_view>
+#include <unistd.h>
 #include <unordered_map>
 
 using json = nlohmann::json;
@@ -177,31 +183,6 @@ const std::unordered_map<std::string, Handler>& dispatch_table() {
          }},
     };
     return table;
-}
-
-// A crash report (CrashHandler) carries the session's replay log between a
-// "--- Replay Log" line and "=== End of Report ==="; anything else is taken
-// to be a plain JSONL replay file.
-std::string ReplayLogOf(const std::string& text) {
-    constexpr std::string_view kReportHeader = "=== arxiv-tui Crash Report ===";
-    if (text.compare(0, kReportHeader.size(), kReportHeader) != 0)
-        return text;
-    std::istringstream in(text);
-    std::string line, log;
-    bool inside = false;
-    while (std::getline(in, line)) {
-        if (!inside) {
-            inside = line.rfind("--- Replay Log", 0) == 0;
-            continue;
-        }
-        if (line.rfind("=== End of Report", 0) == 0)
-            break;
-        if (line == "(earlier entries omitted)")
-            continue;
-        log += line;
-        log += '\n';
-    }
-    return log;
 }
 
 // Actions that read or write files outside the database, or download.
@@ -545,31 +526,7 @@ ReplayPlayer::Result ReplayPlayer::FromString(const std::string& jsonl, AppCore&
 
 ReplayPlayer::Result
 ReplayPlayer::FromString(const std::string& text, AppCore& core, const Options& options) {
-    Result result;
-    const std::string jsonl = ReplayLogOf(text);
-    if (jsonl.empty())
-        return result;
-
-    std::istringstream stream(jsonl);
-    std::string line;
-    while (std::getline(stream, line)) {
-        if (line.empty())
-            continue;
-        ++result.total;
-        std::string err;
-        if (!DispatchAction(line, core, options, err)) {
-            if (!err.empty()) {
-                // Parse error or structural error
-                result.error = err;
-                return result; // stop on first hard error
-            } else {
-                ++result.skipped;
-            }
-        } else {
-            ++result.replayed;
-        }
-    }
-    return result;
+    return Run(ReplayLog::Parse(text), core, options);
 }
 
 ReplayPlayer::Result ReplayPlayer::FromFile(const std::string& path, AppCore& core) {
@@ -587,6 +544,187 @@ ReplayPlayer::FromFile(const std::string& path, AppCore& core, const Options& op
     std::stringstream ss;
     ss << f.rdbuf();
     return FromString(ss.str(), core, options);
+}
+
+namespace {
+
+constexpr std::string_view kLegacyBanner = "=== arxiv-tui Crash Report ===";
+
+// Header fields are shown on the terminal by --replay, and a report may come
+// from anyone: keep printable text only (no escape sequences).
+std::string printable(std::string s) {
+    s.erase(std::remove_if(s.begin(),
+                           s.end(),
+                           [](char c) {
+                               const auto u = static_cast<unsigned char>(c);
+                               return u < 0x20 || u == 0x7f;
+                           }),
+            s.end());
+    return s;
+}
+
+// The first line of a report written since the JSON header was added.
+std::optional<CrashInfo> CrashHeaderOf(const std::string& line) {
+    if (line.empty() || line[0] != '{')
+        return std::nullopt;
+    const json j = json::parse(line, nullptr, false);
+    if (!j.is_object() || !j.contains("arxiv_tui_crash_report"))
+        return std::nullopt;
+    CrashInfo info;
+    try {
+        info.version = printable(j.value("version", ""));
+        info.signal = printable(j.value("signal", ""));
+        info.signum = j.value("signum", 0);
+        info.time = printable(j.value("time", ""));
+        info.pid = j.value("pid", 0LL);
+        info.replay_log = printable(j.value("replay_log", ""));
+    } catch (const json::exception&) {
+        // A field of the wrong type: keep what was read.
+    }
+    return info;
+}
+
+// Reports from before the header: "Signal    : SIGSEGV (11)".
+CrashInfo LegacyCrashInfo(std::istringstream& in) {
+    CrashInfo info;
+    std::string line;
+    while (std::getline(in, line) && line.rfind("--- ", 0) != 0) {
+        if (line.rfind("Timestamp : ", 0) == 0)
+            info.time = printable(line.substr(12));
+        if (line.rfind("Signal    : ", 0) == 0) {
+            std::istringstream fields(line.substr(12));
+            char paren = 0;
+            fields >> info.signal >> paren >> info.signum;
+            info.signal = printable(info.signal);
+        }
+    }
+    return info;
+}
+
+// The sandbox's network: every request fails, as if offline. A replay must
+// not reach InspireHEP or arXiv (linking a paper looks up its BibTeX).
+class NoNetwork : public HttpClient {
+  public:
+    HttpResponse Get(const std::string&, std::chrono::milliseconds) override {
+        return {0, "", "network disabled during replay"};
+    }
+    HttpResponse Download(const std::string&,
+                          std::chrono::milliseconds,
+                          const std::function<bool(std::string_view)>&) override {
+        return {0, "", "network disabled during replay"};
+    }
+};
+
+} // namespace
+
+ReplayLog ReplayLog::Parse(const std::string& text) {
+    ReplayLog log;
+    std::istringstream in(text);
+    std::string line;
+    std::getline(in, line);
+    if (auto header = CrashHeaderOf(line))
+        log.crash = std::move(header);
+    else if (line.rfind(kLegacyBanner, 0) == 0)
+        log.crash = LegacyCrashInfo(in);
+
+    if (!log.crash) {
+        // A replay log: every line is an entry.
+        do {
+            if (!line.empty())
+                log.entries.push_back(line);
+        } while (std::getline(in, line));
+        return log;
+    }
+    // A crash report: the entries are its Replay Log section.
+    bool inside = false;
+    while (std::getline(in, line)) {
+        if (!inside) {
+            inside = line.rfind("--- Replay Log", 0) == 0;
+            continue;
+        }
+        if (line.rfind("=== End of Report", 0) == 0)
+            break;
+        if (!line.empty() && line != "(earlier entries omitted)")
+            log.entries.push_back(line);
+    }
+    return log;
+}
+
+ReplayPlayer::Result
+ReplayPlayer::Run(const ReplayLog& log, AppCore& core, const Options& options) {
+    Result result;
+    result.crash = log.crash;
+    for (const auto& entry : log.entries) {
+        ++result.total;
+        std::string err;
+        if (DispatchAction(entry, core, options, err)) {
+            ++result.replayed;
+        } else if (err.empty()) {
+            ++result.skipped; // unknown action, diagnostic event or file action
+        } else {
+            result.error = err; // stop on the first malformed entry
+            return result;
+        }
+    }
+    return result;
+}
+
+ReplayPlayer::Result ReplayPlayer::RunSandboxed(const Config& config, const std::string& path) {
+    return RunSandboxed(config, path, Options{});
+}
+
+ReplayPlayer::Result
+ReplayPlayer::RunSandboxed(const Config& config, const std::string& path, const Options& options) {
+    namespace fs = std::filesystem;
+    Result result;
+    std::ifstream in(path, std::ios::binary);
+    if (!in) {
+        result.error = "Cannot open file: " + path;
+        return result;
+    }
+    std::stringstream text;
+    text << in.rdbuf();
+    const ReplayLog log = ReplayLog::Parse(text.str());
+
+    // A private scratch directory (mkdtemp: unpredictable name, mode 0700)
+    // for copies of the ranker and keywords and for any file action.
+    std::string templ = (fs::temp_directory_path() / "arxiv-tui-replay-XXXXXX").string();
+    if (!::mkdtemp(templ.data())) {
+        result.error = "Cannot create a scratch directory for the replay";
+        result.crash = log.crash;
+        return result;
+    }
+    const fs::path scratch = templ;
+    std::error_code ignore;
+    Config sandboxed = config;
+    for (auto [from, to] : {std::pair{config.get_ranker_file(), scratch / "ranker.bin"},
+                            std::pair{config.get_keywords_file(), scratch / "keywords.txt"}})
+        if (!from.empty())
+            fs::copy_file(from, to, fs::copy_options::overwrite_existing, ignore);
+    sandboxed.set_ranker_file((scratch / "ranker.bin").string());
+    sandboxed.set_keywords_file((scratch / "keywords.txt").string());
+    sandboxed.set_download_dir((scratch / "downloads").string());
+    sandboxed.set_export_dir((scratch / "exports").string());
+
+    try {
+        auto db = DatabaseManager::InMemoryCopyOf(config.get_db_file());
+        // The copy still names the user's exported project .bib files, which
+        // linking a paper appends to: detach them.
+        for (const auto& project : db->GetProjects())
+            db->SetProjectBibPath(project, "");
+        AppCore core(sandboxed,
+                     std::move(db),
+                     std::make_unique<Fetcher>(sandboxed.get_topics(),
+                                               sandboxed.get_download_dir(),
+                                               std::make_unique<NoNetwork>()),
+                     AppCore::FetchMode::Offline);
+        result = Run(log, core, options);
+    } catch (const std::exception& e) {
+        result.error = e.what();
+        result.crash = log.crash;
+    }
+    fs::remove_all(scratch, ignore);
+    return result;
 }
 
 } // namespace Arxiv

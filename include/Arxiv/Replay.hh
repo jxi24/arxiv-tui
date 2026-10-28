@@ -8,12 +8,14 @@
 #include <deque>
 #include <fstream>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
 namespace Arxiv {
 
 class AppCore;
+class Config;
 
 // ---------------------------------------------------------------------------
 // ReplayRecorder
@@ -108,6 +110,30 @@ class ReplayRecorder {
 };
 
 // ---------------------------------------------------------------------------
+// ReplayLog
+//
+// What --replay reads, whichever file it was given: a replay.jsonl log, or a
+// crash report (CrashHandler), whose first line is a JSON header and whose
+// "Replay Log" section is the same JSONL. Both parse to the entries to
+// replay; a report also gives what crashed.
+// ---------------------------------------------------------------------------
+struct CrashInfo {
+    std::string version; // arxiv-tui version that crashed ("" in old reports)
+    std::string signal;  // "SIGSEGV", ...
+    int signum = 0;
+    std::string time;       // UTC, ISO 8601
+    long long pid = 0;      // 0 in old reports
+    std::string replay_log; // the replay file the report copied, if any
+};
+
+struct ReplayLog {
+    std::optional<CrashInfo> crash;   // set when the text is a crash report
+    std::vector<std::string> entries; // one JSON object per entry
+
+    static ReplayLog Parse(const std::string& text);
+};
+
+// ---------------------------------------------------------------------------
 // ReplayPlayer
 //
 // Reads a JSONL replay log and dispatches each action to an AppCore instance
@@ -127,7 +153,12 @@ class ReplayPlayer {
         int replayed = 0;
         int skipped = 0;
         std::string error;
+        std::optional<CrashInfo> crash; // when replaying a crash report
     };
+
+    /// The one replay loop: every other entry point parses into a ReplayLog
+    /// and comes here.
+    static Result Run(const ReplayLog& log, AppCore& core, const Options& options);
 
     /// Replay from a JSONL string, or from a crash report (its Replay Log
     /// section is replayed).
@@ -137,6 +168,15 @@ class ReplayPlayer {
     /// Replay from a JSONL file or a crash report file.
     static Result FromFile(const std::string& path, AppCore& core);
     static Result FromFile(const std::string& path, AppCore& core, const Options& options);
+
+    /// What --replay does: replay `path` (a log or a crash report) on an
+    /// in-memory copy of config's database, with the ranker and keywords
+    /// copied to a scratch directory that is removed afterwards. Nothing the
+    /// user owns is changed; file actions run only inside the scratch copy
+    /// when options.file_actions is set.
+    static Result RunSandboxed(const Config& config, const std::string& path);
+    static Result
+    RunSandboxed(const Config& config, const std::string& path, const Options& options);
 
   private:
     static bool DispatchAction(const std::string& json_line,
