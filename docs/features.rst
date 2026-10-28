@@ -104,7 +104,10 @@ Projects are named groups of articles. They support:
   to the current project.
 - **Export** — press ``e`` to export the project as Markdown, plain text,
   BibTeX, or JSON.
-- **Import** — press ``I`` to import a project from a JSON file.
+- **Import** — press ``I`` to import a project from a JSON file. A JSON
+  export carries the project's parent and each paper's notes, category, tags
+  and rating, so importing it elsewhere restores them (a rating in the file
+  never replaces one you already gave).
 - **Auto-update .bib** — adding an article to a project that has a
   previously exported ``.bib`` file automatically appends the new BibTeX
   entry without a manual re-export.

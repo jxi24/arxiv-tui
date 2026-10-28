@@ -7,6 +7,13 @@ Changelog
 Unreleased
 ----------
 
+- **Project JSON round-trips** — the export now carries the project's parent
+  and each paper's category, tags and rating, and the import restores them
+  (without overriding a rating you already gave). A paper without a date is
+  dated at import instead of 1 January 1970, and a blank project name is
+  refused. A new sub-project typed with spaces around its name now keeps
+  its parent.
+
 - **Rename and move** — ``E`` renames the project or tag selected in the
   filter pane (papers, notes, sub-projects and an exported ``.bib`` follow the
   new name); ``M`` moves a project under another one or back to the top

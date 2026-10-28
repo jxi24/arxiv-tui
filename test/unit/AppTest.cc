@@ -2553,3 +2553,79 @@ TEST_CASE("Renaming and moving projects and tags", "[appcore][rename]") {
                 std::vector<std::string>{"", "chapter", "thesis"});
     }
 }
+
+TEST_CASE("Project JSON export and import round-trip", "[appcore][export][import]") {
+    // The export dropped the parent, categories, tags and ratings, and an
+    // entry without a date was imported as 1 January 1970.
+    const auto dir =
+        std::filesystem::temp_directory_path() / ("json_roundtrip_" + std::to_string(::getpid()));
+    std::filesystem::create_directories(dir);
+    const auto file = (dir / "p.json").string();
+    auto paper = arxiv_tui::test::fixtures::sample_articles[0];
+    paper.category = "hep-ph";
+    {
+        auto db = std::make_unique<Arxiv::DatabaseManager>(":memory:");
+        db->AddArticle(paper);
+        db->SetRating(paper.link, 4);
+        Arxiv::Config cfg;
+        cfg.set_topics({"hep-ph"});
+        Arxiv::AppCore core(cfg,
+                            std::move(db),
+                            std::make_unique<FetcherMock>(),
+                            Arxiv::AppCore::FetchMode::Offline);
+        core.AddProject("Parent");
+        core.AddProject("P");
+        core.SetProjectParent("P", "Parent");
+        core.LinkArticleToProject(paper.link, "P");
+        core.LinkArticleToTag(paper.link, "qcd");
+        REQUIRE(core.ExportProjectJSON("P", file));
+    }
+    auto db = std::make_unique<Arxiv::DatabaseManager>(":memory:");
+    auto* raw = db.get();
+    Arxiv::Config cfg;
+    cfg.set_topics({"hep-ph"});
+    Arxiv::AppCore core(
+        cfg, std::move(db), std::make_unique<FetcherMock>(), Arxiv::AppCore::FetchMode::Offline);
+
+    REQUIRE(core.ImportProjectJSON(file));
+
+    SECTION("parent") { REQUIRE(raw->GetProjectParent("P") == "Parent"); }
+    SECTION("category") { REQUIRE(raw->GetArticle(paper.link)->category == "hep-ph"); }
+    SECTION("tags") {
+        REQUIRE(raw->GetTagsForArticle(paper.link) == std::vector<std::string>{"qcd"});
+    }
+    SECTION("rating") { REQUIRE(raw->GetRating(paper.link) == 4); }
+    std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("Project JSON import: missing dates and blank names", "[appcore][import][regression]") {
+    const auto dir =
+        std::filesystem::temp_directory_path() / ("json_import_" + std::to_string(::getpid()));
+    std::filesystem::create_directories(dir);
+    auto core = core_with_papers(0);
+
+    SECTION("an entry without a date is dated now, not 1970") {
+        auto db = std::make_unique<Arxiv::DatabaseManager>(":memory:");
+        auto* raw = db.get();
+        Arxiv::Config cfg;
+        cfg.set_topics({"hep-ph"});
+        Arxiv::AppCore fresh(cfg,
+                             std::move(db),
+                             std::make_unique<FetcherMock>(),
+                             Arxiv::AppCore::FetchMode::Offline);
+        const auto file = (dir / "nodate.json").string();
+        std::ofstream(file)
+            << R"({"name":"P","articles":[{"link":"https://arxiv.org/abs/2501.00001","title":"T"}]})";
+        REQUIRE(fresh.ImportProjectJSON(file));
+        const auto stored = raw->GetArticle("https://arxiv.org/abs/2501.00001");
+        REQUIRE(stored.has_value());
+        REQUIRE(stored->date > std::chrono::system_clock::now() - std::chrono::hours(24));
+    }
+    SECTION("a blank project name is refused") {
+        const auto file = (dir / "blank.json").string();
+        std::ofstream(file) << R"({"name":"   ","articles":[]})";
+        REQUIRE_FALSE(core->ImportProjectJSON(file));
+        REQUIRE(core->GetProjects().empty());
+    }
+    std::filesystem::remove_all(dir);
+}

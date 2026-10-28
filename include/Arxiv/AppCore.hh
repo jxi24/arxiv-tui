@@ -124,7 +124,8 @@ class AppCore {
     float GetRecommendThreshold() const { return m_recommend_threshold; }
 
     // Project management
-    void AddProject(const std::string& project_name);
+    /// Returns the name as stored (trimmed), or "" if nothing was left.
+    std::string AddProject(const std::string& project_name);
     void RemoveProject(const std::string& project_name);
     void SetProjectParent(const std::string& project_name, const std::string& parent);
     void LinkArticleToProject(const std::string& article_link, const std::string& project_name);

@@ -1542,3 +1542,17 @@ TEST_CASE("Moving a project under another", "[tui][rename]") {
 
     REQUIRE(t.db->GetProjectParent("chapter") == "thesis");
 }
+
+TEST_CASE("A new sub-project with spaces around its name keeps its parent",
+          "[tui][projects][regression]") {
+    // The parent was set on the untyped (untrimmed) name, which did not exist.
+    RealDbApp t;
+    t.app->GetCore().AddProject("thesis");
+    select_filter(*t.app, "thesis");
+    auto handler = t.app->GetEventHandler();
+    handler->OnEvent(Event::Character("p")); // new project under "thesis"
+    type_text(*t.app, "  ch  ");
+    handler->OnEvent(Event::Return);
+
+    REQUIRE(t.db->GetProjectParent("ch") == "thesis");
+}

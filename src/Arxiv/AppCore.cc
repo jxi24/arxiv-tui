@@ -502,13 +502,15 @@ const std::vector<Article>& AppCore::GetCurrentArticles() const { return m_curre
 
 const std::vector<std::string>& AppCore::GetCurrentTitles() const { return m_current_titles; }
 
-void AppCore::AddProject(const std::string& project_name) {
-    if (!m_projects.Add(project_name))
-        return; // nothing left after trimming
+std::string AppCore::AddProject(const std::string& project_name) {
+    const auto name = m_projects.Add(project_name);
+    if (!name)
+        return ""; // nothing left after trimming
     RefreshFilterOptions();
     if (m_project_update_callback)
         m_project_update_callback();
     NotifyArticleUpdate();
+    return *name;
 }
 
 void AppCore::RemoveProject(const std::string& project_name) {

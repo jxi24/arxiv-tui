@@ -183,10 +183,13 @@ bool ProjectText(const std::string& path,
 bool ProjectJSON(const std::string& path,
                  const std::string& project,
                  const std::vector<Article>& articles,
-                 const NoteLookup& note_for) {
+                 const NoteLookup& note_for,
+                 const ProjectExtras& extras) {
     return write_file(path, "project '" + project + "' JSON", [&](std::ostream& file) {
         nlohmann::json j;
         j["name"] = project;
+        if (!extras.parent.empty())
+            j["parent"] = extras.parent;
         j["articles"] = nlohmann::json::array();
         for (const auto& a : articles) {
             auto ts =
@@ -198,6 +201,17 @@ bool ProjectJSON(const std::string& path,
             entry["abstract"] = a.abstract;
             entry["date"] = ts;
             entry["note"] = note_for(a.link);
+            if (!a.category.empty())
+                entry["category"] = a.category;
+            if (extras.tags_for) {
+                const auto tags = extras.tags_for(a.link);
+                if (!tags.empty())
+                    entry["tags"] = tags;
+            }
+            if (extras.rating_for) {
+                if (const int rating = extras.rating_for(a.link); rating > 0)
+                    entry["rating"] = rating;
+            }
             j["articles"].push_back(std::move(entry));
         }
         // Invalid UTF-8 from a feed becomes U+FFFD rather than an exception.
