@@ -6,7 +6,10 @@ Configuration
 
 On first launch, arxiv-tui creates ``~/.config/arxiv-tui/config.yml`` with
 default values. Edit this file to customise topics, key bindings, and
-behaviour.
+behaviour, or press ``S`` for the Settings dialog: ``Tab`` moves between
+sections, ``Enter`` edits a field (``Enter`` again keeps the edit, ``Esc``
+abandons it), ``Esc`` saves everything and closes, and ``q`` closes without
+saving (undoing a theme preview).
 
 Example config
 --------------
@@ -95,8 +98,16 @@ Reference
 
 ``obsidian_vault``
     Obsidian vault that ``o`` exports selected articles into; notes are
-    written to ``<vault>/arxiv-tui/<date>/``. Empty or absent disables the
-    export. Also editable in the Settings dialog (``S`` → Export).
+    written to ``<vault>/arxiv-tui/<date>/``. A note that already exists is
+    left as it is (it may hold your reading notes), and exporting again on the
+    same day adds to that day's ``digest-<date>.md`` index. Empty or absent
+    disables the export. Also editable in the Settings dialog (``S`` → Export).
+
+``export_dir``
+    Folder for exports started from the TUI: project exports (``e``), the
+    daily digest (``X``) and the BibTeX file written when no clipboard is
+    available (``c``). Default: ``~/.local/share/arxiv-tui/exports``. Also
+    editable in the Settings dialog (``S`` → Export → Export folder).
 
 ``obsidian_download_pdfs``
     What each exported note points to. ``false`` (the default) adds a
@@ -155,6 +166,9 @@ and the values derived from ``CMAKE_INSTALL_PREFIX``:
      - State directory: logs, replay, crash reports (default: ``~/.local/state``)
 
 ``ARXIV_TUI_CLIPBOARD``
-    Force a specific clipboard backend. Accepted values: ``xclip``,
-    ``xsel``, ``wl-clipboard``. When unset, arxiv-tui probes for
-    available backends in that order.
+    Force a specific clipboard backend: ``wl-copy``, ``xclip``, ``xsel`` or
+    ``pbcopy``, or any program that reads the text from stdin, optionally
+    followed by arguments (``my-copy --primary``). It is run directly, not
+    through a shell, so quoting and ``;``/``|`` have no special meaning.
+    When unset, arxiv-tui probes for ``wl-copy``, ``xclip``, ``xsel`` and
+    ``pbcopy`` on ``PATH`` in that order.

@@ -342,6 +342,17 @@ background retrain is triggered. Default: <code class="docutils literal notransl
 which rebuilds the vocabulary and resets the network weights from scratch.
 Use this when the corpus has grown significantly or the scores feel stale.</p>
 </section>
+<section id="interest-keywords">
+<h2>Interest keywords<a class="headerlink" href="#interest-keywords" title="Link to this heading">¶</a></h2>
+<p>Before you have rated any papers, keywords are what the ranker goes by.
+Press <code class="docutils literal notranslate"><span class="pre">K</span></code> to edit them: type a keyword and press <code class="docutils literal notranslate"><span class="pre">Enter</span></code> to add it,
+<code class="docutils literal notranslate"><span class="pre">↑</span></code>/<code class="docutils literal notranslate"><span class="pre">↓</span></code> to select one, <code class="docutils literal notranslate"><span class="pre">Del</span></code> to remove it, and <code class="docutils literal notranslate"><span class="pre">Esc</span></code> to save and
+close. Every letter is text, so keywords such as <em>dark jets</em> can be typed.
+A paper’s keyword score is the fraction of keywords found in its title and
+abstract; once you have rated papers it is blended with the model’s
+prediction (60 % model, 40 % keywords). <em>Recommended</em>, the order of <em>New
+Articles</em> and the <code class="docutils literal notranslate"><span class="pre">score</span></code> column all use this blended score.</p>
+</section>
 <section id="technical-details">
 <h2>Technical details<a class="headerlink" href="#technical-details" title="Link to this heading">¶</a></h2>
 <p>The ranker is implemented in pure C++17 with no external ML dependencies.</p>
@@ -426,6 +437,7 @@ sessions.</p>
 <li><a class="reference internal" href="#">Article Ranking</a><ul>
 <li><a class="reference internal" href="#getting-started">Getting started</a></li>
 <li><a class="reference internal" href="#configuration">Configuration</a></li>
+<li><a class="reference internal" href="#interest-keywords">Interest keywords</a></li>
 <li><a class="reference internal" href="#technical-details">Technical details</a></li>
 </ul>
 </li>

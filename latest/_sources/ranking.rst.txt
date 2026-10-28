@@ -41,6 +41,18 @@ Press ``R`` at any time to force an immediate *full cold-start* retrain,
 which rebuilds the vocabulary and resets the network weights from scratch.
 Use this when the corpus has grown significantly or the scores feel stale.
 
+Interest keywords
+-----------------
+
+Before you have rated any papers, keywords are what the ranker goes by.
+Press ``K`` to edit them: type a keyword and press ``Enter`` to add it,
+``↑``/``↓`` to select one, ``Del`` to remove it, and ``Esc`` to save and
+close. Every letter is text, so keywords such as *dark jets* can be typed.
+A paper's keyword score is the fraction of keywords found in its title and
+abstract; once you have rated papers it is blended with the model's
+prediction (60 % model, 40 % keywords). *Recommended*, the order of *New
+Articles* and the ``score`` column all use this blended score.
+
 Technical details
 -----------------
 

@@ -335,7 +335,10 @@ re-fetch feeds automatically while the TUI is open.</p>
 <section id="filtering">
 <h2>Filtering<a class="headerlink" href="#filtering" title="Link to this heading">¶</a></h2>
 <p>The left pane lists all available filters. Switch between them with <code class="docutils literal notranslate"><span class="pre">h</span></code>/<code class="docutils literal notranslate"><span class="pre">l</span></code>
-to move focus to the filter pane, then <code class="docutils literal notranslate"><span class="pre">j</span></code>/<code class="docutils literal notranslate"><span class="pre">k</span></code> to select:</p>
+to move focus to the filter pane, then <code class="docutils literal notranslate"><span class="pre">j</span></code>/<code class="docutils literal notranslate"><span class="pre">k</span></code> to select. Bookmarks,
+Unread, each tag and each project show how many papers they hold (the whole
+database, before any category filter), and tags and projects are listed under
+their own <strong>Tags</strong> and <strong>Projects</strong> headings:</p>
 <div class="table-wrapper colwidths-given docutils container">
 <table class="docutils align-default">
 <colgroup>
@@ -477,13 +480,33 @@ are selected the article pane header shows <code class="docutils literal notrans
 <section id="replay-system-and-crash-handler">
 <h2>Replay system and crash handler<a class="headerlink" href="#replay-system-and-crash-handler" title="Link to this heading">¶</a></h2>
 <p>All UI actions are recorded to a JSONL replay log at
-<code class="docutils literal notranslate"><span class="pre">~/.local/state/arxiv-tui/replay.jsonl</span></code>. On a crash, a report containing
-a backtrace and the full replay log is written to
-<code class="docutils literal notranslate"><span class="pre">~/.local/state/arxiv-tui/crash_*.txt</span></code>.</p>
-<p>To reproduce a crash:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>arxiv-tui<span class="w"> </span>--replay<span class="w"> </span>~/.local/state/arxiv-tui/crash_20260101_120000_SIGSEGV.txt
+<code class="docutils literal notranslate"><span class="pre">~/.local/state/arxiv-tui/replay.jsonl</span></code>. On a crash the terminal is
+restored and a report with a backtrace and the end of the replay log is
+written to <code class="docutils literal notranslate"><span class="pre">~/.local/state/arxiv-tui/crash_*.txt</span></code>.</p>
+<p>To reproduce a crash, replay the crash report (its replay log is replayed)
+or the full log:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>arxiv-tui<span class="w"> </span>--replay<span class="w"> </span>~/.local/state/arxiv-tui/crash_20260101_120000_SIGSEGV_1234.txt
+arxiv-tui<span class="w"> </span>--replay<span class="w"> </span>~/.local/state/arxiv-tui/replay.jsonl
 </pre></div>
 </div>
+<p>A crash report carries the last 64 KiB of the log, which covers the actions
+leading up to the crash; replay <code class="docutils literal notranslate"><span class="pre">replay.jsonl</span></code> for the whole history. Both
+are read and replayed by the same code, so they give the same result for the
+same actions.</p>
+<p>The first line of a report is a one-line JSON header for tools and scripts:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="s2">"arxiv_tui_crash_report"</span><span class="p">:</span><span class="mi">1</span><span class="p">,</span><span class="s2">"version"</span><span class="p">:</span><span class="s2">"1.1.0"</span><span class="p">,</span><span class="s2">"signal"</span><span class="p">:</span><span class="s2">"SIGSEGV"</span><span class="p">,</span><span class="s2">"signum"</span><span class="p">:</span><span class="mi">11</span><span class="p">,</span>
+ <span class="s2">"time"</span><span class="p">:</span><span class="s2">"2026-10-26T05:09:35Z"</span><span class="p">,</span><span class="s2">"pid"</span><span class="p">:</span><span class="mi">2745</span><span class="p">,</span><span class="s2">"replay_log"</span><span class="p">:</span><span class="s2">"/home/you/.local/state/arxiv-tui/replay.jsonl"</span><span class="p">}</span>
+</pre></div>
+</div>
+<p>(on one line in the file). The backtrace and the replay log follow as text.
+<code class="docutils literal notranslate"><span class="pre">--replay</span></code> prints the signal, time and version from the header, and warns
+when the report came from a different version than the one replaying it.</p>
+<p>A replay never changes your data: it runs on an in-memory copy of the
+database (the ranker and keywords are copied to a scratch directory), and
+actions that write files or download — exports, imports, PDF downloads,
+saving keywords — are skipped and counted as such. A replay makes no
+network requests and never touches a project’s exported <code class="docutils literal notranslate"><span class="pre">.bib</span></code> file. A replay log from
+someone else’s bug report is therefore safe to run.</p>
 </section>
 <section id="database-pruning">
 <h2>Database pruning<a class="headerlink" href="#database-pruning" title="Link to this heading">¶</a></h2>
@@ -491,6 +514,15 @@ a backtrace and the full replay log is written to
 articles on startup. Articles are exempt from pruning if they are bookmarked,
 rated, or assigned to a project. Set the value to <code class="docutils literal notranslate"><span class="pre">0</span></code> (the default) to
 disable pruning entirely.</p>
+</section>
+<section id="id1">
+<h2>Tags<a class="headerlink" href="#id1" title="Link to this heading">¶</a></h2>
+<p>Press <code class="docutils literal notranslate"><span class="pre">#</span></code> to tag the focused article, or every selected article. The dialog
+lists your tags with <code class="docutils literal notranslate"><span class="pre">[x]</span></code> (all targets have it), <code class="docutils literal notranslate"><span class="pre">[-]</span></code> (some do) or
+<code class="docutils literal notranslate"><span class="pre">[</span> <span class="pre">]</span></code>; <code class="docutils literal notranslate"><span class="pre">Enter</span></code> or <code class="docutils literal notranslate"><span class="pre">Space</span></code> adds the tag to all targets, or removes it
+when they all have it. <code class="docutils literal notranslate"><span class="pre">+</span></code> creates a new tag and applies it; <code class="docutils literal notranslate"><span class="pre">Del</span></code> deletes
+a tag from every paper after asking. Each tag gets a <code class="docutils literal notranslate"><span class="pre">#name</span></code> entry in the
+filter pane.</p>
 </section>
 <section id="undo-delete">
 <h2>Undo delete<a class="headerlink" href="#undo-delete" title="Link to this heading">¶</a></h2>
@@ -583,6 +615,7 @@ restarts.</p>
 <li><a class="reference internal" href="#clipboard-integration">Clipboard integration</a></li>
 <li><a class="reference internal" href="#replay-system-and-crash-handler">Replay system and crash handler</a></li>
 <li><a class="reference internal" href="#database-pruning">Database pruning</a></li>
+<li><a class="reference internal" href="#id1">Tags</a></li>
 <li><a class="reference internal" href="#undo-delete">Undo delete</a></li>
 </ul>
 </li>

@@ -310,6 +310,122 @@
 <section id="unreleased">
 <h2>Unreleased<a class="headerlink" href="#unreleased" title="Link to this heading">¶</a></h2>
 <ul class="simple">
+<li><p><strong>Crash reports start with a JSON header</strong> — one line with the format
+marker, version, signal, UTC time, pid and replay-log path, written from
+the signal handler. <code class="docutils literal notranslate"><span class="pre">--replay</span></code> prints it and warns when the report came
+from another version. Reports from earlier versions still replay.</p></li>
+<li><p><strong>One replay path</strong> — replay logs and crash reports are parsed into the
+same entries and replayed by the same loop, and the sandbox <code class="docutils literal notranslate"><span class="pre">--replay</span></code>
+uses moved from <code class="docutils literal notranslate"><span class="pre">main</span></code> into the library (<code class="docutils literal notranslate"><span class="pre">ReplayPlayer::RunSandboxed</span></code>)
+where it is tested. Its scratch directory now has an unpredictable,
+private name (<code class="docutils literal notranslate"><span class="pre">mkdtemp</span></code>) instead of <code class="docutils literal notranslate"><span class="pre">/tmp/arxiv-tui-replay-&lt;pid&gt;</span></code>.
+A replayed “link paper to project” no longer appends to the project’s real
+exported <code class="docutils literal notranslate"><span class="pre">.bib</span></code> file or looks the paper up on InspireHEP: the sandbox has
+no network and no <code class="docutils literal notranslate"><span class="pre">.bib</span></code> paths.</p></li>
+<li><p><strong>GUI uses the TUI’s files</strong> — <code class="docutils literal notranslate"><span class="pre">arxiv-gui</span></code> read <code class="docutils literal notranslate"><span class="pre">.arxiv-tui.yml</span></code> and
+<code class="docutils literal notranslate"><span class="pre">articles.db</span></code> from the working directory (and logged there), so it never
+saw the TUI’s papers. It now resolves config, database, ranker, keywords and
+log exactly like the TUI (<code class="docutils literal notranslate"><span class="pre">Paths::ApplyTo</span></code>), and CI builds it.</p></li>
+<li><p><strong>Mouse support</strong> — click a view or an article to select it, and scroll
+views or articles with the wheel. The article list draws its own rows, so
+clicks there never selected anything, and clicks only reached the focused
+pane.</p></li>
+<li><p><strong>Richer detail pane</strong> — under the link the detail pane shows the arXiv id,
+category and your star rating, and the paper’s tags and projects when it
+has any.</p></li>
+<li><p><strong>Filter pane counts and sections</strong> — Bookmarks, Unread, every tag and
+every project show how many papers they hold, and tags and projects sit
+under <strong>Tags</strong> / <strong>Projects</strong> headings instead of running on from the
+fixed views.</p></li>
+<li><p><strong>Footer hints</strong> — the footer lists the keys that apply where you are: view
+and project keys in the filter pane, article actions in the list, selection
+actions when papers are selected — with your own key bindings.</p></li>
+<li><p><strong>Success messages no longer block</strong> — “BibTeX copied”, “Exported to …”
+and similar now appear for a few seconds in the bottom-right corner instead
+of a dialog that had to be dismissed (and swallowed the next key). Errors
+still open a dialog.</p></li>
+<li><p><strong>Status column</strong> — selection (<code class="docutils literal notranslate"><span class="pre">+</span></code>) and bookmark (<code class="docutils literal notranslate"><span class="pre">★</span></code>) markers have
+their own column in the article list instead of being prefixed to titles,
+where the double-width <code class="docutils literal notranslate"><span class="pre">⭐</span></code> pushed titles out of line.</p></li>
+<li><p><strong>Layout follows the window</strong> — pane widths and the number of article rows
+come from the area the TUI is drawn in rather than a separate terminal-size
+query, and the article list no longer lays out two rows more than fit (the
+cursor could sit on a hidden row at the bottom).</p></li>
+<li><p><strong>Bulk project assignment updates the project’s BibTeX file</strong> — assigning a
+selection to a project skipped the auto-update of an exported <code class="docutils literal notranslate"><span class="pre">.bib</span></code> that
+single assignment does, and single assignment only found papers shown in
+the current view.</p></li>
+<li><p><strong>Tagging from the TUI</strong> — <code class="docutils literal notranslate"><span class="pre">#</span></code> opens a Tags dialog for the focused
+article or the selection: toggle tags, add new ones, delete one from every
+paper. Tags existed in the database and filter pane, but nothing in the TUI
+could create or apply them; a newly created tag now also appears in the
+filter pane at once.</p></li>
+<li><p><strong>Settings can be cancelled</strong> — <code class="docutils literal notranslate"><span class="pre">q</span></code> closes the Settings dialog without
+saving (and undoes a theme preview); <code class="docutils literal notranslate"><span class="pre">Esc</span></code> while editing a field now
+abandons that edit instead of keeping it. <code class="docutils literal notranslate"><span class="pre">Esc</span></code> still saves and closes.</p></li>
+<li><p><strong>Dates are arXiv days everywhere</strong> — the article list and exports showed
+dates in local time, so west of UTC a paper announced on 4 July showed as
+3 July; the date-range filter (<code class="docutils literal notranslate"><span class="pre">r</span></code>) used local midnights with DST off,
+missing papers on the first day and including some from the day after the
+range. Dates are now shown and filtered as UTC days.</p></li>
+<li><p><strong>Keyword boosts work in the TUI</strong> — <em>Recommended</em>, the <em>New Articles</em>
+order and the score column used only the rating model, so keywords had no
+effect until you had rated papers (only <code class="docutils literal notranslate"><span class="pre">--export-yaml</span></code> used them). They
+now use the blended score, and saving keywords re-ranks the current view.
+In the keyword editor (<code class="docutils literal notranslate"><span class="pre">K</span></code>) every letter is text — <code class="docutils literal notranslate"><span class="pre">d</span></code>, <code class="docutils literal notranslate"><span class="pre">j</span></code> and
+<code class="docutils literal notranslate"><span class="pre">k</span></code> used to delete or move the selection — and <code class="docutils literal notranslate"><span class="pre">↑</span></code>/<code class="docutils literal notranslate"><span class="pre">↓</span></code> select.</p></li>
+<li><p><strong>Exports no longer land in the current directory</strong> — project exports, the
+daily digest and the BibTeX fallback file were written wherever arxiv-tui
+was started. They now go to the new <code class="docutils literal notranslate"><span class="pre">export_dir</span></code> (default
+<code class="docutils literal notranslate"><span class="pre">~/.local/share/arxiv-tui/exports</span></code>, editable in Settings), and project
+names containing <code class="docutils literal notranslate"><span class="pre">/</span></code> no longer break the file name.</p></li>
+<li><p><strong>Database integrity</strong> — the database now has a schema version and enforces
+its foreign keys: deleting a paper or project removes its memberships,
+ratings, notes and tags in the database itself. On first start the link
+tables are rebuilt once and leftover rows for papers that no longer exist
+are dropped. A database written by a newer arxiv-tui is refused instead of
+being modified.</p></li>
+<li><p><strong>Arrow keys in the filter and article lists</strong> — moving the filter list
+with <code class="docutils literal notranslate"><span class="pre">↑</span></code>/<code class="docutils literal notranslate"><span class="pre">↓</span></code> changed the highlighted view without loading it (the old
+view’s papers stayed on screen), and moving the article list that way did
+not mark papers read with the detail pane open or record the move for
+replay. Both lists now behave exactly like <code class="docutils literal notranslate"><span class="pre">j</span></code>/<code class="docutils literal notranslate"><span class="pre">k</span></code>.</p></li>
+<li><p><strong>Retraining keeps keywords</strong> — a full retrain (<code class="docutils literal notranslate"><span class="pre">R</span></code>) dropped the interest
+keywords until the next start, so keyword boosts silently stopped working.</p></li>
+<li><p><strong>``–help`` and ``–version``</strong> — and unknown options, a missing file name
+or two modes at once (<code class="docutils literal notranslate"><span class="pre">--fetch</span></code> with an export, say) are now errors
+instead of being silently ignored.</p></li>
+<li><p><strong>Reproducible builds</strong> — FTXUI is pinned to the v7.0.3 release instead of
+tracking its <code class="docutils literal notranslate"><span class="pre">main</span></code> branch.</p></li>
+<li><p><strong>``replay.jsonl`` no longer grows forever</strong> — when it is over 5 MiB at
+start-up it is moved to <code class="docutils literal notranslate"><span class="pre">replay.jsonl.1</span></code> and a new log is started.</p></li>
+<li><p><strong>Polite to arXiv</strong> — every request identifies itself
+(<code class="docutils literal notranslate"><span class="pre">arxiv-tui/&lt;version&gt;</span> <span class="pre">(+https://github.com/jxi24/arxiv-tui)</span></code>), and the
+backfill after missed days waits 3 s between arXiv API pages, as the API
+terms of use ask.</p></li>
+<li><p><strong>No more half-written files</strong> — <code class="docutils literal notranslate"><span class="pre">config.yml</span></code>, <code class="docutils literal notranslate"><span class="pre">ranker.bin</span></code>, the
+keywords file, exports, Obsidian notes and project <code class="docutils literal notranslate"><span class="pre">.bib</span></code> files are
+written to a temporary file and renamed into place, so a full disk or a
+crash mid-write leaves the previous version instead of a truncated file.
+A symlinked <code class="docutils literal notranslate"><span class="pre">config.yml</span></code> stays a symlink. Obsidian export no longer
+overwrites a paper’s existing note (and your reading notes in it), and a
+second export on the same day adds to that day’s index instead of
+replacing it. Importing a project no longer overwrites papers already in
+the database (their title, authors and category were replaced by the
+file’s, and the category emptied).</p></li>
+<li><p><strong>Security hardening</strong> — a crash no longer hangs, restores the terminal
+and leaves <code class="docutils literal notranslate"><span class="pre">SIGTERM</span></code> alone; the crash report holds the end of
+<code class="docutils literal notranslate"><span class="pre">replay.jsonl</span></code>. The clipboard backend is started without a shell
+(<code class="docutils literal notranslate"><span class="pre">ARXIV_TUI_CLIPBOARD</span></code> names a program, not a command line). The
+InspireHEP lookup only sends real arXiv ids and only follows BibTeX links
+back to <code class="docutils literal notranslate"><span class="pre">https://inspirehep.net/</span></code>. PDF downloads are streamed to a
+temporary file, must start with <code class="docutils literal notranslate"><span class="pre">%PDF-</span></code> and stay under 256 MiB, and
+replace the target only when complete — an HTML error page or a dropped
+connection no longer leaves a broken <code class="docutils literal notranslate"><span class="pre">.pdf</span></code> behind. <code class="docutils literal notranslate"><span class="pre">--replay</span></code> accepts a
+crash report as well as <code class="docutils literal notranslate"><span class="pre">replay.jsonl</span></code> (it never could: the report’s
+text header stopped it at line 1), and runs on
+an in-memory copy of the database and skips exports, imports, downloads
+and keyword saves. Project import files over 64 MiB are refused.</p></li>
 <li><p><strong>Exports and downloads no longer freeze the TUI</strong> — <code class="docutils literal notranslate"><span class="pre">o</span></code> (Obsidian),
 <code class="docutils literal notranslate"><span class="pre">g</span></code> (selected digest), <code class="docutils literal notranslate"><span class="pre">G</span></code> (digest archive) and <code class="docutils literal notranslate"><span class="pre">d</span></code> (download PDF)
 run in the background. A badge in the bottom-right corner shows progress

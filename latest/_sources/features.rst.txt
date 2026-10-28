@@ -39,7 +39,10 @@ Filtering
 ---------
 
 The left pane lists all available filters. Switch between them with ``h``/``l``
-to move focus to the filter pane, then ``j``/``k`` to select:
+to move focus to the filter pane, then ``j``/``k`` to select. Bookmarks,
+Unread, each tag and each project show how many papers they hold (the whole
+database, before any category filter), and tags and projects are listed under
+their own **Tags** and **Projects** headings:
 
 .. list-table::
    :header-rows: 1
@@ -176,15 +179,38 @@ Replay system and crash handler
 --------------------------------
 
 All UI actions are recorded to a JSONL replay log at
-``~/.local/state/arxiv-tui/replay.jsonl``. On a crash, a report containing
-a backtrace and the full replay log is written to
-``~/.local/state/arxiv-tui/crash_*.txt``.
+``~/.local/state/arxiv-tui/replay.jsonl``. On a crash the terminal is
+restored and a report with a backtrace and the end of the replay log is
+written to ``~/.local/state/arxiv-tui/crash_*.txt``.
 
-To reproduce a crash:
+To reproduce a crash, replay the crash report (its replay log is replayed)
+or the full log:
 
 .. code-block:: bash
 
-   arxiv-tui --replay ~/.local/state/arxiv-tui/crash_20260101_120000_SIGSEGV.txt
+   arxiv-tui --replay ~/.local/state/arxiv-tui/crash_20260101_120000_SIGSEGV_1234.txt
+   arxiv-tui --replay ~/.local/state/arxiv-tui/replay.jsonl
+
+A crash report carries the last 64 KiB of the log, which covers the actions
+leading up to the crash; replay ``replay.jsonl`` for the whole history. Both
+are read and replayed by the same code, so they give the same result for the
+same actions.
+
+The first line of a report is a one-line JSON header for tools and scripts::
+
+   {"arxiv_tui_crash_report":1,"version":"1.1.0","signal":"SIGSEGV","signum":11,
+    "time":"2026-10-26T05:09:35Z","pid":2745,"replay_log":"/home/you/.local/state/arxiv-tui/replay.jsonl"}
+
+(on one line in the file). The backtrace and the replay log follow as text.
+``--replay`` prints the signal, time and version from the header, and warns
+when the report came from a different version than the one replaying it.
+
+A replay never changes your data: it runs on an in-memory copy of the
+database (the ranker and keywords are copied to a scratch directory), and
+actions that write files or download — exports, imports, PDF downloads,
+saving keywords — are skipped and counted as such. A replay makes no
+network requests and never touches a project's exported ``.bib`` file. A replay log from
+someone else's bug report is therefore safe to run.
 
 Database pruning
 ----------------
@@ -193,6 +219,16 @@ Set ``max_article_age_days`` in ``config.yml`` to automatically remove old
 articles on startup. Articles are exempt from pruning if they are bookmarked,
 rated, or assigned to a project. Set the value to ``0`` (the default) to
 disable pruning entirely.
+
+Tags
+----
+
+Press ``#`` to tag the focused article, or every selected article. The dialog
+lists your tags with ``[x]`` (all targets have it), ``[-]`` (some do) or
+``[ ]``; ``Enter`` or ``Space`` adds the tag to all targets, or removes it
+when they all have it. ``+`` creates a new tag and applies it; ``Del`` deletes
+a tag from every paper after asking. Each tag gets a ``#name`` entry in the
+filter pane.
 
 Undo delete
 -----------

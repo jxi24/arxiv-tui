@@ -433,6 +433,42 @@ ctest<span class="w"> </span>--test-dir<span class="w"> </span>build<span class=
 </pre></div>
 </div>
 </section>
+<section id="experimental-gui">
+<h2>Experimental GUI<a class="headerlink" href="#experimental-gui" title="Link to this heading">¶</a></h2>
+<p>An ImGui/GLFW window (<code class="docutils literal notranslate"><span class="pre">arxiv-gui</span></code>) over the same library, database and
+config is built on request. It needs OpenGL and X11 development headers
+(on Debian/Ubuntu: <code class="docutils literal notranslate"><span class="pre">libgl-dev</span> <span class="pre">libx11-dev</span> <span class="pre">libxrandr-dev</span> <span class="pre">libxinerama-dev</span>
+<span class="pre">libxcursor-dev</span> <span class="pre">libxi-dev</span> <span class="pre">libxkbcommon-dev</span></code>):</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>cmake<span class="w"> </span>-B<span class="w"> </span>build<span class="w"> </span>-DARXIV_TUI_BUILD_GUI<span class="o">=</span>ON
+cmake<span class="w"> </span>--build<span class="w"> </span>build<span class="w"> </span>--target<span class="w"> </span>arxiv-gui
+./build/src/GUI/arxiv-gui
+</pre></div>
+</div>
+<p>It reads <code class="docutils literal notranslate"><span class="pre">config.yml</span></code> and <code class="docutils literal notranslate"><span class="pre">articles.db</span></code> from the locations above and logs
+to <code class="docutils literal notranslate"><span class="pre">arxiv_gui.log</span></code> in the state directory.</p>
+</section>
+<section id="command-line">
+<h2>Command line<a class="headerlink" href="#command-line" title="Link to this heading">¶</a></h2>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>Usage: arxiv-tui [--trace] [MODE]
+
+Modes (one at a time):
+  --fetch               fetch new papers into the database and exit (for cron)
+  --export-today FILE   write today's papers as a Markdown digest
+  --export-yaml FILE    write today's papers, ranked, as YAML
+                        (--export-today and --export-yaml may be combined)
+  --replay FILE         replay a replay.jsonl log or a crash report on a copy
+                        of the database
+
+Options:
+  --trace               log at trace level
+  -h, --help            show this help and exit
+  -V, --version         show the version and exit
+</pre></div>
+</div>
+<p>An unknown option, a missing file name or two modes at once is an error
+(exit status 2) rather than being ignored. To fetch and then export, run
+<code class="docutils literal notranslate"><span class="pre">arxiv-tui</span> <span class="pre">--fetch</span> <span class="pre">&amp;&amp;</span> <span class="pre">arxiv-tui</span> <span class="pre">--export-yaml</span> <span class="pre">digest.yml</span></code>.</p>
+</section>
 <section id="headless-fetch-and-cron">
 <h2>Headless fetch and cron<a class="headerlink" href="#headless-fetch-and-cron" title="Link to this heading">¶</a></h2>
 <p>arxiv-tui can update its database without opening the TUI, which makes it
@@ -447,9 +483,10 @@ arxiv-tui<span class="w"> </span>--fetch
 </section>
 <section id="replaying-a-crash-report">
 <h2>Replaying a crash report<a class="headerlink" href="#replaying-a-crash-report" title="Link to this heading">¶</a></h2>
-<p>If a crash report is saved to <code class="docutils literal notranslate"><span class="pre">~/.local/state/arxiv-tui/</span></code>, you can replay
-the session to reproduce the crash:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>arxiv-tui<span class="w"> </span>--replay<span class="w"> </span>~/.local/state/arxiv-tui/crash_20260101_120000_SIGSEGV.txt
+<p>If arxiv-tui crashes, a report is saved to <code class="docutils literal notranslate"><span class="pre">~/.local/state/arxiv-tui/</span></code>.
+Replay it to reproduce the crash (your database is not changed; see
+<a class="reference internal" href="features.html"><span class="doc">Features</span></a>):</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>arxiv-tui<span class="w"> </span>--replay<span class="w"> </span>~/.local/state/arxiv-tui/crash_20260101_120000_SIGSEGV_1234.txt
 </pre></div>
 </div>
 </section>
@@ -517,6 +554,8 @@ the session to reproduce the crash:</p>
 <li><a class="reference internal" href="#running-from-the-build-tree">Running from the build tree</a></li>
 <li><a class="reference internal" href="#file-layout-after-install">File layout after install</a></li>
 <li><a class="reference internal" href="#building-with-tests">Building with tests</a></li>
+<li><a class="reference internal" href="#experimental-gui">Experimental GUI</a></li>
+<li><a class="reference internal" href="#command-line">Command line</a></li>
 <li><a class="reference internal" href="#headless-fetch-and-cron">Headless fetch and cron</a></li>
 <li><a class="reference internal" href="#replaying-a-crash-report">Replaying a crash report</a></li>
 </ul>

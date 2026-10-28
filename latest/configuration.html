@@ -309,7 +309,10 @@
 <h1>Configuration<a class="headerlink" href="#configuration" title="Link to this heading">¶</a></h1>
 <p>On first launch, arxiv-tui creates <code class="docutils literal notranslate"><span class="pre">~/.config/arxiv-tui/config.yml</span></code> with
 default values. Edit this file to customise topics, key bindings, and
-behaviour.</p>
+behaviour, or press <code class="docutils literal notranslate"><span class="pre">S</span></code> for the Settings dialog: <code class="docutils literal notranslate"><span class="pre">Tab</span></code> moves between
+sections, <code class="docutils literal notranslate"><span class="pre">Enter</span></code> edits a field (<code class="docutils literal notranslate"><span class="pre">Enter</span></code> again keeps the edit, <code class="docutils literal notranslate"><span class="pre">Esc</span></code>
+abandons it), <code class="docutils literal notranslate"><span class="pre">Esc</span></code> saves everything and closes, and <code class="docutils literal notranslate"><span class="pre">q</span></code> closes without
+saving (undoing a theme preview).</p>
 <section id="example-config">
 <h2>Example config<a class="headerlink" href="#example-config" title="Link to this heading">¶</a></h2>
 <div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">article_settings</span><span class="p">:</span>
@@ -385,8 +388,15 @@ pruning.
 Default: <code class="docutils literal notranslate"><span class="pre">0</span></code>.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">obsidian_vault</span></code></dt><dd><p>Obsidian vault that <code class="docutils literal notranslate"><span class="pre">o</span></code> exports selected articles into; notes are
-written to <code class="docutils literal notranslate"><span class="pre">&lt;vault&gt;/arxiv-tui/&lt;date&gt;/</span></code>. Empty or absent disables the
-export. Also editable in the Settings dialog (<code class="docutils literal notranslate"><span class="pre">S</span></code> → Export).</p>
+written to <code class="docutils literal notranslate"><span class="pre">&lt;vault&gt;/arxiv-tui/&lt;date&gt;/</span></code>. A note that already exists is
+left as it is (it may hold your reading notes), and exporting again on the
+same day adds to that day’s <code class="docutils literal notranslate"><span class="pre">digest-&lt;date&gt;.md</span></code> index. Empty or absent
+disables the export. Also editable in the Settings dialog (<code class="docutils literal notranslate"><span class="pre">S</span></code> → Export).</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">export_dir</span></code></dt><dd><p>Folder for exports started from the TUI: project exports (<code class="docutils literal notranslate"><span class="pre">e</span></code>), the
+daily digest (<code class="docutils literal notranslate"><span class="pre">X</span></code>) and the BibTeX file written when no clipboard is
+available (<code class="docutils literal notranslate"><span class="pre">c</span></code>). Default: <code class="docutils literal notranslate"><span class="pre">~/.local/share/arxiv-tui/exports</span></code>. Also
+editable in the Settings dialog (<code class="docutils literal notranslate"><span class="pre">S</span></code> → Export → Export folder).</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">obsidian_download_pdfs</span></code></dt><dd><p>What each exported note points to. <code class="docutils literal notranslate"><span class="pre">false</span></code> (the default) adds a
 <code class="docutils literal notranslate"><span class="pre">[PDF</span> <span class="pre">on</span> <span class="pre">arXiv](https://arxiv.org/pdf/&lt;id&gt;)</span></code> link and downloads
@@ -450,9 +460,12 @@ and the values derived from <code class="docutils literal notranslate"><span cla
 </table>
 </div>
 <dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">ARXIV_TUI_CLIPBOARD</span></code></dt><dd><p>Force a specific clipboard backend. Accepted values: <code class="docutils literal notranslate"><span class="pre">xclip</span></code>,
-<code class="docutils literal notranslate"><span class="pre">xsel</span></code>, <code class="docutils literal notranslate"><span class="pre">wl-clipboard</span></code>. When unset, arxiv-tui probes for
-available backends in that order.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">ARXIV_TUI_CLIPBOARD</span></code></dt><dd><p>Force a specific clipboard backend: <code class="docutils literal notranslate"><span class="pre">wl-copy</span></code>, <code class="docutils literal notranslate"><span class="pre">xclip</span></code>, <code class="docutils literal notranslate"><span class="pre">xsel</span></code> or
+<code class="docutils literal notranslate"><span class="pre">pbcopy</span></code>, or any program that reads the text from stdin, optionally
+followed by arguments (<code class="docutils literal notranslate"><span class="pre">my-copy</span> <span class="pre">--primary</span></code>). It is run directly, not
+through a shell, so quoting and <code class="docutils literal notranslate"><span class="pre">;</span></code>/<code class="docutils literal notranslate"><span class="pre">|</span></code> have no special meaning.
+When unset, arxiv-tui probes for <code class="docutils literal notranslate"><span class="pre">wl-copy</span></code>, <code class="docutils literal notranslate"><span class="pre">xclip</span></code>, <code class="docutils literal notranslate"><span class="pre">xsel</span></code> and
+<code class="docutils literal notranslate"><span class="pre">pbcopy</span></code> on <code class="docutils literal notranslate"><span class="pre">PATH</span></code> in that order.</p>
 </dd>
 </dl>
 </section>

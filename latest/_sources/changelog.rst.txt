@@ -7,6 +7,139 @@ Changelog
 Unreleased
 ----------
 
+- **Crash reports start with a JSON header** — one line with the format
+  marker, version, signal, UTC time, pid and replay-log path, written from
+  the signal handler. ``--replay`` prints it and warns when the report came
+  from another version. Reports from earlier versions still replay.
+
+- **One replay path** — replay logs and crash reports are parsed into the
+  same entries and replayed by the same loop, and the sandbox ``--replay``
+  uses moved from ``main`` into the library (``ReplayPlayer::RunSandboxed``)
+  where it is tested. Its scratch directory now has an unpredictable,
+  private name (``mkdtemp``) instead of ``/tmp/arxiv-tui-replay-<pid>``.
+  A replayed "link paper to project" no longer appends to the project's real
+  exported ``.bib`` file or looks the paper up on InspireHEP: the sandbox has
+  no network and no ``.bib`` paths.
+
+- **GUI uses the TUI's files** — ``arxiv-gui`` read ``.arxiv-tui.yml`` and
+  ``articles.db`` from the working directory (and logged there), so it never
+  saw the TUI's papers. It now resolves config, database, ranker, keywords and
+  log exactly like the TUI (``Paths::ApplyTo``), and CI builds it.
+
+- **Mouse support** — click a view or an article to select it, and scroll
+  views or articles with the wheel. The article list draws its own rows, so
+  clicks there never selected anything, and clicks only reached the focused
+  pane.
+
+- **Richer detail pane** — under the link the detail pane shows the arXiv id,
+  category and your star rating, and the paper's tags and projects when it
+  has any.
+
+- **Filter pane counts and sections** — Bookmarks, Unread, every tag and
+  every project show how many papers they hold, and tags and projects sit
+  under **Tags** / **Projects** headings instead of running on from the
+  fixed views.
+
+- **Footer hints** — the footer lists the keys that apply where you are: view
+  and project keys in the filter pane, article actions in the list, selection
+  actions when papers are selected — with your own key bindings.
+
+- **Success messages no longer block** — "BibTeX copied", "Exported to …"
+  and similar now appear for a few seconds in the bottom-right corner instead
+  of a dialog that had to be dismissed (and swallowed the next key). Errors
+  still open a dialog.
+
+- **Status column** — selection (``+``) and bookmark (``★``) markers have
+  their own column in the article list instead of being prefixed to titles,
+  where the double-width ``⭐`` pushed titles out of line.
+
+- **Layout follows the window** — pane widths and the number of article rows
+  come from the area the TUI is drawn in rather than a separate terminal-size
+  query, and the article list no longer lays out two rows more than fit (the
+  cursor could sit on a hidden row at the bottom).
+
+- **Bulk project assignment updates the project's BibTeX file** — assigning a
+  selection to a project skipped the auto-update of an exported ``.bib`` that
+  single assignment does, and single assignment only found papers shown in
+  the current view.
+
+- **Tagging from the TUI** — ``#`` opens a Tags dialog for the focused
+  article or the selection: toggle tags, add new ones, delete one from every
+  paper. Tags existed in the database and filter pane, but nothing in the TUI
+  could create or apply them; a newly created tag now also appears in the
+  filter pane at once.
+
+- **Settings can be cancelled** — ``q`` closes the Settings dialog without
+  saving (and undoes a theme preview); ``Esc`` while editing a field now
+  abandons that edit instead of keeping it. ``Esc`` still saves and closes.
+
+- **Dates are arXiv days everywhere** — the article list and exports showed
+  dates in local time, so west of UTC a paper announced on 4 July showed as
+  3 July; the date-range filter (``r``) used local midnights with DST off,
+  missing papers on the first day and including some from the day after the
+  range. Dates are now shown and filtered as UTC days.
+- **Keyword boosts work in the TUI** — *Recommended*, the *New Articles*
+  order and the score column used only the rating model, so keywords had no
+  effect until you had rated papers (only ``--export-yaml`` used them). They
+  now use the blended score, and saving keywords re-ranks the current view.
+  In the keyword editor (``K``) every letter is text — ``d``, ``j`` and
+  ``k`` used to delete or move the selection — and ``↑``/``↓`` select.
+- **Exports no longer land in the current directory** — project exports, the
+  daily digest and the BibTeX fallback file were written wherever arxiv-tui
+  was started. They now go to the new ``export_dir`` (default
+  ``~/.local/share/arxiv-tui/exports``, editable in Settings), and project
+  names containing ``/`` no longer break the file name.
+- **Database integrity** — the database now has a schema version and enforces
+  its foreign keys: deleting a paper or project removes its memberships,
+  ratings, notes and tags in the database itself. On first start the link
+  tables are rebuilt once and leftover rows for papers that no longer exist
+  are dropped. A database written by a newer arxiv-tui is refused instead of
+  being modified.
+- **Arrow keys in the filter and article lists** — moving the filter list
+  with ``↑``/``↓`` changed the highlighted view without loading it (the old
+  view's papers stayed on screen), and moving the article list that way did
+  not mark papers read with the detail pane open or record the move for
+  replay. Both lists now behave exactly like ``j``/``k``.
+- **Retraining keeps keywords** — a full retrain (``R``) dropped the interest
+  keywords until the next start, so keyword boosts silently stopped working.
+- **``--help`` and ``--version``** — and unknown options, a missing file name
+  or two modes at once (``--fetch`` with an export, say) are now errors
+  instead of being silently ignored.
+- **Reproducible builds** — FTXUI is pinned to the v7.0.3 release instead of
+  tracking its ``main`` branch.
+- **``replay.jsonl`` no longer grows forever** — when it is over 5 MiB at
+  start-up it is moved to ``replay.jsonl.1`` and a new log is started.
+
+- **Polite to arXiv** — every request identifies itself
+  (``arxiv-tui/<version> (+https://github.com/jxi24/arxiv-tui)``), and the
+  backfill after missed days waits 3 s between arXiv API pages, as the API
+  terms of use ask.
+
+- **No more half-written files** — ``config.yml``, ``ranker.bin``, the
+  keywords file, exports, Obsidian notes and project ``.bib`` files are
+  written to a temporary file and renamed into place, so a full disk or a
+  crash mid-write leaves the previous version instead of a truncated file.
+  A symlinked ``config.yml`` stays a symlink. Obsidian export no longer
+  overwrites a paper's existing note (and your reading notes in it), and a
+  second export on the same day adds to that day's index instead of
+  replacing it. Importing a project no longer overwrites papers already in
+  the database (their title, authors and category were replaced by the
+  file's, and the category emptied).
+
+- **Security hardening** — a crash no longer hangs, restores the terminal
+  and leaves ``SIGTERM`` alone; the crash report holds the end of
+  ``replay.jsonl``. The clipboard backend is started without a shell
+  (``ARXIV_TUI_CLIPBOARD`` names a program, not a command line). The
+  InspireHEP lookup only sends real arXiv ids and only follows BibTeX links
+  back to ``https://inspirehep.net/``. PDF downloads are streamed to a
+  temporary file, must start with ``%PDF-`` and stay under 256 MiB, and
+  replace the target only when complete — an HTML error page or a dropped
+  connection no longer leaves a broken ``.pdf`` behind. ``--replay`` accepts a
+  crash report as well as ``replay.jsonl`` (it never could: the report's
+  text header stopped it at line 1), and runs on
+  an in-memory copy of the database and skips exports, imports, downloads
+  and keyword saves. Project import files over 64 MiB are refused.
+
 - **Exports and downloads no longer freeze the TUI** — ``o`` (Obsidian),
   ``g`` (selected digest), ``G`` (digest archive) and ``d`` (download PDF)
   run in the background. A badge in the bottom-right corner shows progress
