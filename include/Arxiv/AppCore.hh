@@ -124,12 +124,22 @@ class AppCore {
     float GetRecommendThreshold() const { return m_recommend_threshold; }
 
     // Project management
-    void AddProject(const std::string& project_name);
+    /// Returns the name as stored (trimmed), or "" if nothing was left.
+    std::string AddProject(const std::string& project_name);
     void RemoveProject(const std::string& project_name);
     void SetProjectParent(const std::string& project_name, const std::string& parent);
     void LinkArticleToProject(const std::string& article_link, const std::string& project_name);
     void UnlinkArticleFromProject(const std::string& article_link, const std::string& project_name);
     std::vector<std::string> GetProjects() const;
+    /// Rename (trimmed). The view follows a renamed project or tag. False if
+    /// the name is empty or taken.
+    bool RenameProject(const std::string& old_name, const std::string& new_name);
+    bool RenameTag(const std::string& old_name, const std::string& new_name);
+    /// Where `project` may move: "" (top level) and every project that is
+    /// not `project` itself or one of its sub-projects.
+    std::vector<std::string> ParentCandidates(const std::string& project) const;
+    /// "" for a top-level project.
+    std::string GetProjectParent(const std::string& project) const;
     std::vector<Article> GetArticlesForProject(const std::string& project_name) const;
     std::vector<std::string> GetProjectsForArticle(const std::string& article_link) const;
 
@@ -233,6 +243,11 @@ class AppCore {
     // Test hook: refresh on a custom interval instead of auto_refresh_minutes.
     void StartAutoRefresh(std::chrono::milliseconds interval);
     void StopAutoRefresh();
+    /// One network refresh on a background thread (the GUI's Refresh). False
+    /// if a fetch is already running. The list updates through
+    /// TryRefetchIfNeeded, like the auto-refresh.
+    bool StartRefresh();
+    void WaitForRefresh();
     bool IsAutoRefreshing() const;
     int GetAutoRefreshMinutes() const;
 
@@ -244,6 +259,12 @@ class AppCore {
     // True once the most recent network fetch (initial or auto-refresh)
     // completed and was stored.
     bool LastFetchSucceeded() const { return m_last_fetch_ok.load(); }
+    /// Why the last fetch (initial or auto-refresh) failed; empty once one
+    /// succeeds. Thread-safe.
+    std::string LastFetchError() const {
+        std::lock_guard<std::mutex> lock(m_fetch_error_mutex);
+        return m_fetch_error;
+    }
     void WaitForInitialFetch();
 
     // Category (arxiv tag) filter applied across every view. The set is
@@ -470,6 +491,7 @@ class AppCore {
 
     // Background auto-refresh
     std::thread m_refresh_thread;
+    std::thread m_refresh_once_thread; // StartRefresh
     std::atomic<bool> m_refresh_running{false};
     std::condition_variable m_refresh_cv;
     std::mutex m_refresh_mutex;
@@ -479,6 +501,12 @@ class AppCore {
     std::thread m_initial_fetch_thread;
     std::atomic<bool> m_fetching{false};
     std::atomic<bool> m_last_fetch_ok{false};
+    mutable std::mutex m_fetch_error_mutex;
+    std::string m_fetch_error; // guarded by m_fetch_error_mutex
+    void SetFetchError(std::string error) {
+        std::lock_guard<std::mutex> lock(m_fetch_error_mutex);
+        m_fetch_error = std::move(error);
+    }
     ReplayRecorder* m_recorder = nullptr;
 
     // Active arxiv categories — empty = no filter. Initialised in the

@@ -250,7 +250,9 @@ error. Add a new migration as the next version, not as another
 | `a` | Toggle detail view |
 | `p` | Open project assignment dialog |
 | `f` | Followed-authors dialog (follow/unfollow; warns on names without a first initial) |
-| `x` | Delete project |
+| `x` | Delete project (asks first) |
+| `E` / `M` | Rename the selected project or tag / move a project |
+| `C` | Clear the selection |
 | `r` | Set date range filter |
 | `/` | Open search dialog |
 | `?` | Toggle help overlay |
@@ -535,6 +537,14 @@ A brief record of what has been implemented. Consult `README.md` for user-facing
   is written immediately after the bulk insert, so the tail of every fetch shares the
   anchor's second; with `>=` those papers (dozens to hundreds per day) were replayed as
   new the following day.
+
+### Unreleased — missing features (claude/missing-features)
+- **Offline notice** — `AppCore::LastFetchError()` (set by the initial fetch and auto-refresh, cleared on success); the footer shows it in place of the topics.
+- **Selection** — `C` (`ClearSelection`, recorded as `clear_selection`); un-bookmarking in the Bookmarks view reloads it.
+- **Rename / move** — `E` (`Rename`) and `M` (`MoveProject`), `Views/RenameDialog.cc`; `DatabaseManager::RenameProject/RenameTag` (cascades), `AppCore::RenameProject/RenameTag/ParentCandidates` (no cycles); replay `rename_project` / `rename_tag`.
+- **Project JSON** — `Export::ProjectExtras` (parent, tags, rating) written and restored by import; missing dates become now; blank names refused; `AppCore::AddProject` returns the trimmed name.
+- **GUI** — Async AppCore + `TryRefetchIfNeeded` per frame, `AppCore::StartRefresh` for Refresh, downloads via `StartDownloadArticle`, ratings/tags/projects, read dimming, counts, status bar; `imgui.ini` in the state dir.
+- **GUI look** — `src/GUI/Style.hh/.cc`: one `Palette` (never ad-hoc colours in `main.cc`), `LoadFonts()` (system sans, `ARXIV_GUI_FONT`; glyph ranges cover Greek, maths, combining marks), `ApplyStyle()`. `main.cc`'s `ArxivGuiApp` draws header, sidebar, clipped card list, detail pane and status bar. Nerd Font icons: `FontSearch.hh/.cc` (no ImGui; built into `unit_tests`, `FontSearchTest.cc`) finds one under the XDG font dirs (`ARXIV_GUI_ICON_FONT` overrides, empty = off); `LoadFonts` merges only the `Icon::*` code points into each font and sets `Fonts::icons`; labels go through `ArxivGuiApp::label(icon, text)`, so without one the GUI is text-only.
 
 ### Unreleased — TUI polish (claude/next-steps)
 - **Settings cancel** — `q` restores the config snapshot taken on open (`m_settings_on_open`) and the theme; Esc in a field discards the edit.

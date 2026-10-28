@@ -146,7 +146,13 @@ void ArxivApp::SetupMainRenderer() {
         const std::size_t left_width = quit_key.size() + help_key.size() + filter_label.size() +
                                        (filter_detail.empty() ? 0 : filter_detail.size() + 2) +
                                        position.size() + hints_width + 34;
-        if (left_width + topics_str.size() + 2 <= static_cast<std::size_t>(ScreenWidth()))
+        // A failed fetch takes the topics' place: the list is not current.
+        const std::string offline = core.IsFetching() || core.LastFetchError().empty()
+                                        ? ""
+                                        : "Offline: showing stored papers ";
+        if (!offline.empty())
+            footer_els.push_back(text(offline) | bold | color(TextColors::error()));
+        else if (left_width + topics_str.size() + 2 <= static_cast<std::size_t>(ScreenWidth()))
             footer_els.push_back(text(topics_str) | color(TextColors::subtext()));
         footer_els.push_back(text(" "));
 
@@ -157,6 +163,10 @@ void ArxivApp::SetupMainRenderer() {
 
         if (dialog_depth == Dialog::NewProject) {
             document = dbox({document, RenderNewProjectDialog()});
+        } else if (dialog_depth == Dialog::Rename) {
+            document = dbox({document, RenderRenameDialog()});
+        } else if (dialog_depth == Dialog::MoveProject) {
+            document = dbox({document, RenderMoveProjectDialog()});
         } else if (dialog_depth == Dialog::AssignProject) {
             document = dbox({document, project_dialog->Render()});
         } else if (dialog_depth == Dialog::Error) {
@@ -338,6 +348,12 @@ bool ArxivApp::HandleDialogEvent(ftxui::Event event) {
         break;
     case Dialog::AssignProject:
         HandleAssignProjectEvent(event);
+        break;
+    case Dialog::Rename:
+        HandleRenameEvent(event);
+        break;
+    case Dialog::MoveProject:
+        HandleMoveProjectEvent(event);
         break;
     case Dialog::DateRange:
         HandleDateRangeEvent(event);
@@ -525,6 +541,24 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
         // the core's startup copy used to discard them.
         m_settings_on_open = m_config;
         dialog_depth = Dialog::Settings;
+        return true;
+    }
+
+    if (key_bindings.matches(event, KeyBindings::Action::Rename)) {
+        OpenRenameDialog();
+        return true;
+    }
+    if (key_bindings.matches(event, KeyBindings::Action::MoveProject)) {
+        OpenMoveProjectDialog();
+        return true;
+    }
+
+    // Drop the whole selection (it survives view changes, so it can hold
+    // papers no longer on screen).
+    if (key_bindings.matches(event, KeyBindings::Action::ClearSelection)) {
+        if (m_recorder)
+            m_recorder->RecordClearSelection();
+        core.ClearSelections();
         return true;
     }
 

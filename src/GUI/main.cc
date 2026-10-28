@@ -8,325 +8,716 @@
 #include "Arxiv/Fetcher.hh"
 #include "Arxiv/Logging.hh"
 #include "Arxiv/Paths.hh"
+#include "Arxiv/Process.hh"
+#include "Arxiv/Utf8.hh"
 
 #include <GLFW/glfw3.h>
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <ctime>
 #include <filesystem>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "Style.hh"
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 #include "spdlog/spdlog.h"
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+namespace {
 
-static std::string format_date(const Arxiv::time_point& tp) {
+using namespace ArxivGui;
+
+std::string format_date(const Arxiv::time_point& tp) {
     std::time_t t = std::chrono::system_clock::to_time_t(tp);
     std::tm tm{};
-    gmtime_r(&t, &tm);
-    char buf[16];
-    std::strftime(buf, sizeof(buf), "%Y-%m-%d", &tm);
+    gmtime_r(&t, &tm); // the arXiv day, as in the TUI
+    char buf[32];
+    std::strftime(buf, sizeof(buf), "%d %b %Y", &tm);
     return buf;
 }
 
-static void glfw_error_callback(int error, const char* description) {
+void glfw_error_callback(int error, const char* description) {
     spdlog::error("GLFW error {}: {}", error, description);
 }
 
-// ---------------------------------------------------------------------------
-// ArxivGuiApp
+// The longest prefix of `text` that fits in `width` pixels with "…".
+std::string fit(const std::string& text, float width) {
+    if (ImGui::CalcTextSize(text.c_str()).x <= width)
+        return text;
+    const auto starts = Arxiv::Utf8::CharStarts(text);
+    std::size_t lo = 0, hi = starts.size();
+    while (lo + 1 < hi) {
+        const std::size_t mid = (lo + hi) / 2;
+        const std::string candidate = text.substr(0, starts[mid]) + "\xE2\x80\xA6";
+        if (ImGui::CalcTextSize(candidate.c_str()).x <= width)
+            lo = mid;
+        else
+            hi = mid;
+    }
+    return text.substr(0, starts[lo]) + "\xE2\x80\xA6";
+}
+
+// A five-pointed star centred at `c` (drawn, so it needs no font glyph).
+void draw_star(ImDrawList* dl, ImVec2 c, float r, ImU32 col, bool filled) {
+    ImVec2 pts[10];
+    for (int i = 0; i < 10; ++i) {
+        const float radius = (i % 2 == 0) ? r : r * 0.45f;
+        const float angle = -1.5707963f + static_cast<float>(i) * 0.6283185f;
+        pts[i] = {c.x + std::cos(angle) * radius, c.y + std::sin(angle) * radius};
+    }
+    if (filled)
+        dl->AddConcavePolyFilled(pts, 10, col);
+    else
+        dl->AddPolyline(pts, 10, col, ImDrawFlags_Closed, 1.5f);
+}
+
+// A rounded pill with text; returns its width.
+float chip(ImDrawList* dl, ImVec2 pos, const std::string& label, ImU32 bg, ImU32 fg, ImFont* font) {
+    ImGui::PushFont(font);
+    const ImVec2 size = ImGui::CalcTextSize(label.c_str());
+    const ImVec2 pad = {8, 3};
+    dl->AddRectFilled(pos, {pos.x + size.x + pad.x * 2, pos.y + size.y + pad.y * 2}, bg, 99.0f);
+    dl->AddText({pos.x + pad.x, pos.y + pad.y}, fg, label.c_str());
+    ImGui::PopFont();
+    return size.x + pad.x * 2;
+}
+
 // ---------------------------------------------------------------------------
 
 class ArxivGuiApp {
   public:
-    explicit ArxivGuiApp(Arxiv::AppCore& core)
-        : m_core(core) {}
+    ArxivGuiApp(Arxiv::AppCore& core, Fonts fonts)
+        : m_core(core)
+        , m_fonts(fonts) {}
 
     void render() {
-        const ImGuiIO& io = ImGui::GetIO();
-        const float W = io.DisplaySize.x;
-        const float H = io.DisplaySize.y;
+        // Results of the background fetch, refresh and downloads.
+        m_core.TryRefetchIfNeeded();
+        mark_focused_read();
 
-        // Full-screen dockspace window with no decoration.
-        ImGui::SetNextWindowPos({0, 0});
-        ImGui::SetNextWindowSize({W, H});
+        const ImGuiViewport* vp = ImGui::GetMainViewport();
+        ImGui::SetNextWindowPos(vp->WorkPos);
+        ImGui::SetNextWindowSize(vp->WorkSize);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {0, 0});
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, {0, 0});
         ImGui::Begin("##root",
                      nullptr,
-                     ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
-                         ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar |
-                         ImGuiWindowFlags_NoScrollWithMouse |
-                         ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_MenuBar);
-        ImGui::PopStyleVar();
+                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+                         ImGuiWindowFlags_NoBringToFrontOnFocus |
+                         ImGuiWindowFlags_NoScrollWithMouse);
+        ImGui::PopStyleVar(2);
 
-        render_menu_bar();
+        const float W = vp->WorkSize.x;
+        const float H = vp->WorkSize.y;
+        const float header_h = 60.0f;
+        const float status_h = 30.0f;
+        const float sidebar_w = 240.0f;
+        const float detail_w = std::max(380.0f, W * 0.36f);
+        const float body_h = H - header_h - status_h;
 
-        // Three-column layout: filter list | article list | detail
-        const float filter_w = 200.0f;
-        const float detail_w = 420.0f;
-        const float article_w = W - filter_w - detail_w;
-        const float panel_h = H - ImGui::GetFrameHeightWithSpacing() * 2.0f;
+        render_header(W, header_h);
+        ImGui::SetCursorPos({0, header_h});
+        render_sidebar(sidebar_w, body_h);
+        ImGui::SetCursorPos({sidebar_w, header_h});
+        render_articles(W - sidebar_w - detail_w, body_h);
+        ImGui::SetCursorPos({W - detail_w, header_h});
+        render_detail(detail_w, body_h);
+        ImGui::SetCursorPos({0, H - status_h});
+        render_status_bar(W, status_h);
 
-        render_filter_panel(filter_w, panel_h);
-        ImGui::SameLine();
-        render_article_panel(article_w, panel_h);
-        ImGui::SameLine();
-        render_detail_panel(detail_w, panel_h);
-
+        handle_keys();
         ImGui::End();
-
-        if (m_show_search_dialog)
-            render_search_dialog();
     }
 
   private:
     Arxiv::AppCore& m_core;
-
-    // UI state
-    bool m_show_search_dialog{false};
+    Fonts m_fonts;
     char m_search_buf[512]{};
+    bool m_focus_search{false};
+    bool m_scroll_to_focus{false};
     std::string m_status_msg;
+    std::string m_last_focused; // marked read when it changes
 
-    // ---------------------------------------------------------------------------
-    void render_menu_bar() {
-        if (!ImGui::BeginMenuBar())
-            return;
+    static constexpr float kCardHeight = 84.0f;
+    static constexpr float kCardGap = 8.0f;
 
-        if (ImGui::BeginMenu("File")) {
-            if (ImGui::MenuItem("Refresh", "F5"))
-                m_core.FetchArticles();
-            ImGui::Separator();
-            if (ImGui::MenuItem("Quit", "Ctrl+Q"))
-                glfwSetWindowShouldClose(glfwGetCurrentContext(), GLFW_TRUE);
-            ImGui::EndMenu();
-        }
-
-        if (ImGui::BeginMenu("View")) {
-            const auto& opts = m_core.GetFilterOptions();
-            for (int i = 0; i < static_cast<int>(opts.size()); ++i) {
-                bool selected = (m_core.GetFilterIndex() == i);
-                if (ImGui::MenuItem(opts[static_cast<size_t>(i)].c_str(), nullptr, selected)) {
-                    m_core.SetFilterIndex(i);
-                }
-            }
-            ImGui::EndMenu();
-        }
-
-        if (ImGui::BeginMenu("Search")) {
-            if (ImGui::MenuItem("Find…", "/"))
-                m_show_search_dialog = true;
-            if (ImGui::MenuItem("Clear search"))
-                m_core.ClearSearch();
-            ImGui::EndMenu();
-        }
-
-        ImGui::EndMenuBar();
-    }
-
-    // ---------------------------------------------------------------------------
-    void render_filter_panel(float width, float height) {
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {4, 4});
-        ImGui::BeginChild("##filters", {width, height}, ImGuiChildFlags_Borders);
-        ImGui::PopStyleVar();
-
-        ImGui::TextDisabled("Filters");
-        ImGui::Separator();
-
-        const auto& opts = m_core.GetFilterOptions();
-        for (int i = 0; i < static_cast<int>(opts.size()); ++i) {
-            bool selected = (m_core.GetFilterIndex() == i);
-            if (ImGui::Selectable(opts[static_cast<size_t>(i)].c_str(),
-                                  selected,
-                                  ImGuiSelectableFlags_None,
-                                  {width - 12.0f, 0})) {
-                m_core.SetFilterIndex(i);
-            }
-        }
-
-        ImGui::EndChild();
-    }
-
-    // ---------------------------------------------------------------------------
-    void render_article_panel(float width, float height) {
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {4, 4});
-        ImGui::BeginChild("##articles", {width, height}, ImGuiChildFlags_Borders);
-        ImGui::PopStyleVar();
-
-        const auto articles = m_core.GetCurrentArticles();
-
-        ImGui::TextDisabled(
-            "%zu article(s)  —  %s",
-            articles.size(),
-            m_core.GetFilterOptions()[static_cast<size_t>(m_core.GetFilterIndex())].c_str());
-        ImGui::Separator();
-
-        const float row_h = ImGui::GetTextLineHeightWithSpacing() * 2.2f;
-        for (int i = 0; i < static_cast<int>(articles.size()); ++i) {
-            const auto& a = articles[static_cast<size_t>(i)];
-            bool selected = (m_core.GetArticleIndex() == i);
-
-            ImGui::PushID(i);
-            if (ImGui::Selectable("##row", selected, ImGuiSelectableFlags_None, {0, row_h})) {
-                m_core.SetArticleIndex(i);
-            }
-
-            // Overlay text on the selectable
-            ImVec2 item_pos = ImGui::GetItemRectMin();
-            ImGui::SetCursorScreenPos({item_pos.x + 4, item_pos.y + 2});
-
-            // Bookmark indicator
-            const char* bm = a.bookmarked ? "[*] " : "    ";
-            ImGui::TextColored(
-                a.bookmarked ? ImVec4{1, 0.8f, 0.2f, 1} : ImVec4{0.5f, 0.5f, 0.5f, 1}, "%s", bm);
-            ImGui::SameLine();
-
-            // Title (truncated)
-            std::string title = a.title;
-            if (title.size() > 80)
-                title = title.substr(0, 77) + "...";
-            ImGui::TextUnformatted(title.c_str());
-
-            // Second line: authors + date
-            ImGui::SetCursorScreenPos(
-                {item_pos.x + 4 + 28, item_pos.y + ImGui::GetTextLineHeightWithSpacing() + 2});
-            ImGui::TextDisabled("%s  |  %s", a.authors.c_str(), format_date(a.date).c_str());
-
-            // Context menu on right-click
-            if (ImGui::BeginPopupContextItem("##ctx")) {
-                m_core.SetArticleIndex(i);
-                if (ImGui::MenuItem(a.bookmarked ? "Remove bookmark" : "Bookmark"))
-                    m_core.ToggleBookmark(a.link);
-                if (ImGui::MenuItem("Download PDF"))
-                    m_core.DownloadArticle(a.id());
-                if (ImGui::MenuItem("Copy link"))
-                    ImGui::SetClipboardText(a.link.c_str());
-                ImGui::EndPopup();
-            }
-            ImGui::PopID();
-        }
-
-        ImGui::EndChild();
-
-        // Keyboard shortcuts in article panel scope
-        if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
-            const auto n = static_cast<int>(articles.size());
-            if (ImGui::IsKeyPressed(ImGuiKey_J) && m_core.GetArticleIndex() < n - 1)
-                m_core.SetArticleIndex(m_core.GetArticleIndex() + 1);
-            if (ImGui::IsKeyPressed(ImGuiKey_K) && m_core.GetArticleIndex() > 0)
-                m_core.SetArticleIndex(m_core.GetArticleIndex() - 1);
-            if (ImGui::IsKeyPressed(ImGuiKey_B) && !articles.empty())
-                m_core.ToggleBookmark(articles[static_cast<size_t>(m_core.GetArticleIndex())].link);
-            if (ImGui::IsKeyPressed(ImGuiKey_Slash))
-                m_show_search_dialog = true;
-        }
-    }
-
-    // ---------------------------------------------------------------------------
-    void render_detail_panel(float width, float height) {
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {8, 8});
-        ImGui::BeginChild("##detail", {width, height}, ImGuiChildFlags_Borders);
-        ImGui::PopStyleVar();
-
-        const auto articles = m_core.GetCurrentArticles();
+    const Arxiv::Article* focused() const {
+        const auto& articles = m_core.GetCurrentArticles();
         const int idx = m_core.GetArticleIndex();
-        if (articles.empty() || idx < 0 || idx >= static_cast<int>(articles.size())) {
-            ImGui::TextDisabled("No article selected.");
+        if (idx < 0 || idx >= static_cast<int>(articles.size()))
+            return nullptr;
+        return &articles[static_cast<std::size_t>(idx)];
+    }
+
+    // Opening a paper reads it, as in the TUI's detail pane.
+    void mark_focused_read() {
+        const auto* a = focused();
+        if (!a || a->link == m_last_focused)
+            return;
+        m_last_focused = a->link;
+        if (!a->read)
+            m_core.MarkArticleRead(a->link);
+    }
+
+    void select_article(int index) {
+        m_core.SetArticleIndex(index);
+        m_scroll_to_focus = true;
+    }
+
+    void download(const Arxiv::Article& a) {
+        // A background task: the window keeps drawing while the PDF arrives.
+        if (!m_core.StartDownloadArticle(a.link))
+            m_status_msg = "Busy: " + m_core.GetBackgroundTaskStatus().label;
+    }
+
+    void open_in_browser() {
+        for (const auto& link : m_core.GetLinksToOpen()) // arXiv links only
+            Arxiv::Process::SpawnDetached({"xdg-open", link});
+    }
+
+    // ---------------------------------------------------------------------
+    void render_header(float width, float height) {
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        const ImVec2 origin = ImGui::GetCursorScreenPos();
+        dl->AddRectFilled(origin, {origin.x + width, origin.y + height}, Palette::kSurface);
+        dl->AddLine({origin.x, origin.y + height - 1},
+                    {origin.x + width, origin.y + height - 1},
+                    Palette::kBorder);
+
+        // Brand and current view.
+        ImGui::PushFont(m_fonts.title);
+        const float title_y = origin.y + (height - ImGui::GetFontSize()) / 2;
+        dl->AddText({origin.x + 20, title_y}, Palette::kAccent, "arXiv");
+        const float brand_w = ImGui::CalcTextSize("arXiv").x;
+        ImGui::PopFont();
+        ImGui::PushFont(m_fonts.bold);
+        const auto& opts = m_core.GetFilterOptions();
+        const int fi = m_core.GetFilterIndex();
+        std::string view = fi >= 0 && fi < static_cast<int>(opts.size())
+                               ? opts[static_cast<std::size_t>(fi)]
+                               : std::string();
+        view.erase(0, view.find_first_not_of(' '));
+        dl->AddText({origin.x + 32 + brand_w, origin.y + (height - ImGui::GetFontSize()) / 2},
+                    Palette::kText,
+                    view.c_str());
+        ImGui::PopFont();
+
+        // Search box and Refresh on the right.
+        const float search_w = std::min(420.0f, width * 0.32f);
+        const std::string refresh = label(Icon::kRefresh, "Refresh");
+        const float refresh_w =
+            ImGui::CalcTextSize(refresh.c_str()).x + ImGui::GetStyle().FramePadding.x * 2 + 8;
+        const float frame_h = ImGui::GetFrameHeight();
+        const float y = (height - frame_h) / 2;
+        ImGui::SetCursorPos({width - search_w - refresh_w - 36, y});
+        ImGui::SetNextItemWidth(search_w);
+        if (m_focus_search) {
+            ImGui::SetKeyboardFocusHere();
+            m_focus_search = false;
+        }
+        const std::string hint = label(Icon::kSearch, "Search titles, authors, abstracts   /");
+        if (ImGui::InputTextWithHint("##search",
+                                     hint.c_str(),
+                                     m_search_buf,
+                                     sizeof(m_search_buf),
+                                     ImGuiInputTextFlags_EnterReturnsTrue)) {
+            if (m_search_buf[0] != '\0') {
+                m_core.SetSearchQuery(m_search_buf, true, true, true);
+                m_core.SetFilterIndex(Arxiv::AppCore::FilterView::Search);
+            } else {
+                m_core.ClearSearch();
+            }
+        }
+        ImGui::SetCursorPos({width - refresh_w - 20, y});
+        ImGui::BeginDisabled(m_core.IsFetching());
+        if (ImGui::Button(refresh.c_str(), {refresh_w, 0}))
+            m_core.StartRefresh(); // from arXiv, in the background
+        ImGui::EndDisabled();
+    }
+
+    // "<icon>  text" when a Nerd Font is loaded, plain text otherwise.
+    std::string label(const char* icon, const std::string& text) const {
+        return m_fonts.icons ? std::string(icon) + "  " + text : text;
+    }
+
+    static const char* view_icon(int index) {
+        using View = Arxiv::AppCore::FilterView;
+        switch (static_cast<View>(index)) {
+        case View::All:
+            return Icon::kInbox;
+        case View::Bookmarks:
+            return Icon::kBookmark;
+        case View::Today:
+            return Icon::kCalendar;
+        case View::Range:
+            return Icon::kCalendarRange;
+        case View::Search:
+            return Icon::kSearch;
+        case View::Recommended:
+            return Icon::kLightbulb;
+        case View::FollowedAuthors:
+            return Icon::kUsers;
+        case View::NewArticles:
+            return Icon::kBolt;
+        case View::Updated:
+            return Icon::kPencil;
+        case View::Unread:
+            return Icon::kEnvelope;
+        default:
+            return Icon::kInbox;
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    void render_sidebar(float width, float height) {
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {12, 16});
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, {0, 2});
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, Palette::kSurface);
+        ImGui::BeginChild("##sidebar", {width, height}, ImGuiChildFlags_AlwaysUseWindowPadding);
+        ImGui::PopStyleColor();
+
+        section_heading("VIEWS");
+        const auto opts = m_core.GetFilterOptions();
+        const char* icon = nullptr; // per section once tags/projects start
+        for (int i = 0; i < static_cast<int>(opts.size()); ++i) {
+            if (const auto section = m_core.GetFilterSection(i); !section.empty()) {
+                icon = section == "Tags" ? Icon::kTag : Icon::kFolder;
+                ImGui::Dummy({0, 10});
+                std::string upper = section;
+                for (auto& ch : upper)
+                    ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+                section_heading(upper.c_str());
+            }
+            nav_item(i, opts[static_cast<std::size_t>(i)], icon ? icon : view_icon(i), width - 24);
+        }
+        ImGui::EndChild();
+        ImGui::PopStyleVar(2);
+    }
+
+    void section_heading(const char* text) {
+        ImGui::PushFont(m_fonts.small);
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 8);
+        ImGui::PushStyleColor(ImGuiCol_Text, Palette::kMuted);
+        ImGui::TextUnformatted(text);
+        ImGui::PopStyleColor();
+        ImGui::PopFont();
+        ImGui::Dummy({0, 4});
+    }
+
+    void nav_item(int index, const std::string& option, const char* icon, float width) {
+        const bool selected = m_core.GetFilterIndex() == index;
+        const float h = 34.0f;
+        ImGui::PushID(index);
+        const ImVec2 pos = ImGui::GetCursorScreenPos();
+        if (ImGui::InvisibleButton("##nav", {width, h}))
+            m_core.SetFilterIndex(index);
+        const bool hovered = ImGui::IsItemHovered();
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        if (selected || hovered)
+            dl->AddRectFilled(pos,
+                              {pos.x + width, pos.y + h},
+                              selected ? Palette::kAccentSoft : Palette::kCardHover,
+                              8.0f);
+        // Sub-projects are indented with leading spaces in the option text.
+        const auto indent = option.find_first_not_of(' ');
+        const std::string text =
+            label(icon, indent == std::string::npos ? option : option.substr(indent));
+        const float x =
+            pos.x + 10 + static_cast<float>(indent == std::string::npos ? 0 : indent) * 6;
+        ImGui::PushFont(selected ? m_fonts.bold : m_fonts.body);
+        const float ty = pos.y + (h - ImGui::GetFontSize()) / 2;
+        dl->AddText({x, ty}, selected ? Palette::kText : Palette::kMuted, text.c_str());
+        ImGui::PopFont();
+        if (const auto count = m_core.GetFilterCount(index); count && *count > 0) {
+            ImGui::PushFont(m_fonts.small);
+            const std::string n = std::to_string(*count);
+            const float cw = ImGui::CalcTextSize(n.c_str()).x;
+            ImGui::PopFont();
+            chip(dl,
+                 {pos.x + width - cw - 26, pos.y + (h - 20) / 2},
+                 n,
+                 selected ? Palette::kAccent : Palette::kCard,
+                 selected ? Palette::kBackground : Palette::kMuted,
+                 m_fonts.small);
+        }
+        ImGui::PopID();
+    }
+
+    // ---------------------------------------------------------------------
+    void render_articles(float width, float height) {
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {16, 16});
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, Palette::kBackground);
+        ImGui::BeginChild("##articles", {width, height}, ImGuiChildFlags_AlwaysUseWindowPadding);
+        ImGui::PopStyleColor();
+        ImGui::PopStyleVar();
+
+        const auto& articles = m_core.GetCurrentArticles();
+        if (articles.empty()) {
+            empty_state(m_core.IsFetching() ? "Fetching papers..." : "No papers in this view");
             ImGui::EndChild();
             return;
         }
 
-        const auto& a = articles[static_cast<size_t>(idx)];
+        // Keep the focused card in view after keyboard moves.
+        const float row = kCardHeight + kCardGap;
+        if (m_scroll_to_focus) {
+            const float top = static_cast<float>(m_core.GetArticleIndex()) * row;
+            const float view_h = ImGui::GetWindowHeight() - 32;
+            if (top < ImGui::GetScrollY())
+                ImGui::SetScrollY(top);
+            else if (top + kCardHeight > ImGui::GetScrollY() + view_h)
+                ImGui::SetScrollY(top + kCardHeight - view_h);
+            m_scroll_to_focus = false;
+        }
 
-        // Title
-        ImGui::PushTextWrapPos(width - 12);
-        ImGui::TextColored({0.4f, 0.8f, 1.0f, 1.0f}, "%s", a.title.c_str());
+        const float card_w = ImGui::GetContentRegionAvail().x;
+        ImGuiListClipper clipper;
+        clipper.Begin(static_cast<int>(articles.size()), row);
+        while (clipper.Step())
+            for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i)
+                article_card(i, articles[static_cast<std::size_t>(i)], card_w);
+        clipper.End();
+        ImGui::EndChild();
+    }
+
+    void empty_state(const char* text) {
+        ImGui::PushFont(m_fonts.bold);
+        const ImVec2 size = ImGui::CalcTextSize(text);
+        const ImVec2 avail = ImGui::GetContentRegionAvail();
+        ImGui::SetCursorPos({(avail.x - size.x) / 2 + 16, avail.y / 2 - size.y});
+        ImGui::PushStyleColor(ImGuiCol_Text, Palette::kMuted);
+        ImGui::TextUnformatted(text);
+        ImGui::PopStyleColor();
+        ImGui::PopFont();
+    }
+
+    void article_card(int i, const Arxiv::Article& a, float width) {
+        ImGui::PushID(i);
+        const ImVec2 pos = ImGui::GetCursorScreenPos();
+        const bool selected = m_core.GetArticleIndex() == i;
+        if (ImGui::InvisibleButton("##card", {width, kCardHeight}))
+            select_article(i);
+        const bool hovered = ImGui::IsItemHovered();
+        if (ImGui::BeginPopupContextItem("##ctx")) {
+            m_core.SetArticleIndex(i);
+            article_menu(a);
+            ImGui::EndPopup();
+        }
+        ImGui::Dummy({0, kCardGap});
+
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        const ImVec2 end = {pos.x + width, pos.y + kCardHeight};
+        dl->AddRectFilled(pos,
+                          end,
+                          selected ? Palette::kCardHover
+                                   : (hovered ? Palette::kCardHover : Palette::kCard),
+                          12.0f);
+        if (selected)
+            dl->AddRect(pos, end, Palette::kAccent, 12.0f, 0, 1.5f);
+
+        const float left = pos.x + 28;
+        const float text_w = width - 28 - 16;
+        // Unread: an accent dot.
+        if (!a.read)
+            dl->AddCircleFilled({pos.x + 14, pos.y + 22}, 4.0f, Palette::kAccent);
+
+        ImGui::PushFont(a.read ? m_fonts.body : m_fonts.bold);
+        const std::string title = fit(a.title.empty() ? "(no title)" : a.title, text_w - 24);
+        dl->AddText({left, pos.y + 12}, a.read ? Palette::kMuted : Palette::kText, title.c_str());
+        ImGui::PopFont();
+        if (a.bookmarked)
+            draw_star(dl, {pos.x + width - 20, pos.y + 21}, 7.0f, Palette::kStar, true);
+
+        ImGui::PushFont(m_fonts.body);
+        const std::string authors = fit(a.authors, text_w);
+        dl->AddText({left, pos.y + 36}, Palette::kMuted, authors.c_str());
+        ImGui::PopFont();
+
+        float x = left;
+        ImGui::PushFont(m_fonts.small);
+        const std::string date = format_date(a.date);
+        dl->AddText({x, pos.y + 61}, Palette::kMuted, date.c_str());
+        x += ImGui::CalcTextSize(date.c_str()).x + 10;
+        ImGui::PopFont();
+        if (!a.category.empty())
+            chip(dl,
+                 {x, pos.y + 58},
+                 a.category,
+                 Palette::kAccentSoft,
+                 Palette::kAccent,
+                 m_fonts.small);
+        ImGui::PopID();
+    }
+
+    // Context menu and detail-pane popups: everything one paper can do.
+    void article_menu(const Arxiv::Article& a) {
+        if (ImGui::MenuItem(
+                label(Icon::kBookmark, a.bookmarked ? "Remove bookmark" : "Bookmark").c_str(), "B"))
+            m_core.ToggleBookmark(a.link);
+        if (ImGui::MenuItem(label(Icon::kDownload, "Download PDF").c_str()))
+            download(a);
+        if (ImGui::MenuItem(label(Icon::kExternal, "Open in browser").c_str(), "O"))
+            open_in_browser();
+        if (ImGui::MenuItem(label(Icon::kLink, "Copy link").c_str()))
+            ImGui::SetClipboardText(a.link.c_str());
+        ImGui::Separator();
+        tag_menu(a);
+        project_menu(a);
+    }
+
+    void tag_menu(const Arxiv::Article& a) {
+        if (!ImGui::BeginMenu(label(Icon::kTag, "Tags").c_str()))
+            return;
+        const auto mine = m_core.GetTagsForArticle(a.link);
+        const auto all = m_core.GetTags();
+        if (all.empty())
+            ImGui::TextDisabled("No tags yet (create them in the TUI with #)");
+        for (const auto& tag : all) {
+            const bool on = std::find(mine.begin(), mine.end(), tag) != mine.end();
+            if (ImGui::MenuItem(("#" + tag).c_str(), nullptr, on)) {
+                if (on)
+                    m_core.UnlinkArticleFromTag(a.link, tag);
+                else
+                    m_core.LinkArticleToTag(a.link, tag);
+            }
+        }
+        ImGui::EndMenu();
+    }
+
+    void project_menu(const Arxiv::Article& a) {
+        if (!ImGui::BeginMenu(label(Icon::kFolder, "Projects").c_str()))
+            return;
+        const auto mine = m_core.GetProjectsForArticle(a.link);
+        const auto all = m_core.GetProjects();
+        if (all.empty())
+            ImGui::TextDisabled("No projects yet");
+        for (const auto& project : all) {
+            const bool in = std::find(mine.begin(), mine.end(), project) != mine.end();
+            if (ImGui::MenuItem(project.c_str(), nullptr, in)) {
+                if (in)
+                    m_core.UnlinkArticleFromProject(a.link, project);
+                else
+                    m_core.LinkArticleToProject(a.link, project);
+            }
+        }
+        ImGui::EndMenu();
+    }
+
+    // ---------------------------------------------------------------------
+    void render_detail(float width, float height) {
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {28, 24});
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, Palette::kSurface);
+        ImGui::BeginChild("##detail", {width, height}, ImGuiChildFlags_AlwaysUseWindowPadding);
+        ImGui::PopStyleColor();
+        ImGui::PopStyleVar();
+
+        const auto* focused_article = focused();
+        if (!focused_article) {
+            empty_state("Select a paper");
+            ImGui::EndChild();
+            return;
+        }
+        const Arxiv::Article a = *focused_article; // actions below may reload the list
+        const float wrap = ImGui::GetContentRegionAvail().x;
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+
+        // Chips: id, category, tags.
+        {
+            ImVec2 p = ImGui::GetCursorScreenPos();
+            float x = p.x;
+            x += chip(dl,
+                      {x, p.y},
+                      "arXiv:" + a.id(),
+                      Palette::kCard,
+                      Palette::kMuted,
+                      m_fonts.small) +
+                 6;
+            if (!a.category.empty())
+                x += chip(dl,
+                          {x, p.y},
+                          a.category,
+                          Palette::kAccentSoft,
+                          Palette::kAccent,
+                          m_fonts.small) +
+                     6;
+            for (const auto& tag : m_core.GetTagsForArticle(a.link)) {
+                if (x > p.x + wrap - 60)
+                    break;
+                x += chip(dl, {x, p.y}, "#" + tag, Palette::kCard, Palette::kText, m_fonts.small) +
+                     6;
+            }
+            ImGui::Dummy({0, 30});
+        }
+
+        ImGui::PushFont(m_fonts.title);
+        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + wrap);
+        ImGui::TextUnformatted(a.title.empty() ? "(no title)" : a.title.c_str());
         ImGui::PopTextWrapPos();
+        ImGui::PopFont();
+        ImGui::Dummy({0, 4});
 
-        ImGui::Spacing();
-        ImGui::TextDisabled("Authors:");
-        ImGui::SameLine();
-        ImGui::PushTextWrapPos(width - 12);
+        ImGui::PushStyleColor(ImGuiCol_Text, Palette::kMuted);
+        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + wrap);
         ImGui::TextUnformatted(a.authors.c_str());
         ImGui::PopTextWrapPos();
+        ImGui::PushFont(m_fonts.small);
+        ImGui::TextUnformatted(format_date(a.date).c_str());
+        const auto projects = m_core.GetProjectsForArticle(a.link);
+        if (!projects.empty()) {
+            std::string line = "In ";
+            for (std::size_t i = 0; i < projects.size(); ++i)
+                line += (i ? ", " : "") + projects[i];
+            ImGui::TextUnformatted(line.c_str());
+        }
+        ImGui::PopFont();
+        ImGui::PopStyleColor();
+        ImGui::Dummy({0, 8});
 
-        ImGui::Spacing();
-        ImGui::TextDisabled("Date: %s", format_date(a.date).c_str());
-        if (!a.category.empty())
-            ImGui::TextDisabled("Category: %s", a.category.c_str());
+        rating_row(a);
+        ImGui::Dummy({0, 10});
+        action_row(a);
+        ImGui::Dummy({0, 14});
 
-        ImGui::Separator();
-        ImGui::Spacing();
-
-        ImGui::TextDisabled("Abstract:");
-        ImGui::Spacing();
-        ImGui::PushTextWrapPos(width - 12);
+        ImGui::PushFont(m_fonts.small);
+        ImGui::PushStyleColor(ImGuiCol_Text, Palette::kMuted);
+        ImGui::TextUnformatted("ABSTRACT");
+        ImGui::PopStyleColor();
+        ImGui::PopFont();
+        ImGui::Dummy({0, 2});
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, {0, 6});
+        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + wrap);
         ImGui::TextUnformatted(a.abstract.c_str());
         ImGui::PopTextWrapPos();
-
-        ImGui::Spacing();
-        ImGui::Separator();
-
-        if (ImGui::SmallButton(a.bookmarked ? "Remove bookmark" : "Bookmark"))
-            m_core.ToggleBookmark(a.link);
-        ImGui::SameLine();
-        if (ImGui::SmallButton("Download PDF"))
-            m_core.DownloadArticle(a.id());
-        ImGui::SameLine();
-        if (ImGui::SmallButton("Copy link"))
-            ImGui::SetClipboardText(a.link.c_str());
+        ImGui::PopStyleVar();
 
         ImGui::EndChild();
     }
 
-    // ---------------------------------------------------------------------------
-    void render_search_dialog() {
-        ImGui::OpenPopup("Search##dlg");
-        ImVec2 center = ImGui::GetMainViewport()->GetCenter();
-        ImGui::SetNextWindowPos(center, ImGuiCond_Always, {0.5f, 0.5f});
-        ImGui::SetNextWindowSize({440, 0});
+    // Five drawn stars; click one to rate (the ratings train the ranker).
+    void rating_row(const Arxiv::Article& a) {
+        const int rating = m_core.GetArticleRating(a.link);
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        const float size = 22.0f;
+        int hovered_star = 0;
+        ImVec2 centres[5];
+        for (int star = 1; star <= 5; ++star) {
+            ImGui::PushID(star);
+            const ImVec2 p = ImGui::GetCursorScreenPos();
+            centres[star - 1] = {p.x + size / 2, p.y + size / 2};
+            if (ImGui::InvisibleButton("##star", {size, size}))
+                m_core.RateArticle(a.link, star);
+            if (ImGui::IsItemHovered())
+                hovered_star = star;
+            ImGui::PopID();
+            if (star < 5)
+                ImGui::SameLine(0, 4);
+        }
+        // Draw after the buttons so a hover previews the rating.
+        const int shown = hovered_star ? hovered_star : rating;
+        for (int star = 1; star <= 5; ++star)
+            draw_star(dl,
+                      centres[star - 1],
+                      size * 0.45f,
+                      star <= shown ? Palette::kStar : Palette::kMuted,
+                      star <= shown);
+        ImGui::PushFont(m_fonts.small);
+        ImGui::PushStyleColor(ImGuiCol_Text, Palette::kMuted);
+        ImGui::TextUnformatted(rating ? "Your rating" : "Rate this paper");
+        ImGui::PopStyleColor();
+        ImGui::PopFont();
+    }
 
-        if (ImGui::BeginPopupModal(
-                "Search##dlg", &m_show_search_dialog, ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::Text("Search query:");
-            ImGui::SetNextItemWidth(-1);
-            if (ImGui::IsWindowAppearing())
-                ImGui::SetKeyboardFocusHere();
-            bool submit = ImGui::InputText(
-                "##q", m_search_buf, sizeof(m_search_buf), ImGuiInputTextFlags_EnterReturnsTrue);
-
-            ImGui::Spacing();
-            if (submit || ImGui::Button("Search", {120, 0})) {
-                if (m_search_buf[0] != '\0') {
-                    m_core.SetSearchQuery(m_search_buf, true, true, true);
-                    m_core.SetFilterIndex(Arxiv::AppCore::FilterView::Search);
-                }
-                m_show_search_dialog = false;
-                m_search_buf[0] = '\0';
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("Cancel", {120, 0})) {
-                m_show_search_dialog = false;
-                m_search_buf[0] = '\0';
-            }
-
-            if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
-                m_show_search_dialog = false;
-                m_search_buf[0] = '\0';
-            }
+    void action_row(const Arxiv::Article& a) {
+        // Primary action in the accent colour, the rest quiet.
+        ImGui::PushStyleColor(ImGuiCol_Button, Palette::kAccent);
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Palette::rgb(146, 180, 250));
+        ImGui::PushStyleColor(ImGuiCol_Text, Palette::kBackground);
+        ImGui::PushFont(m_fonts.bold);
+        if (ImGui::Button(label(Icon::kDownload, "Download PDF").c_str()))
+            download(a);
+        ImGui::PopFont();
+        ImGui::PopStyleColor(3);
+        ImGui::SameLine();
+        if (ImGui::Button(a.bookmarked ? label(Icon::kBookmark, "Bookmarked").c_str()
+                                       : label(Icon::kBookmarkOutline, "Bookmark").c_str()))
+            m_core.ToggleBookmark(a.link);
+        ImGui::SameLine();
+        if (ImGui::Button(label(Icon::kExternal, "Open").c_str()))
+            open_in_browser();
+        ImGui::SameLine();
+        if (ImGui::Button(m_fonts.icons ? label(Icon::kEllipsis, "More").c_str() : "More..."))
+            ImGui::OpenPopup("##more");
+        if (ImGui::BeginPopup("##more")) {
+            if (ImGui::MenuItem(label(Icon::kLink, "Copy link").c_str()))
+                ImGui::SetClipboardText(a.link.c_str());
+            tag_menu(a);
+            project_menu(a);
             ImGui::EndPopup();
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    void render_status_bar(float width, float height) {
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        const ImVec2 origin = ImGui::GetCursorScreenPos();
+        dl->AddRectFilled(origin, {origin.x + width, origin.y + height}, Palette::kSurface);
+        dl->AddLine(origin, {origin.x + width, origin.y}, Palette::kBorder);
+
+        ImU32 dot = Palette::kSuccess;
+        std::string status = "Up to date";
+        if (m_core.IsFetching()) {
+            dot = Palette::kAccent;
+            status = "Fetching new papers...";
+        } else if (!m_core.LastFetchError().empty()) {
+            dot = Palette::kDanger;
+            status = "Offline: showing stored papers";
+        }
+        const auto task = m_core.GetBackgroundTaskStatus();
+        if (task.running)
+            status += "   " + task.label + "...";
+        else if (!task.message.empty())
+            status += "   " + task.message;
+        if (!m_status_msg.empty())
+            status += "   " + m_status_msg;
+
+        ImGui::PushFont(m_fonts.small);
+        const float y = origin.y + (height - ImGui::GetFontSize()) / 2;
+        dl->AddCircleFilled({origin.x + 20, origin.y + height / 2}, 4.0f, dot);
+        dl->AddText({origin.x + 32, y}, Palette::kMuted, status.c_str());
+        const std::string count =
+            std::to_string(m_core.GetCurrentArticles().size()) + " papers   j/k move   / search";
+        const float cw = ImGui::CalcTextSize(count.c_str()).x;
+        dl->AddText({origin.x + width - cw - 20, y}, Palette::kMuted, count.c_str());
+        ImGui::PopFont();
+    }
+
+    // ---------------------------------------------------------------------
+    void handle_keys() {
+        if (ImGui::GetIO().WantTextInput)
+            return; // typing in the search box
+        const int n = static_cast<int>(m_core.GetCurrentArticles().size());
+        const int idx = m_core.GetArticleIndex();
+        if ((ImGui::IsKeyPressed(ImGuiKey_J) || ImGui::IsKeyPressed(ImGuiKey_DownArrow)) &&
+            idx < n - 1)
+            select_article(idx + 1);
+        if ((ImGui::IsKeyPressed(ImGuiKey_K) || ImGui::IsKeyPressed(ImGuiKey_UpArrow)) && idx > 0)
+            select_article(idx - 1);
+        if (ImGui::IsKeyPressed(ImGuiKey_Slash))
+            m_focus_search = true;
+        if (const auto* a = focused()) {
+            if (ImGui::IsKeyPressed(ImGuiKey_B))
+                m_core.ToggleBookmark(a->link);
+            if (ImGui::IsKeyPressed(ImGuiKey_O))
+                open_in_browser();
         }
     }
 };
 
-// ---------------------------------------------------------------------------
-// main
-// ---------------------------------------------------------------------------
+} // namespace
 
 int main(int /*argc*/, char** /*argv*/) {
     // Same files as the TUI: config.yml, database, ranker and keywords from
@@ -348,7 +739,10 @@ int main(int /*argc*/, char** /*argv*/) {
 
     auto db = std::make_unique<Arxiv::DatabaseManager>(config.get_db_file());
     auto fetcher = std::make_unique<Arxiv::Fetcher>(config.get_topics(), config.get_download_dir());
-    Arxiv::AppCore core(config, std::move(db), std::move(fetcher));
+    // Async: the window opens at once and the list fills in when the fetch
+    // is done (render() picks it up through TryRefetchIfNeeded).
+    Arxiv::AppCore core(
+        config, std::move(db), std::move(fetcher), Arxiv::AppCore::FetchMode::Async);
     core.ReloadKeywords();
 
     // GLFW / OpenGL
@@ -362,7 +756,7 @@ int main(int /*argc*/, char** /*argv*/) {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    GLFWwindow* window = glfwCreateWindow(1280, 800, "arXiv Browser", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(1440, 900, "arXiv", nullptr, nullptr);
     if (!window) {
         spdlog::critical("Failed to create GLFW window");
         glfwTerminate();
@@ -375,14 +769,20 @@ int main(int /*argc*/, char** /*argv*/) {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
+    // ImGui saves window layout to "imgui.ini" in the working directory by
+    // default; keep it with the rest of the state instead.
+    const std::string imgui_ini = (paths.state_dir / "imgui.ini").string();
+    io.IniFilename = imgui_ini.c_str();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    ImGui::StyleColorsDark();
+    const Fonts fonts = LoadFonts();
+    ApplyStyle();
 
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init("#version 330");
 
-    ArxivGuiApp app(core);
+    ArxivGuiApp app(core, fonts);
 
+    const ImVec4 clear = ImGui::ColorConvertU32ToFloat4(Palette::kBackground);
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
         if (glfwGetWindowAttrib(window, GLFW_ICONIFIED)) {
@@ -400,7 +800,7 @@ int main(int /*argc*/, char** /*argv*/) {
         int fb_w, fb_h;
         glfwGetFramebufferSize(window, &fb_w, &fb_h);
         glViewport(0, 0, fb_w, fb_h);
-        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+        glClearColor(clear.x, clear.y, clear.z, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         glfwSwapBuffers(window);

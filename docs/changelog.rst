@@ -7,6 +7,48 @@ Changelog
 Unreleased
 ----------
 
+- **GUI restyle** — ``arxiv-gui`` has a dark theme with one accent colour,
+  a system sans font (Inter, Noto Sans, Cantarell or DejaVu Sans;
+  ``ARXIV_GUI_FONT`` overrides), a header with search and Refresh, a sidebar
+  of views with counts, article cards (unread dot, bookmark star, category
+  chip), a detail pane with clickable stars and action buttons, and
+  keyboard navigation (``j``/``k``, ``/``, ``b``, ``o``). Greek, maths and
+  accented characters in titles and author names render instead of ``?``.
+  With a Nerd Font installed, views, buttons and menus also get icons
+  (``ARXIV_GUI_ICON_FONT`` picks the font; empty turns them off).
+
+- **GUI catches up** — ``arxiv-gui`` opens at once and fetches in the
+  background (it used to fetch before showing the window), Refresh
+  fetches from arXiv instead of re-reading the database, and downloads no
+  longer freeze the window. Papers can be rated, tagged and added to
+  projects; read papers are dimmed, the filter list shows counts and
+  headings, and a status bar reports fetches, downloads and offline state.
+  Its ``imgui.ini`` goes to the state directory, not the working directory.
+
+- **Project JSON round-trips** — the export now carries the project's parent
+  and each paper's category, tags and rating, and the import restores them
+  (without overriding a rating you already gave). A paper without a date is
+  dated at import instead of 1 January 1970, and a blank project name is
+  refused. A new sub-project typed with spaces around its name now keeps
+  its parent.
+
+- **Rename and move** — ``E`` renames the project or tag selected in the
+  filter pane (papers, notes, sub-projects and an exported ``.bib`` follow the
+  new name); ``M`` moves a project under another one or back to the top
+  level. A project cannot be moved under itself or its own sub-projects.
+
+- **Clear the selection** — ``C`` deselects everything. The selection is
+  kept when you switch views, so bulk actions could apply to papers no longer
+  on screen and there was no way to drop it. The footer shows the key while
+  papers are selected.
+
+- **Bookmarks view updates** — un-bookmarking a paper in the Bookmarks view
+  now removes it from the list.
+
+- **Offline notice** — when arXiv cannot be reached (at start-up or on an
+  auto refresh) the footer says "Offline: showing stored papers" until a
+  fetch succeeds; before, the list just stayed as it was.
+
 - **Accented names and titles are cut cleanly** — the article list
   truncated author names and other columns, and scrolled long titles, by
   byte, so a cut could fall inside a character (``Schr\xC3…``). Both now work

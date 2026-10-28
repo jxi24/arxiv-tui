@@ -33,10 +33,18 @@ bool ProjectText(const std::string& path,
                  const std::string& project,
                  const std::vector<Article>& articles,
                  const NoteLookup& note_for);
+/// What a project JSON carries beyond the papers and notes, so an import
+/// restores it.
+struct ProjectExtras {
+    std::string parent;
+    std::function<std::vector<std::string>(const std::string& link)> tags_for;
+    std::function<int(const std::string& link)> rating_for; // 0: not rated
+};
 bool ProjectJSON(const std::string& path,
                  const std::string& project,
                  const std::vector<Article>& articles,
-                 const NoteLookup& note_for);
+                 const NoteLookup& note_for,
+                 const ProjectExtras& extras = {});
 
 bool DailyDigestMarkdown(const std::string& path, const std::vector<Article>& articles);
 /// `scored` in the order to write, each with its predicted score.

@@ -192,6 +192,7 @@ article_columns:
 | Key | Action |
 |-----|--------|
 | `Space` | Toggle selection on current article |
+| `C` | Clear the selection (it is kept when you switch views) |
 | `b` | Bookmark current article (or all selected if a selection is active) |
 | `D` | Delete current article (or all selected), with confirmation |
 | `u` | Undo the last delete (restores article, rating, project memberships, notes, tags, and read state) |
@@ -234,7 +235,9 @@ The filter pane includes an **Unread** entry that shows only articles not yet re
 | Key | Action |
 |-----|--------|
 | `p` | Assign/remove current article from projects |
-| `x` | Delete the focused project |
+| `x` | Delete the focused project (asks first) |
+| `E` | Rename the selected project or tag |
+| `M` | Move the selected project under another (or to the top level) |
 | `e` | Export project (Markdown / plain text / BibTeX / JSON) |
 | `I` | Import project from JSON |
 

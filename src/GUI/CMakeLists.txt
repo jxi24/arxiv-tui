@@ -21,7 +21,7 @@ target_include_directories(imgui SYSTEM PUBLIC
 target_link_libraries(imgui PUBLIC glfw OpenGL::GL)
 
 # arxiv-gui executable
-add_executable(arxiv-gui main.cc)
+add_executable(arxiv-gui main.cc Style.cc FontSearch.cc)
 target_link_libraries(arxiv-gui
     PRIVATE
         arxiv_tui_options

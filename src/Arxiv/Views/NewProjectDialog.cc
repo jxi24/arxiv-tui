@@ -33,14 +33,15 @@ bool ArxivApp::HandleNewProjectEvent(ftxui::Event event) {
         return true;
     }
     if (event == Event::Return) {
-        if (!new_project_name.empty()) {
-            core.AddProject(new_project_name);
+        // The stored name is trimmed: use it for the parent, not what was typed.
+        const std::string name = core.AddProject(new_project_name);
+        if (!name.empty()) {
             if (m_recorder)
-                m_recorder->RecordAddProject(new_project_name);
+                m_recorder->RecordAddProject(name);
             if (!parent_for_new_project.empty()) {
-                core.SetProjectParent(new_project_name, parent_for_new_project);
+                core.SetProjectParent(name, parent_for_new_project);
                 if (m_recorder)
-                    m_recorder->RecordSetProjectParent(new_project_name, parent_for_new_project);
+                    m_recorder->RecordSetProjectParent(name, parent_for_new_project);
             }
         }
         dialog_depth = Dialog::None;

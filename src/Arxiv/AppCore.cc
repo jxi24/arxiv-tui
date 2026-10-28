@@ -166,7 +166,9 @@ AppCore::AppCore(const Config& config,
             // Leave last_fetch_date alone so the next launch retries the
             // same backfill window instead of skipping the missed days.
             spdlog::error("[AppCore]: Fetch failed: {}", e.what());
+            SetFetchError(e.what());
             Record("appcore/bg_fetch_failed", e.what());
+            m_needs_refetch.store(true); // repaint: the footer shows the failure
             m_fetching.store(false);
             return;
         }
@@ -186,6 +188,7 @@ AppCore::AppCore(const Config& config,
         m_db->SetMetadata("last_fetch_end_ts", end_ts);
         // Only now are the days up to today covered.
         m_db->SetMetadata("last_fetch_date", today);
+        SetFetchError("");
         if (!headless) {
             // What the next session's New Articles window starts from.
             m_db->SetMetadata("last_view_end_ts", end_ts);
@@ -222,6 +225,7 @@ AppCore::AppCore(const Config& config,
 AppCore::~AppCore() {
     Record("appcore/dtor_begin", std::string("fetching=") + (m_fetching.load() ? "1" : "0"));
     StopAutoRefresh();
+    WaitForRefresh();
     WaitForInitialFetch();
     WaitForBackgroundTask();
     // The training thread's completion callback uses this object.
@@ -451,6 +455,10 @@ void AppCore::ToggleBookmark(const std::string& article_link) {
     if (it != m_current_articles.end()) {
         it->bookmarked = !it->bookmarked;
         m_db->ToggleBookmark(article_link, it->bookmarked);
+        if (GetFilterView() == FilterView::Bookmarks) {
+            FetchArticles(); // an un-bookmarked paper leaves this view
+            return;
+        }
         RefreshTitles();
         NotifyArticleUpdate();
     }
@@ -495,13 +503,15 @@ const std::vector<Article>& AppCore::GetCurrentArticles() const { return m_curre
 
 const std::vector<std::string>& AppCore::GetCurrentTitles() const { return m_current_titles; }
 
-void AppCore::AddProject(const std::string& project_name) {
-    if (!m_projects.Add(project_name))
-        return; // nothing left after trimming
+std::string AppCore::AddProject(const std::string& project_name) {
+    const auto name = m_projects.Add(project_name);
+    if (!name)
+        return ""; // nothing left after trimming
     RefreshFilterOptions();
     if (m_project_update_callback)
         m_project_update_callback();
     NotifyArticleUpdate();
+    return *name;
 }
 
 void AppCore::RemoveProject(const std::string& project_name) {
@@ -527,6 +537,72 @@ void AppCore::UnlinkArticleFromProject(const std::string& article_link,
                                        const std::string& project_name) {
     m_projects.Unlink(project_name, article_link);
     NotifyArticleUpdate();
+}
+
+namespace {
+std::string trimmed(const std::string& s) {
+    const auto first = s.find_first_not_of(" \t");
+    if (first == std::string::npos)
+        return "";
+    return s.substr(first, s.find_last_not_of(" \t") - first + 1);
+}
+} // namespace
+
+bool AppCore::RenameProject(const std::string& old_name, const std::string& new_name) {
+    const std::string name = trimmed(new_name);
+    const bool viewing = CurrentProject() == old_name;
+    if (name.empty() || !m_db->RenameProject(old_name, name))
+        return false;
+    RefreshFilterOptions();
+    if (viewing) {
+        // RefreshFilterOptions lost the old name; follow the new one.
+        auto it = std::find(m_filter_project_names.begin(), m_filter_project_names.end(), name);
+        if (it != m_filter_project_names.end())
+            m_filter_index =
+                m_project_start_index + static_cast<int>(it - m_filter_project_names.begin());
+    }
+    if (m_project_update_callback)
+        m_project_update_callback();
+    FetchArticles();
+    return true;
+}
+
+bool AppCore::RenameTag(const std::string& old_name, const std::string& new_name) {
+    const std::string name = trimmed(new_name);
+    const bool viewing = CurrentTag() == old_name;
+    if (name.empty() || !m_db->RenameTag(old_name, name))
+        return false;
+    RefreshFilterOptions();
+    if (viewing) {
+        auto it = std::find(m_filter_tag_names.begin(), m_filter_tag_names.end(), name);
+        if (it != m_filter_tag_names.end())
+            m_filter_index = kFirstTagIndex + static_cast<int>(it - m_filter_tag_names.begin());
+    }
+    FetchArticles();
+    return true;
+}
+
+std::string AppCore::GetProjectParent(const std::string& project) const {
+    return m_db->GetProjectParent(project);
+}
+
+std::vector<std::string> AppCore::ParentCandidates(const std::string& project) const {
+    // A project may not move under itself or anything below it (a cycle
+    // would hide the whole branch).
+    auto below_project = [&](std::string name) {
+        std::set<std::string> seen;
+        while (!name.empty() && seen.insert(name).second) {
+            if (name == project)
+                return true;
+            name = m_db->GetProjectParent(name);
+        }
+        return false;
+    };
+    std::vector<std::string> out{""};
+    for (const auto& name : m_projects.All())
+        if (!below_project(name))
+            out.push_back(name);
+    return out;
 }
 
 std::vector<std::string> AppCore::GetProjects() const { return m_projects.All(); }
@@ -1219,6 +1295,10 @@ void AppCore::BookmarkSelected(bool bookmarked) {
         if (it != m_current_articles.end())
             it->bookmarked = bookmarked;
     }
+    if (GetFilterView() == FilterView::Bookmarks) {
+        FetchArticles();
+        return;
+    }
     RefreshTitles();
     NotifyArticleUpdate();
 }
@@ -1488,13 +1568,30 @@ void AppCore::RefreshFromNetwork() {
         m_db->AddArticles(articles);
         m_db->SetMetadata("last_fetch_end_ts", std::to_string(now_ts()));
         m_last_fetch_ok.store(true);
+        SetFetchError("");
         spdlog::info("[AppCore]: Auto-refresh stored {} article(s)", articles.size());
     } catch (const std::exception& e) {
         m_last_fetch_ok.store(false);
+        SetFetchError(e.what());
         spdlog::error("[AppCore]: Auto-refresh failed: {}", e.what());
     }
     m_fetching.store(false);
     m_needs_refetch.store(true);
+}
+
+bool AppCore::StartRefresh() {
+    if (m_fetching.load())
+        return false;
+    WaitForRefresh(); // the previous one has finished (m_fetching is false)
+    // RefreshFromNetwork only touches the fetcher and the DB; the UI thread
+    // picks the result up through TryRefetchIfNeeded.
+    m_refresh_once_thread = std::thread([this] { RefreshFromNetwork(); });
+    return true;
+}
+
+void AppCore::WaitForRefresh() {
+    if (m_refresh_once_thread.joinable())
+        m_refresh_once_thread.join();
 }
 
 void AppCore::StopAutoRefresh() {

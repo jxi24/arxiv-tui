@@ -1434,3 +1434,125 @@ TEST_CASE("Deleting a project asks first", "[tui][projects][regression]") {
         REQUIRE(core.GetProjects() == std::vector<std::string>{"thesis"});
     }
 }
+
+// ---------------------------------------------------------------------------
+// A failed fetch is visible: the list used to keep showing old papers with
+// nothing to say they were not current.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("The footer says when arXiv could not be reached", "[tui][fetch]") {
+    auto db = std::make_unique<Arxiv::DatabaseManager>(":memory:");
+    for (const auto& a : arxiv_tui::test::fixtures::sample_articles)
+        db->AddArticle(a);
+    auto fetcher = std::make_unique<FetcherMock>();
+    ALLOW_CALL(*fetcher, Fetch()).THROW(Arxiv::FetchError("RSS feed returned HTTP 503"));
+    KeyBindings kb{std::vector<Config::KeyMapping>{}};
+    ArxivApp app(make_test_config(), std::move(db), std::move(fetcher), std::move(kb));
+
+    SECTION("the core reports the failure") {
+        REQUIRE(app.GetCore().LastFetchError().find("503") != std::string::npos);
+    }
+    SECTION("the footer shows it") {
+        REQUIRE_THAT(footer_of(app), Catch::Matchers::ContainsSubstring("Offline"));
+    }
+}
+
+TEST_CASE("No offline notice after a successful fetch", "[tui][fetch]") {
+    RealDbApp t;
+    REQUIRE(t.app->GetCore().LastFetchError().empty());
+    REQUIRE_THAT(footer_of(*t.app), !Catch::Matchers::ContainsSubstring("Offline"));
+}
+
+TEST_CASE("C clears the selection", "[tui][selection]") {
+    // Selections survive view changes, so bulk actions could apply to papers
+    // no longer on screen, and there was no key to drop them.
+    RealDbApp t;
+    auto handler = t.app->GetEventHandler();
+    handler->OnEvent(Event::Character("l"));
+    handler->OnEvent(Event::Character(" "));
+    REQUIRE(t.app->GetCore().GetSelectionCount() == 1);
+
+    handler->OnEvent(Event::Character("C"));
+
+    REQUIRE(t.app->GetCore().GetSelectionCount() == 0);
+}
+
+// ---------------------------------------------------------------------------
+// E renames the project or tag selected in the filter pane; M moves a
+// project under another one.
+// ---------------------------------------------------------------------------
+
+namespace {
+void select_filter(ArxivApp& app, const std::string& entry) {
+    auto& core = app.GetCore();
+    const auto& options = core.GetFilterOptions();
+    const auto it = std::find_if(options.begin(), options.end(), [&](const std::string& o) {
+        return o.find(entry) != std::string::npos;
+    });
+    core.SetFilterIndex(static_cast<int>(it - options.begin()));
+}
+} // namespace
+
+TEST_CASE("Renaming projects and tags from the filter pane", "[tui][rename]") {
+    RealDbApp t;
+    auto& core = t.app->GetCore();
+    auto handler = t.app->GetEventHandler();
+    core.AddProject("thesis");
+    core.LinkArticleToTag(arxiv_tui::test::fixtures::sample_articles[0].link, "qcd");
+    auto retype = [&](const std::string& old_name, const std::string& name) {
+        for (std::size_t i = 0; i < old_name.size(); ++i)
+            handler->OnEvent(Event::Backspace);
+        type_text(*t.app, name);
+    };
+
+    SECTION("a project") {
+        select_filter(*t.app, "thesis");
+        handler->OnEvent(Event::Character("E"));
+        retype("thesis", "dissertation");
+        handler->OnEvent(Event::Return);
+        REQUIRE(core.GetProjects() == std::vector<std::string>{"dissertation"});
+    }
+    SECTION("a tag") {
+        select_filter(*t.app, "#qcd");
+        handler->OnEvent(Event::Character("E"));
+        retype("qcd", "lattice");
+        handler->OnEvent(Event::Return);
+        REQUIRE(core.GetTags() == std::vector<std::string>{"lattice"});
+    }
+    SECTION("Esc cancels") {
+        select_filter(*t.app, "thesis");
+        handler->OnEvent(Event::Character("E"));
+        retype("thesis", "other");
+        handler->OnEvent(Event::Escape);
+        REQUIRE(core.GetProjects() == std::vector<std::string>{"thesis"});
+    }
+}
+
+TEST_CASE("Moving a project under another", "[tui][rename]") {
+    RealDbApp t;
+    auto& core = t.app->GetCore();
+    auto handler = t.app->GetEventHandler();
+    core.AddProject("thesis");
+    core.AddProject("chapter");
+    select_filter(*t.app, "chapter");
+
+    handler->OnEvent(Event::Character("M"));
+    handler->OnEvent(Event::Character("j")); // (top level) -> thesis
+    handler->OnEvent(Event::Return);
+
+    REQUIRE(t.db->GetProjectParent("chapter") == "thesis");
+}
+
+TEST_CASE("A new sub-project with spaces around its name keeps its parent",
+          "[tui][projects][regression]") {
+    // The parent was set on the untyped (untrimmed) name, which did not exist.
+    RealDbApp t;
+    t.app->GetCore().AddProject("thesis");
+    select_filter(*t.app, "thesis");
+    auto handler = t.app->GetEventHandler();
+    handler->OnEvent(Event::Character("p")); // new project under "thesis"
+    type_text(*t.app, "  ch  ");
+    handler->OnEvent(Event::Return);
+
+    REQUIRE(t.db->GetProjectParent("ch") == "thesis");
+}
