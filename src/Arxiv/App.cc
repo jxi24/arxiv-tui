@@ -5,6 +5,7 @@
 #include "Arxiv/App.hh"
 
 #include "Arxiv/Article.hh"
+#include "Arxiv/Views/Colors.hh"
 
 #include "spdlog/spdlog.h"
 
@@ -29,9 +30,17 @@ ArxivApp::ArxivApp(const Config& config, const std::string& config_path, ReplayR
     core.ReloadKeywords();
     if (m_recorder)
         m_recorder->RecordEvent("app/setup_ui_begin");
+    Arxiv::SetTheme(m_config.get_theme(), m_config.get_theme_colors());
     SetupUI();
+    // Settings that were rejected while loading config.yml: say which, and
+    // that their defaults are in use.
+    if (!m_config.get_warnings().empty())
+        dialog_depth = Dialog::ConfigWarning;
     if (m_recorder)
         m_recorder->RecordEvent("app/setup_ui_end");
+    // auto_refresh_minutes was read but never acted on; 0 keeps it off.
+    if (config.get_auto_refresh_minutes() > 0)
+        core.StartAutoRefresh();
 }
 
 #ifdef TESTING
@@ -45,7 +54,12 @@ ArxivApp::ArxivApp(Config cfg,
     , m_config_path(config_path)
     , m_config(cfg)
     , screen(ScreenInteractive::Fullscreen()) {
+    Arxiv::SetTheme(m_config.get_theme(), m_config.get_theme_colors());
     SetupUI();
+    // Settings that were rejected while loading config.yml: say which, and
+    // that their defaults are in use.
+    if (!m_config.get_warnings().empty())
+        dialog_depth = Dialog::ConfigWarning;
     // No refresh thread: tests drive events directly via GetEventHandler().
 }
 #endif
@@ -100,6 +114,7 @@ void ArxivApp::SetupUI() {
     SetupExportDialog();
     SetupImportDialog();
     SetupKeywordEditorDialog();
+    SetupFollowAuthorsDialog();
     SetupCategoryFilterDialog();
     SetupSettingsDialog();
     SetupMainRenderer();
@@ -120,11 +135,22 @@ void ArxivApp::SetupUI() {
         while (refresh_ui_continue) {
             using namespace std::chrono_literals;
             std::this_thread::sleep_for(0.05s);
+            // Redraw only when something changed or is animating; an idle
+            // TUI used to repaint 20 times a second.
             screen.Post([&] {
-                UpdateTitleScrollPositions();
-                core.TryRefetchIfNeeded();
+                bool dirty = core.TryRefetchIfNeeded();
+                if (focused_pane == 1 && show_detail) { // scrolling title
+                    UpdateTitleScrollPositions();
+                    dirty = true;
+                }
+                const auto task = core.GetBackgroundTaskStatus();
+                const bool badge_visible =
+                    task.running ||
+                    (!task.label.empty() &&
+                     std::chrono::steady_clock::now() - task.finished_at < std::chrono::seconds(9));
+                if (dirty || badge_visible || core.IsFetching())
+                    screen.PostEvent(Event::Custom);
             });
-            screen.Post(Event::Custom);
             if (m_recorder && (tick++ % 20) == 0) {
                 m_recorder->RecordEvent("app/refresh_tick",
                                         std::string("fetching=") + (core.IsFetching() ? "1" : "0"));

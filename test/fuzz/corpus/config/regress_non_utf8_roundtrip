@@ -1,0 +1,12 @@
+article_settings:
+  downÿÿÿÿÿÿÿ: /tmp/arxiv
+  topics: [hep-ph, hep-th]
+recommend_threshold: 3.5
+retrain_intervalÿÿÿÿÿÿÿþ_refre: 09
+obsidian_vault: /tÿÿÿÿÿÿÿ
+obsidian_downloád_pdfs: false
+articppings:
+  - ac¥tion: next
+    key: j
+  - actiot: previous
+    key: k

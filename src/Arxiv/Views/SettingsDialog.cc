@@ -60,6 +60,8 @@ void ArxivApp::SetupSettingsDialog() {
                 1, "Auto-refresh  ", std::to_string(m_config.get_auto_refresh_minutes()) + " min"));
             rows.push_back(field_row(
                 2, "Scroll margin ", std::to_string(m_config.get_scroll_margin()) + " lines"));
+            rows.push_back(
+                field_row(3, "Theme         ", m_config.get_theme() + "  (Enter: next)"));
 
         } else if (settings_section == 1) {
             const auto& topics = m_config.get_topics();
@@ -148,7 +150,7 @@ bool ArxivApp::HandleSettingsEvent(ftxui::Event event) {
 
     auto section_fields = [&]() -> int {
         if (settings_section == 0)
-            return 3;
+            return 4;
         if (settings_section == 1)
             return static_cast<int>(m_config.get_topics().size());
         if (settings_section == 2)
@@ -220,7 +222,9 @@ bool ArxivApp::HandleSettingsEvent(ftxui::Event event) {
         } else {
             if (!m_config_path.empty())
                 m_config.save_to_file(m_config_path);
+            // Apply now rather than on the next start.
             core.ApplyConfig(m_config);
+            key_bindings = KeyBindings(m_config.get_key_mappings());
             dialog_depth = Dialog::None;
         }
         return true;
@@ -234,6 +238,13 @@ bool ArxivApp::HandleSettingsEvent(ftxui::Event event) {
         }
         settings_section = (settings_section + 1) % kNumSections;
         settings_field_index = 0;
+        return true;
+    }
+
+    // While a field is being edited every printable key is text — "j" and
+    // "k" must not be swallowed by the navigation bindings below.
+    if (event.is_character() && settings_editing) {
+        settings_edit_buffer += event.character();
         return true;
     }
 
@@ -274,6 +285,15 @@ bool ArxivApp::HandleSettingsEvent(ftxui::Event event) {
         } else if (settings_section == 1) {
             settings_edit_buffer.clear();
             settings_editing = true;
+        } else if (settings_section == 0 && settings_field_index == 3 && !settings_editing) {
+            // Cycle through the presets and preview immediately.
+            const auto names = Arxiv::ThemeNames();
+            auto it = std::find(names.begin(), names.end(), m_config.get_theme());
+            const std::string next = (it == names.end() || std::next(it) == names.end())
+                                         ? names.front()
+                                         : *std::next(it);
+            m_config.set_theme(next);
+            Arxiv::SetTheme(next, m_config.get_theme_colors());
         } else if (settings_section == 3 && settings_field_index == 1 && !settings_editing) {
             // yes/no field: Enter toggles it directly
             m_config.set_obsidian_download_pdfs(!m_config.get_obsidian_download_pdfs());

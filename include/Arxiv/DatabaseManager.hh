@@ -6,13 +6,15 @@
 #define ARXIV_DATABASE_MANAGER
 
 #include <cstdint>
+#include <mutex>
+#include <optional>
 #include <sqlite3.h>
 #include <string>
 #include <vector>
 
 namespace Arxiv {
 
-class Article;
+struct Article;
 
 class DatabaseManager {
   public:
@@ -24,6 +26,8 @@ class DatabaseManager {
     // Article management
     virtual void AddArticle(const Article& article);
     virtual std::vector<Article> GetRecent(int days);
+    // One article by link, or nullopt if it is not stored.
+    virtual std::optional<Article> GetArticle(const std::string& link);
     virtual std::vector<Article> ListBookmarked();
     virtual std::vector<Article> GetArticlesForProject(const std::string& project_name);
     virtual std::vector<Article> GetArticlesForDateRange(const std::string& start_date,
@@ -37,7 +41,7 @@ class DatabaseManager {
     virtual void MarkArticleRead(const std::string& link);
     virtual std::vector<Article> GetUnreadArticles();
     // Delete articles older than max_age_days that are not bookmarked, rated,
-    // or in any project. Pass 0 to disable (no-op).
+    // tagged, noted, or in any project. Pass 0 to disable (no-op).
     virtual void PruneArticles(int max_age_days);
 
     // Rating management
@@ -113,12 +117,21 @@ class DatabaseManager {
 
   private:
     sqlite3* db;
+    // One connection is shared by the UI thread and the background fetch.
+    // Every public method holds this lock, so a bulk insert's transaction
+    // can never absorb (and on rollback discard) another thread's write.
+    // Recursive because public methods call each other (AddArticles →
+    // AddArticle, LinkArticleToTag → AddTag).
+    std::recursive_mutex m_mutex;
 
-    void SetupTracing();
+    void Initialise();
     void ExecuteSQL(const std::string& sql);
-    void Query(const std::string& query);
+    void AddColumnIfMissing(const std::string& table,
+                            const std::string& column,
+                            const std::string& declaration);
+    void MigrateFTSUpdateTrigger();
     Article RowToArticle(sqlite3_stmt* stmt);
-    const char* ExtractColumn(sqlite3_stmt* stmt, int index);
+    std::string ExtractColumn(sqlite3_stmt* stmt, int index);
     void MigrateNormalizeLinks();
     void MigrateAddReadAt();
     void MigrateAddAddedAt();

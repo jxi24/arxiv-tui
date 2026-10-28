@@ -6,6 +6,10 @@
 # To run locally: pip install pre-commit && pre-commit install
 # Then hooks fire on git commit, or run manually: pre-commit run --all-files
 
+# Fuzz corpus and dictionary files are raw inputs: whitespace hooks must
+# not rewrite them.
+exclude: ^test/fuzz/(corpus|dict)/
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0

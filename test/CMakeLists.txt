@@ -46,6 +46,12 @@ add_executable(unit_tests
     unit/ConfigTest.cc
     unit/AppTuiTest.cc
     unit/UndoTest.cc
+    unit/ArticleTest.cc
+    unit/BackgroundTaskTest.cc
+    unit/ProcessTest.cc
+    unit/PathsTest.cc
+    unit/ThemeTest.cc
+    unit/AuthorMatchTest.cc
 )
 
 # Link against Catch2 and our library
@@ -113,3 +119,5 @@ endif()
 include(CTest)
 catch_discover_tests(unit_tests)
 catch_discover_tests(integration_tests)
+
+add_subdirectory(fuzz)

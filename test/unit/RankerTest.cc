@@ -6,8 +6,11 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers.hpp>
 #include <cmath>
+#include <cstdint>
+#include <filesystem>
 #include <fixtures/test_data.hh>
 #include <fstream>
+#include <string>
 
 using namespace Arxiv;
 using namespace arxiv_tui::test::fixtures;
@@ -274,4 +277,61 @@ TEST_CASE("Ranker persistence", "[ranker]") {
         Ranker trained = make_trained_ranker();
         REQUIRE_FALSE(trained.Save("/no/such/directory/ranker.bin"));
     }
+}
+
+// ---------------------------------------------------------------------------
+// Regressions found in code review — each fails until the bug is fixed.
+// ---------------------------------------------------------------------------
+namespace {
+
+// Write a ranker.bin in the version-1 format with a single vocabulary entry.
+std::string write_model_with_vocab(int32_t vocab_size, int32_t idx) {
+    auto path = (std::filesystem::temp_directory_path() /
+                 ("arxiv_regression_ranker_" + std::to_string(vocab_size) + "_" +
+                  std::to_string(idx) + ".bin"))
+                    .string();
+    std::ofstream f(path, std::ios::binary | std::ios::trunc);
+    auto i32 = [&](int32_t v) { f.write(reinterpret_cast<const char*>(&v), sizeof(v)); };
+    auto f32 = [&](float v) { f.write(reinterpret_cast<const char*>(&v), sizeof(v)); };
+    f.write("RANK", 4);
+    i32(1); // version
+    i32(vocab_size);
+    if (vocab_size > 0) {
+        const std::string term = "quark";
+        i32(static_cast<int32_t>(term.size()));
+        f.write(term.data(), static_cast<std::streamsize>(term.size()));
+        i32(idx);
+    }
+    for (int i = 0; i < Ranker::MAX_FEATURES; ++i)
+        f32(1.0f); // idf
+    for (int i = 0; i < Ranker::HIDDEN_SIZE * Ranker::MAX_FEATURES; ++i)
+        f32(0.0f); // W1
+    for (int i = 0; i < Ranker::HIDDEN_SIZE; ++i)
+        f32(0.0f); // b1
+    for (int i = 0; i < Ranker::HIDDEN_SIZE; ++i)
+        f32(0.0f); // W2
+    f32(0.0f);     // b2
+    i32(1);        // trained
+    return path;
+}
+
+} // namespace
+
+TEST_CASE("Ranker regression: Load rejects a vocabulary index outside the feature vector",
+          "[ranker][regression]") {
+    // Accepting it makes Vectorise write past the end of its feature vector.
+    auto path = write_model_with_vocab(1, Ranker::MAX_FEATURES + 1000);
+    Ranker ranker;
+    REQUIRE_FALSE(ranker.Load(path));
+    std::filesystem::remove(path);
+}
+
+TEST_CASE("Ranker regression: Load rejects a negative vocabulary size without throwing",
+          "[ranker][regression]") {
+    auto path = write_model_with_vocab(-1, 0);
+    Ranker ranker;
+    bool loaded = true;
+    REQUIRE_NOTHROW(loaded = ranker.Load(path));
+    REQUIRE_FALSE(loaded);
+    std::filesystem::remove(path);
 }

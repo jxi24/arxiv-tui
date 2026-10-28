@@ -8,6 +8,10 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
+#include <cctype>
+#include <chrono>
+#include <cstdlib>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -276,4 +280,101 @@ TEST_CASE("Fallback BibTeX is well-formed", "[bibtex][fallback]") {
     }
 
     fs::remove(tmp);
+}
+
+// ---------------------------------------------------------------------------
+// One BibTeX builder (code review §4): the clipboard (GetBibtex) and file
+// exports used two different fallback generators with different keys,
+// quoting and time zones, and neither escaped BibTeX specials.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+std::string fallback_bibtex(const Arxiv::Article& article) {
+    DatabaseManagerMock* db_ptr = nullptr;
+    FetcherMock* fetcher_ptr = nullptr;
+    auto core = make_core(db_ptr, fetcher_ptr);
+    ALLOW_CALL(*fetcher_ptr, FetchBibTeX(trompeloeil::_)).RETURN(std::string{});
+    return core->GetBibtex(article);
+}
+
+// Braces must balance, ignoring escaped ones (\{ \}).
+bool braces_balanced(const std::string& s) {
+    int depth = 0;
+    for (std::size_t i = 0; i < s.size(); ++i) {
+        if (s[i] == '\\') {
+            ++i;
+            continue;
+        }
+        depth += s[i] == '{' ? 1 : s[i] == '}' ? -1 : 0;
+        if (depth < 0)
+            return false;
+    }
+    return depth == 0;
+}
+
+} // namespace
+
+TEST_CASE("BibTeX: clipboard and file exports produce the same entry", "[bibtex][fallback]") {
+    DatabaseManagerMock* db_ptr = nullptr;
+    FetcherMock* fetcher_ptr = nullptr;
+    auto core = make_core(db_ptr, fetcher_ptr);
+    ALLOW_CALL(*fetcher_ptr, FetchBibTeX(trompeloeil::_)).RETURN(std::string{});
+    const auto& art = arxiv_tui::test::fixtures::sample_articles[0];
+    fs::path tmp = fs::temp_directory_path() / "bibtex_same_entry.bib";
+
+    REQUIRE(core->ExportArticleBibTeX(art, tmp.string()));
+    std::string file = read_file(tmp);
+    std::string clip = core->GetBibtex(art);
+    // The file may end with a separating newline.
+    while (!file.empty() && file.back() == '\n')
+        file.pop_back();
+    while (!clip.empty() && clip.back() == '\n')
+        clip.pop_back();
+    REQUIRE(file == clip);
+    fs::remove(tmp);
+}
+
+TEST_CASE("BibTeX: special characters are escaped", "[bibtex][fallback]") {
+    auto art = arxiv_tui::test::fixtures::sample_articles[0];
+    art.title = "50% of {top & bottom # quarks";
+
+    const std::string bib = fallback_bibtex(art);
+
+    SECTION("percent") { REQUIRE_THAT(bib, ContainsSubstring("50\\%")); }
+    SECTION("ampersand") { REQUIRE_THAT(bib, ContainsSubstring("top \\& bottom")); }
+    SECTION("hash") { REQUIRE_THAT(bib, ContainsSubstring("\\# quarks")); }
+    SECTION("braces stay balanced") { REQUIRE(braces_balanced(bib)); }
+}
+
+TEST_CASE("BibTeX: the cite key only uses safe characters", "[bibtex][fallback]") {
+    auto art = arxiv_tui::test::fixtures::sample_articles[0];
+    art.authors = "Seán O'Brien-Smith, J. Doe";
+
+    const std::string bib = fallback_bibtex(art);
+    const std::string key = bib.substr(bib.find('{') + 1, bib.find(',') - bib.find('{') - 1);
+
+    REQUIRE_FALSE(key.empty());
+    for (char c : key)
+        REQUIRE((std::isalnum(static_cast<unsigned char>(c)) || c == ':' || c == '_' || c == '.' ||
+                 c == '-'));
+}
+
+TEST_CASE("BibTeX: the year is the UTC year, whatever the local time zone", "[bibtex][fallback]") {
+    auto art = arxiv_tui::test::fixtures::sample_articles[0];
+    art.date = std::chrono::system_clock::from_time_t(1735687800); // 2024-12-31 23:30 UTC
+
+    const char* old_tz = std::getenv("TZ");
+    const std::string saved = old_tz ? old_tz : "";
+    ::setenv("TZ", "Pacific/Kiritimati", 1); // UTC+14: already 2025 locally
+    ::tzset();
+    const std::string bib = fallback_bibtex(art);
+    if (old_tz)
+        ::setenv("TZ", saved.c_str(), 1);
+    else
+        ::unsetenv("TZ");
+    ::tzset();
+
+    REQUIRE_THAT(bib, ContainsSubstring("2024"));
+    REQUIRE_THAT(bib, !ContainsSubstring("2025"));
 }

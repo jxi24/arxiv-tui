@@ -9,3 +9,8 @@ SPDX-License-Identifier = "GPL-3.0-only"
 path = ["docs/**", "assets/**"]
 SPDX-FileCopyrightText = "2024-2026 Josh Isaacson"
 SPDX-License-Identifier = "GPL-3.0-only"
+
+[[annotations]]
+path = ["test/fuzz/corpus/**", "test/fuzz/dict/**"]
+SPDX-FileCopyrightText = "2024-2026 Josh Isaacson"
+SPDX-License-Identifier = "GPL-3.0-only"

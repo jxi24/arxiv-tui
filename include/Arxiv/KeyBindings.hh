@@ -42,12 +42,12 @@ class KeyBindings {
         ExportSelectedDigest,
         ExportToObsidian,
         Settings,
-        GenerateBibtex,
         DeleteArticle,
         UndoDelete,
         ExportDigestArchive,
         OpenInBrowser,
-        RateSelection
+        RateSelection,
+        FollowAuthors
     };
 
     KeyBindings() = default;
@@ -66,6 +66,26 @@ class KeyBindings {
     // Empty query returns all bindings.
     std::vector<std::pair<std::string, std::string>>
     filter_bindings(const std::string& query) const;
+
+    // Bindings matching `query` (see filter_bindings), ordered by help-overlay
+    // group (Navigation, Articles, Selection, Projects, Export & share,
+    // Ranking, App).
+    struct BindingInfo {
+        std::string group;
+        std::string name;
+        std::string key;
+    };
+    std::vector<BindingInfo> grouped_bindings(const std::string& query) const;
+
+    // A key as shown to the user (" " -> "Space").
+    static std::string DisplayKey(const std::string& key);
+
+    // Keys bound to more than one action (only the first would ever fire).
+    struct Conflict {
+        std::string key;
+        std::vector<std::string> actions; // display names
+    };
+    std::vector<Conflict> Conflicts() const;
 
     // Check if an event matches a specific action
     bool matches(const ftxui::Event& event, Action action) const;

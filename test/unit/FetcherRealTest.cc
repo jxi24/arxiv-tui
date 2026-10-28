@@ -275,34 +275,6 @@ TEST_CASE("Fetcher::ReplaceLatexAccents", "[fetcher][real][latex]") {
 }
 
 // ---------------------------------------------------------------------------
-// StyleLatex
-// ---------------------------------------------------------------------------
-TEST_CASE("Fetcher::StyleLatex", "[fetcher][real][latex]") {
-    Fetcher fetcher({"hep-ph"});
-
-    SECTION("Strips \\textit{} completely") {
-        REQUIRE(fetcher.StyleLatex("\\textit{hello}") == "hello");
-    }
-
-    SECTION("Strips \\textbf{} completely") {
-        REQUIRE(fetcher.StyleLatex("\\textbf{bold}") == "bold");
-    }
-
-    SECTION("Strips nested formatting commands") {
-        REQUIRE(fetcher.StyleLatex("\\textit{\\textbf{word}}") == "word");
-    }
-
-    SECTION("Leaves plain text unchanged") {
-        REQUIRE(fetcher.StyleLatex("plain text") == "plain text");
-    }
-
-    SECTION("Replaces $...$ math delimiters") {
-        auto result = fetcher.StyleLatex("Energy is $E=mc^2$.");
-        REQUIRE_THAT(result, ContainsSubstring("E=mc^2"));
-    }
-}
-
-// ---------------------------------------------------------------------------
 // LatexToMarkdown
 // ---------------------------------------------------------------------------
 TEST_CASE("Fetcher::LatexToMarkdown", "[fetcher][real][latex]") {
@@ -475,4 +447,121 @@ TEST_CASE("Fetcher::MergeAnnouncementFirst puts the announcement ahead of the ba
         REQUIRE(merged.size() == 2);
         REQUIRE(merged[0].link == backfilled.link);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Regressions found in code review — each fails until the bug is fixed.
+// ---------------------------------------------------------------------------
+TEST_CASE("Fetcher regression: arXiv API error entries are not stored as articles",
+          "[fetcher][real][regression]") {
+    // The arXiv API reports errors as an ordinary Atom <entry>.
+    const std::string error_feed = R"(<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>http://arxiv.org/api/errors#incorrect_id_format_for_1234</id>
+    <title>Error</title>
+    <summary>incorrect id format for 1234</summary>
+    <updated>2026-05-04T00:00:00-04:00</updated>
+    <author><name>arXiv api core</name></author>
+  </entry>
+</feed>)";
+    auto tmp = std::filesystem::temp_directory_path() / "arxiv_fetcher_regression";
+    Fetcher fetcher({"hep-ph"}, tmp.string());
+
+    REQUIRE(fetcher.ParseAtomFeed(error_feed).empty());
+}
+
+TEST_CASE("Fetcher regression: RSS items whose link is not an arXiv abstract URL are dropped",
+          "[fetcher][real][regression]") {
+    // Links end up in shell commands (xdg-open) and file names, and the RSS
+    // feed is fetched over plain http, so anything that is not a canonical
+    // arXiv abstract link must be rejected at the parser.
+    auto feed_with_link = [](const std::string& link) {
+        return std::string(R"(<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/"><channel><item>
+  <title>T</title><link>)") +
+               link + R"(</link>
+  <description>Abstract: A</description>
+  <pubDate>Mon, 25 Mar 2024 12:00:00 -0400</pubDate>
+  <dc:creator>A. Author</dc:creator><category>hep-ph</category>
+</item></channel></rss>)";
+    };
+    auto tmp = std::filesystem::temp_directory_path() / "arxiv_fetcher_regression";
+    Fetcher fetcher({"hep-ph"}, tmp.string());
+
+    SECTION("shell metacharacters") {
+        REQUIRE(fetcher
+                    .ParseFeed(feed_with_link("https://arxiv.org/abs/2403.1&quot;; touch "
+                                              "/tmp/pwned; &quot;"))
+                    .empty());
+    }
+    SECTION("foreign host") {
+        REQUIRE(fetcher.ParseFeed(feed_with_link("https://evil.example/abs/2403.12345")).empty());
+    }
+}
+
+TEST_CASE("Fetcher regression: NormalizeLink only strips a real version suffix",
+          "[fetcher][real][regression]") {
+    // Found by fuzz_text: stripping any trailing "v<digits>" made the result
+    // depend on how many times it was applied.
+    const std::string odd = "https://arxiv.org/abs/hep-ph/0101001v0202002v3";
+    const std::string once = Fetcher::NormalizeLink(odd);
+
+    SECTION("idempotent") { REQUIRE(Fetcher::NormalizeLink(once) == once); }
+    SECTION("old-style id with version") {
+        REQUIRE(Fetcher::NormalizeLink("http://arxiv.org/abs/hep-ph/0101001v3") ==
+                "https://arxiv.org/abs/hep-ph/0101001");
+    }
+}
+
+TEST_CASE("Fetcher regression: dates outside the representable range are rejected",
+          "[fetcher][real][regression]") {
+    // Found by fuzz_text (UBSan): year 0001 overflowed the nanosecond
+    // system_clock duration in from_time_t.
+    auto tmp = std::filesystem::temp_directory_path() / "arxiv_fetcher_regression";
+    Fetcher fetcher({"hep-ph"}, tmp.string());
+
+    SECTION("RFC 822") { REQUIRE_FALSE(fetcher.ParseDate("Mon, 01 Jan 0001 00:00:00 +0000")); }
+    SECTION("ISO 8601") { REQUIRE_FALSE(fetcher.ParseDate("0001-01-01T00:00:00Z")); }
+    SECTION("Atom") { REQUIRE_FALSE(fetcher.ParseAtomDate("0001-01-01T00:00:00Z")); }
+}
+
+// ---------------------------------------------------------------------------
+// /pdf/ links are accepted as well as /abs/ ones, and normalised to /abs/ so
+// the same paper is never stored twice.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Fetcher: /pdf/ links are recognised and normalised to /abs/", "[fetcher][links]") {
+    SECTION("accepted as an arXiv link") {
+        REQUIRE(Fetcher::IsArxivLink("https://arxiv.org/pdf/2401.12345"));
+    }
+    SECTION("abs links still accepted") {
+        REQUIRE(Fetcher::IsArxivLink("https://arxiv.org/abs/2401.12345"));
+    }
+    SECTION("other paths rejected") {
+        REQUIRE_FALSE(Fetcher::IsArxivLink("https://arxiv.org/list/hep-ph/new"));
+    }
+    SECTION("pdf with version and extension") {
+        REQUIRE(Fetcher::NormalizeLink("http://arxiv.org/pdf/2401.12345v2.pdf") ==
+                "https://arxiv.org/abs/2401.12345");
+    }
+    SECTION("old-style pdf") {
+        REQUIRE(Fetcher::NormalizeLink("https://arxiv.org/pdf/hep-ph/0101001v1") ==
+                "https://arxiv.org/abs/hep-ph/0101001");
+    }
+}
+
+TEST_CASE("Fetcher: an RSS item with a /pdf/ link is kept", "[fetcher][links]") {
+    auto tmp = std::filesystem::temp_directory_path() / "arxiv_fetcher_regression";
+    Fetcher fetcher({"hep-ph"}, tmp.string());
+    const std::string feed = R"(<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel><item>
+  <title>T</title><link>https://arxiv.org/pdf/2403.12345v1</link>
+  <description>Abstract: A</description>
+  <pubDate>Mon, 25 Mar 2024 12:00:00 -0400</pubDate>
+</item></channel></rss>)";
+
+    auto articles = fetcher.ParseFeed(feed);
+    REQUIRE(articles.size() == 1);
+    REQUIRE(articles[0].link == "https://arxiv.org/abs/2403.12345");
 }

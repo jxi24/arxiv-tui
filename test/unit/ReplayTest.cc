@@ -7,6 +7,7 @@
 #include "Arxiv/AppCore.hh"
 #include "Arxiv/Config.hh"
 #include "Arxiv/CrashHandler.hh"
+#include "Arxiv/DatabaseManager.hh"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
@@ -16,6 +17,7 @@
 #include <sstream>
 #include <string>
 
+#include "fixtures/test_data.hh"
 #include "mocks/DatabaseManagerMock.hh"
 #include "mocks/FetcherMock.hh"
 
@@ -194,11 +196,14 @@ TEST_CASE("ReplayPlayer::FromString dispatches actions to AppCore", "[replay][pl
     }
 
     SECTION("set_article_index action updates article index") {
-        std::string jsonl = R"({"ts":1000,"action":"set_article_index","index":2})"
+        // The index is clamped to the list, so give it articles to point at.
+        ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(arxiv_tui::test::fixtures::sample_articles);
+        core->SetFilterIndex(Arxiv::AppCore::FilterView::All);
+        std::string jsonl = R"({"ts":1000,"action":"set_article_index","index":1})"
                             "\n";
         auto result = Arxiv::ReplayPlayer::FromString(jsonl, *core);
         REQUIRE(result.replayed == 1);
-        REQUIRE(core->GetArticleIndex() == 2);
+        REQUIRE(core->GetArticleIndex() == 1);
     }
 
     SECTION("unknown action is skipped without error") {
@@ -469,4 +474,69 @@ TEST_CASE("ReplayPlayer: handles malformed lines in replay file", "[replay][play
     }
 
     fs::remove(tmp);
+}
+
+// ---------------------------------------------------------------------------
+// Regressions found in code review — each fails until the bug is fixed.
+// A replay file is untrusted input: a malformed line must be reported, not
+// terminate the process, and must not leave AppCore in an invalid state.
+// ---------------------------------------------------------------------------
+namespace {
+
+std::unique_ptr<Arxiv::AppCore> make_real_replay_core() {
+    static int counter = 0;
+    auto tmp = fs::temp_directory_path();
+    Arxiv::Config cfg;
+    cfg.set_topics({"cs.AI"});
+    cfg.set_download_dir(tmp.string());
+    cfg.set_ranker_file(
+        (tmp / ("arxiv_replay_regression_" + std::to_string(counter++) + ".bin")).string());
+    return std::make_unique<Arxiv::AppCore>(
+        cfg, std::make_unique<Arxiv::DatabaseManager>(":memory:"), std::make_unique<FetcherMock>());
+}
+
+} // namespace
+
+TEST_CASE("Replay regression: a wrongly typed field is reported, not thrown",
+          "[replay][player][regression]") {
+    auto core = make_real_replay_core();
+
+    Arxiv::ReplayPlayer::Result result;
+    REQUIRE_NOTHROW(result = Arxiv::ReplayPlayer::FromString(
+                        R"({"action":"set_filter_index","index":"abc"})", *core));
+    REQUIRE_FALSE(result.error.empty());
+}
+
+TEST_CASE("Replay regression: a number JSON cannot hold is reported, not thrown",
+          "[replay][player][regression]") {
+    // nlohmann throws out_of_range, not parse_error, for 1e70000 (the same
+    // bug fuzz_import_json found in ImportProjectJSON).
+    auto core = make_real_replay_core();
+
+    Arxiv::ReplayPlayer::Result result;
+    REQUIRE_NOTHROW(result = Arxiv::ReplayPlayer::FromString(
+                        R"({"action":"set_filter_index","index":1e70000})", *core));
+    REQUIRE_FALSE(result.error.empty());
+}
+
+TEST_CASE("Replay regression: an out-of-range article index is clamped",
+          "[replay][player][regression]") {
+    auto core = make_real_replay_core();
+
+    Arxiv::ReplayPlayer::FromString(R"({"action":"set_article_index","index":999999})", *core);
+
+    REQUIRE(core->GetArticleIndex() == 0); // the list is empty
+}
+
+TEST_CASE("ReplayRecorder keeps a bounded in-memory history", "[replay][recorder]") {
+    // The in-memory copy exists for crash reports; it used to grow for the
+    // whole session (about one event per second from the UI tick alone).
+    Arxiv::ReplayRecorder recorder;
+    for (int i = 0; i < Arxiv::ReplayRecorder::kMaxEntries + 500; ++i)
+        recorder.RecordEvent("tick", std::to_string(i));
+
+    REQUIRE(recorder.GetCount() == Arxiv::ReplayRecorder::kMaxEntries);
+    const std::string last = std::to_string(Arxiv::ReplayRecorder::kMaxEntries + 499);
+    REQUIRE_THAT(recorder.GetJSONL(), ContainsSubstring("\"detail\":\"" + last + "\""));
+    REQUIRE_THAT(recorder.GetJSONL(), !ContainsSubstring("\"detail\":\"0\""));
 }

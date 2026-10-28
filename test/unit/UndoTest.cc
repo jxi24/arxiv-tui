@@ -4,8 +4,10 @@
 
 #include "Arxiv/AppCore.hh"
 #include "Arxiv/Config.hh"
+#include "Arxiv/DatabaseManager.hh"
 
 #include <catch2/catch_test_macros.hpp>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -337,4 +339,53 @@ TEST_CASE("AppCore::UndoLastDelete: restores tags", "[undo][appcore]") {
     REQUIRE(std::find(relinked_tags.begin(), relinked_tags.end(), "hep-ph") != relinked_tags.end());
     REQUIRE(std::find(relinked_tags.begin(), relinked_tags.end(), "interesting") !=
             relinked_tags.end());
+}
+
+// ---------------------------------------------------------------------------
+// Regressions found in code review — each fails until the bug is fixed.
+// Real in-memory database so the restore path round-trips through SQL.
+// ---------------------------------------------------------------------------
+namespace {
+
+std::unique_ptr<AppCore> make_real_undo_core(const std::vector<Article>& articles) {
+    static int counter = 0;
+    auto tmp = std::filesystem::temp_directory_path();
+    Config cfg;
+    cfg.set_topics({"cs.AI", "math.PR"});
+    cfg.set_download_dir(tmp.string());
+    cfg.set_ranker_file(
+        (tmp / ("arxiv_undo_regression_" + std::to_string(counter++) + ".bin")).string());
+    auto db = std::make_unique<DatabaseManager>(":memory:");
+    for (const auto& a : articles)
+        db->AddArticle(a);
+    return std::make_unique<AppCore>(cfg, std::move(db), std::make_unique<FetcherMock>());
+}
+
+} // namespace
+
+TEST_CASE("Undo regression: a selected article outside the current view can be restored",
+          "[undo][appcore][regression]") {
+    Article article = sample_articles[0]; // not bookmarked
+    auto core = make_real_undo_core({article});
+    core->SetFilterIndex(AppCore::FilterView::All);
+    core->ToggleSelection(article.link);
+    core->SetFilterIndex(AppCore::FilterView::Bookmarks); // article not shown here
+
+    core->DeleteCurrentOrSelected();
+
+    REQUIRE(core->CanUndo());
+}
+
+TEST_CASE("Undo regression: restoring an article keeps its read state",
+          "[undo][appcore][regression]") {
+    Article article = sample_articles[0];
+    auto core = make_real_undo_core({article});
+    core->SetFilterIndex(AppCore::FilterView::All);
+    core->MarkArticleRead(article.link);
+
+    core->DeleteCurrentOrSelected();
+    core->UndoLastDelete();
+
+    core->SetFilterIndex(AppCore::FilterView::Unread);
+    REQUIRE(core->GetCurrentArticles().empty());
 }

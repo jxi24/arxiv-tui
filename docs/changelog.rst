@@ -7,11 +7,83 @@ Changelog
 Unreleased
 ----------
 
-- **Settings take effect immediately** — the Obsidian vault, *Download
-  PDFs*, recommend threshold and retrain interval changed in the Settings
-  dialog now apply as soon as the dialog closes instead of after a restart.
-  Topics, the auto-refresh interval and the directory ``d`` downloads into
-  still need a restart.
+- **Exports and downloads no longer freeze the TUI** — ``o`` (Obsidian),
+  ``g`` (selected digest), ``G`` (digest archive) and ``d`` (download PDF)
+  run in the background. A badge in the bottom-right corner shows progress
+  (``Exporting to Obsidian 1/3…``) and then the outcome; you can keep
+  browsing meanwhile. One export runs at a time.
+- **Obsidian notes never embed a missing PDF** — with *Download PDFs* on,
+  a note whose PDF failed to download links to the PDF on arXiv instead of
+  embedding a file that is not there.
+- **Settings apply immediately** — saving the Settings dialog now applies
+  the new values (and key bindings) to the running session, and reopening it
+  shows what you saved. Topics still take effect on the next start. Letters
+  such as ``j``/``k`` can now be typed into settings fields.
+- **Auto-refresh works** — ``auto_refresh_minutes`` now periodically fetches
+  new articles; the list is refreshed without losing your place.
+- **Safer fetching** — the RSS feed is fetched over HTTPS; network requests
+  time out; links that are not arXiv abstract or PDF links
+  (``https://arxiv.org/abs/<id>`` or ``.../pdf/<id>``) are rejected from
+  feeds and imports, and PDF links are stored as their ``/abs/`` form so a
+  paper is never kept twice; arXiv API error responses are no longer stored as
+  articles; ``xdg-open`` and ``tar`` are started without a shell.
+- **No more lost days** — a failed fetch no longer marks the missed days as
+  fetched, so the next start retries the backfill. ``--fetch`` now uses the
+  same backfill logic as the TUI, and ``--export-today``/``--export-yaml``/
+  ``--replay`` no longer fetch or move the *New Articles* window.
+- **Robust config** — a wrongly typed or out-of-range value in
+  ``config.yml`` falls back to its default instead of crashing, and a pop-up
+  at startup lists each one; an unparseable file runs on the defaults (and
+  is left unchanged) with the same pop-up.
+- **Data directories** — when the compiled-in install prefix is not
+  writable (e.g. ``/usr/local``), data and state fall back to
+  ``~/.local/share`` / ``~/.local/state`` instead of failing at startup.
+- **Fixes** — the YAML digest is valid even when titles contain LaTeX;
+  sub-projects at any depth (and projects whose parent was removed) show in
+  the filter pane; the category filter and followed authors match whole
+  names (``math`` no longer matches ``math-ph``); followed authors match
+  whole names with first and optional middle initials (``W. Li`` matches
+  *Wei Li* but not *Xiao Li* or *Wei Lin*); re-importing a project keeps it nested; deleting an
+  article removes its tags and pruning keeps tagged articles; undo restores
+  selected articles outside the current view and keeps the read state;
+  old-style IDs such as ``hep-ph/0101001`` work for PDFs, BibTeX and
+  Obsidian notes; a corrupt ``ranker.bin`` is rejected instead of crashing;
+  malformed import or replay files are reported instead of aborting.
+- **Found by fuzzing** — pruning no longer deletes articles that carry a
+  project note (the note was left orphaned); text containing a NUL byte is
+  stored in full; link normalisation only strips real version suffixes;
+  out-of-range dates in feeds are rejected instead of overflowing; a corrupt
+  stored date no longer aborts startup.
+- **Follow authors from the TUI** — ``f`` opens a *Followed Authors* dialog
+  with the focused article's authors and your followed list; ``+`` adds a
+  typed name. Names without a first initial are flagged and need a second
+  Enter, since they match everyone with that last name.
+- **Themes** — ``theme`` selects ``frappe`` (default), ``latte``,
+  ``mocha``, ``high-contrast`` or ``terminal``; ``theme_colors`` overrides
+  individual colours. Settings → General → Theme cycles them live.
+- **Easier to find your way** — the help overlay (``?``) groups bindings by
+  task (Navigation, Articles, Selection, Projects, Export & share, Ranking,
+  App) with the key first and nothing cut off, and warns about keys bound to
+  two actions. The unused *Generate BibTeX* binding, which shared ``c``
+  with *Export BibTeX*, is gone. Empty views say what to do next ("No
+  bookmarks yet — press b …"). With many list columns the title keeps a
+  readable width (optional columns are hidden from the right), and the
+  footer drops the topic list instead of overlapping on narrow terminals.
+- **Smoother under load** — the database uses WAL journaling and waits for
+  a busy lock instead of failing, so a cron ``--fetch`` and the TUI can run
+  together; bookmarking or marking read no longer rewrites the search index;
+  lists are ordered newest first; the idle TUI no longer redraws 20 times a
+  second; fuzzy search is much faster on long abstracts and matches a typo
+  that drops a letter.
+- **BibTeX** — clipboard and file exports produce the same entry; ``%``,
+  ``&`` and ``#`` are escaped and braces balanced; the year is the UTC year;
+  re-linking an article no longer appends it to the project ``.bib`` again.
+- **Fixes** — exports report failure when the disk is full; adding a tag no
+  longer switches the view to a different project; removing the project you
+  are viewing switches to New Articles; search input with control
+  characters no longer errors.
+- **Builds with Clang** — fixed a ``class``/``struct`` mismatch that Clang
+  rejects, and cpr's own ``-Werror`` no longer trips on libstdc++ 13.
 
 - **Obsidian export without PDFs** — ``o`` no longer downloads each PDF into
   the vault. Notes link to the PDF on arXiv instead

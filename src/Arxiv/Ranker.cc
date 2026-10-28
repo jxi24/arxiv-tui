@@ -335,8 +335,10 @@ static void write_f32(std::ofstream& f, float v) {
 static bool read_i32(std::ifstream& f, int32_t& v) {
     return static_cast<bool>(f.read(reinterpret_cast<char*>(&v), sizeof(v)));
 }
+// Rejects NaN/inf as well as short reads: a corrupt weight would poison every
+// prediction.
 static bool read_f32(std::ifstream& f, float& v) {
-    return static_cast<bool>(f.read(reinterpret_cast<char*>(&v), sizeof(v)));
+    return static_cast<bool>(f.read(reinterpret_cast<char*>(&v), sizeof(v))) && std::isfinite(v);
 }
 
 bool Ranker::Save(const std::string& path) const {
@@ -401,8 +403,10 @@ bool Ranker::Load(const std::string& path) {
 
     // Vocabulary
     int32_t vocab_size = 0;
-    if (!read_i32(f, vocab_size))
+    if (!read_i32(f, vocab_size) || vocab_size < 0 || vocab_size > MAX_FEATURES) {
+        spdlog::error("[Ranker]: Invalid vocabulary size {} in '{}'", vocab_size, path);
         return false;
+    }
     std::unordered_map<std::string, int> vocab;
     vocab.reserve(static_cast<size_t>(vocab_size));
     for (int32_t i = 0; i < vocab_size; ++i) {
@@ -413,8 +417,12 @@ bool Ranker::Load(const std::string& path) {
         if (!f.read(term.data(), term_len))
             return false;
         int32_t idx = 0;
-        if (!read_i32(f, idx))
+        // The index addresses the feature vector; anything outside it would
+        // make Vectorise write out of bounds.
+        if (!read_i32(f, idx) || idx < 0 || idx >= MAX_FEATURES) {
+            spdlog::error("[Ranker]: Invalid vocabulary index in '{}'", path);
             return false;
+        }
         vocab[term] = static_cast<int>(idx);
     }
 

@@ -126,7 +126,7 @@ TUI shell. Owns the FTXUI `ScreenInteractive`, all UI `Component` objects, and t
 Business logic. Receives `DatabaseManager` and `Fetcher` via `unique_ptr` (dependency injection). Manages filter state, article index, date range, search query, and project membership. Triggers UI refresh via callbacks.
 
 **`DatabaseManager`** (`DatabaseManager.hh/cc`)
-SQLite3 persistence layer. All virtual methods — mock-friendly for testing.
+SQLite3 persistence layer. All virtual methods — mock-friendly for testing. File databases use WAL with a 5 s busy timeout (TUI and cron `--fetch` share the file). Every public method holds a recursive mutex (one connection is shared with the background fetch). Statement errors throw (`Stmt::for_each` no longer stops silently); schema additions use `AddColumnIfMissing`; strings are bound and read by length (NUL-safe).
 
 **`Fetcher`** (`Fetcher.hh/cc`)
 Parses arXiv RSS/XML feeds via `cpr` + `pugixml`. Downloads PDFs. All virtual methods.
@@ -135,13 +135,28 @@ Parses arXiv RSS/XML feeds via `cpr` + `pugixml`. Downloads PDFs. All virtual me
 Loads `config.yml` from the XDG config path on startup; creates defaults if missing. Stores topics, download directory, key bindings, and runtime file paths (`db_file_`, `ranker_file_`). The db and ranker paths are not written to YAML — they are set programmatically by `main.cc` from `Paths::Resolve()` before the app is constructed.
 
 **`Paths`** (`Paths.hh/cc`)
-Resolves all runtime file locations at startup following the XDG Base Directory Specification. Config is always `XDG_CONFIG_HOME/arxiv-tui/config.yml`. Data (database, ranker, downloads) and state (log, replay, crash reports) default to the compile-time install prefix (`InstallPaths.hh`, generated from `InstallPaths.hh.in` by CMake) and can be overridden at runtime via `XDG_DATA_HOME` / `XDG_STATE_HOME`.
+Resolves all runtime file locations at startup following the XDG Base Directory Specification. Config is always `XDG_CONFIG_HOME/arxiv-tui/config.yml`. Data (database, ranker, downloads) and state (log, replay, crash reports) default to the compile-time install prefix (`InstallPaths.hh`, generated from `InstallPaths.hh.in` by CMake) when this user can write there, otherwise to the XDG defaults under `$HOME`; `XDG_DATA_HOME` / `XDG_STATE_HOME` override both. `Paths::Resolve(getenv, install_data, install_state, usable)` is the testable core.
 
 **`KeyBindings`** (`KeyBindings.hh/cc`)
 Maps string action names to `ftxui::Event` instances from the config.
 
 **`Article`** (`Article.hh`)
-Plain data struct: `link`, `title`, `authors`, `abstract`, `date` (Unix timestamp), `bookmarked`.
+Plain data struct: `link`, `title`, `authors`, `abstract`, `date` (Unix timestamp), `bookmarked`. `id()` is everything after `/abs/` (old-style ids keep their archive prefix); use `file_stem()` for file names.
+
+**Background tasks** (`AppCore::Start*`)
+Obsidian export, selected digest (and archive) and PDF download run on one worker thread (`StartTask`). Inputs are captured on the UI thread; the worker only uses the fetcher, the filesystem and the DB, and reports via `GetBackgroundTaskStatus()`, which the main renderer shows as a badge. Worker threads (fetch, auto-refresh, training, tasks) never touch `m_current_articles` or invoke the update callback — they set `m_needs_refetch` / `m_pending_read` for the UI thread's `TryRefetchIfNeeded()`.
+
+**`Export`** (`Export.hh/cc`)
+File formats for every export (project Markdown/text/JSON, daily digest Markdown/YAML, selected digest, Obsidian notes, BibTeX file, tar archive). Pure functions over articles passed in — no DB, selection or UI state; `AppCore` gathers the data and delegates. Writes are checked after the fact (a full disk reports failure).
+
+**`BibTeX`** (`BibTeX.hh/cc`)
+The single fallback BibTeX builder (`BibTeX::Build`) used by the clipboard and file exports when InspireHEP has no record: escapes `% & #`, balances braces, ASCII cite key, UTC year.
+
+**`AuthorMatches`** (`AuthorMatch.hh/cc`)
+Followed-author matching: whole last names (particles included), first initial (and first name when both spelled out), middle initials only when both give one; last name alone matches that last name.
+
+**`Process`** (`Process.hh/cc`)
+Starts external programs (`xdg-open`, `tar`) via `posix_spawnp` with an argument vector and stdio on `/dev/null`. Never build shell command strings from article data.
 
 ### Database Schema
 
@@ -198,6 +213,7 @@ CREATE TABLE project_articles (
 | `d` | Download article PDF |
 | `a` | Toggle detail view |
 | `p` | Open project assignment dialog |
+| `f` | Followed-authors dialog (follow/unfollow; warns on names without a first initial) |
 | `x` | Delete project |
 | `r` | Set date range filter |
 | `/` | Open search dialog |
@@ -276,6 +292,17 @@ object programmatically.
 | `test/unit/FetcherTest.cc` | RSS parsing, PDF download, error handling |
 | `test/unit/AppTest.cc` | AppCore filtering, project/bookmark logic, edge cases |
 | `test/unit/RankerTest.cc` | Vocabulary fitting, training, prediction, persistence |
+| `test/unit/ArticleTest.cc` | `Article::id` for new- and old-style identifiers |
+| `test/unit/BackgroundTaskTest.cc` | Non-blocking exports/downloads: `AppCore` background task API and TUI progress |
+| `test/unit/ProcessTest.cc` | `Process::RunAndWait` / `SpawnDetached` (no-shell process launching) |
+| `test/unit/PathsTest.cc` | `Paths::Resolve` fallback when the install prefix is not writable |
+
+Tests tagged `[regression]` reproduce bugs found in code review (now fixed); the `[threads]` ones are only meaningful under ThreadSanitizer (the Sanitizers CI workflow). `[background]` covers the background-task API.
+
+### Fuzzing
+- `test/fuzz/fuzz_<name>.cc` — libFuzzer targets (`-DARXIV_TUI_ENABLE_FUZZING=ON`, Clang only; `-fno-sanitize-recover`, so UB is a crash). Harness helpers in `FuzzSupport.hh` / `CoreHarness.hh` (offline fetcher, sandboxed AppCore, GCC-safe byte reader — read input bytes in separate statements, never inside one call's argument list).
+- Every testing build makes `fuzz_<name>_replay`; ctest replays `test/fuzz/corpus/<name>/`. Crashers go in the corpus as `regress_<what>` together with a unit regression test.
+- CI: `.github/workflows/fuzz.yml`.
 
 ### Mocks
 - `test/mocks/DatabaseManagerMock.hh` — mocks all `DatabaseManager` virtual methods; stores `NAMED_ALLOW_CALL` handles in `m_expectations` so they outlive helper function scopes
@@ -360,6 +387,9 @@ Inside test bodies, plain `ALLOW_CALL` is fine because the generated local varia
 - Log levels: `trace` for detailed flow, `info` for significant events, `error` for failures.
 
 ### UI (FTXUI)
+- Colours come from `TextColors::*()`, which read the current theme (`Views/Theme.cc`, `SetTheme`, config `theme` / `theme_colors`). Never hard-code colours.
+- Every key-binding action has a help-overlay group in `kActionTable` (`KeyBindings.cc`); `KeyBindings::Conflicts()` reports keys bound twice. Show keys with `KeyBindings::DisplayKey`.
+- Empty article lists show `ArxivApp::EmptyViewMessage()` — one line per view saying what to do next, using the user's actual keys.
 - UI components are built in `ArxivApp::SetupUI()`.
 - A background `std::thread` drives periodic UI refresh via `screen.PostEvent(Event::Custom)`.
 - Key events are dispatched through the `event_handler` component which checks `KeyBindings` before falling through to child components.
@@ -425,9 +455,9 @@ A brief record of what has been implemented. Consult `README.md` for user-facing
 - **`keywords_file`** — YAML key for the interest-keywords file (`Config` load/save); defaults to `<data_dir>/keywords.txt` in `main.cc`. Before this the path was never set, so keyword boosts and the keyword editor had no file. Lets headless installs (a Raspberry Pi running `--fetch` + `--export-yaml`) share a keywords list kept elsewhere. Tests: `ConfigTest.cc` (`keywords_file` read and round-trip).
 
 ### Unreleased — Obsidian export without PDFs
-- **Settings reach `AppCore`** — `AppCore` keeps its own `Config` copy; closing the Settings dialog now calls `AppCore::ApplyConfig(m_config)`, which replaces that copy and the cached retrain interval / recommend threshold. Topics, auto-refresh and the `Fetcher` download dir (used by `d`) are still read only at startup. Tests: `AppTest.cc` (`AppCore::ApplyConfig`).
+- **Settings reach `AppCore`** — `AppCore` keeps its own `Config` copy; closing the Settings dialog now calls `AppCore::ApplyConfig(m_config)`, which replaces that copy and the cached retrain interval / recommend threshold, resizes the undo buffer and restarts auto-refresh when its interval changed. Topics and the `Fetcher` download dir (used by `d`) are still read only at startup. Tests: `AppTest.cc` (`AppCore::ApplyConfig`).
 - **`obsidian_download_pdfs`** (default `false`) — Obsidian export writes `[PDF on arXiv](https://arxiv.org/pdf/<id>)` into each note and never calls `Fetcher::DownloadPaper`; `true` restores downloading the PDF next to the note with a `![[<id>.pdf]]` embed. Toggled in the Settings dialog (Export section, second field; Enter flips it). Tests: `AppTest.cc` (`ExportSelectedToObsidian` link-only / download sections), `ConfigTest.cc` (default and round-trip).
-- **Download-failure fallback** — with `obsidian_download_pdfs: true`, the PDF is downloaded before the note is written; the `![[<id>.pdf]]` embed is used only if `DownloadPaper` succeeded, otherwise the note gets the arXiv link (built with `Fetcher::ConstructPaperUrl`). Test: `AppTest.cc` (`Falls back to the arXiv link when the PDF download fails`).
+- **Download-failure fallback** — with `obsidian_download_pdfs: true`, the PDF is downloaded before the note is written; the `![[<id>.pdf]]` embed is used only if `DownloadPaper` succeeded, otherwise the note gets the arXiv link (built with `Fetcher::ConstructPaperUrl`). Lives in `Export::ObsidianNotes`. Test: `AppTest.cc` (`Falls back to the arXiv link when the PDF download fails`).
 
 ### v1.1 — Open in browser, separate rate-article / rate-selection bindings
 - **Open in browser** — `O` (`OpenInBrowser` action, default key `O`) opens the focused article in the system default browser via `xdg-open`; with a selection active, all selected articles are opened. `AppCore::GetLinksToOpen()` returns the target URLs (selection if non-empty, else focused article). Implemented in `src/Arxiv/Views/MainRenderer.cc` (`HandleGlobalEvent`).

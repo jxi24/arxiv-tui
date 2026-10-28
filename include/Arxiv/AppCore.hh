@@ -12,6 +12,7 @@
 #include "Arxiv/Ranker.hh"
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
@@ -35,7 +36,11 @@ class AppCore {
     // the default — chosen so existing tests with mocked fetchers see the
     // fetched data immediately) or on a background thread (Async — used by
     // the production TUI so launch is instant).
-    enum class FetchMode { Sync, Async };
+    // Sync/Async: fetch from arXiv inline or on a background thread.
+    // Offline: no network fetch and no fetch bookkeeping (last fetch date,
+    // New Articles anchor) — for headless exports and replay, which must not
+    // consume the interactive session's day-boundary crossing.
+    enum class FetchMode { Sync, Async, Offline };
 
     // Constructor with dependency injection. `recorder` is optional and used
     // for diagnostic instrumentation (lifecycle / fetch-progress events) so
@@ -92,14 +97,12 @@ class AppCore {
     int PendingRatings() const { return m_ratings_since_train; }
     // Called from the UI refresh loop to re-fetch articles after background
     // training completes. Must be called on the main thread.
-    void TryRefetchIfNeeded();
+    // Returns true if the article list changed (the UI should redraw).
+    bool TryRefetchIfNeeded();
     // Force a full cold-start retrain (new vocabulary, reset weights) regardless
     // of the pending-ratings counter.
     void ForceRetrain();
     void SetRecommendThreshold(float threshold);
-    // Replace the config snapshot taken at construction, e.g. after the
-    // Settings dialog closes.
-    void ApplyConfig(const Config& config);
     float GetRecommendThreshold() const { return m_recommend_threshold; }
 
     // Project management
@@ -197,6 +200,8 @@ class AppCore {
 
     // Background auto-refresh
     void StartAutoRefresh();
+    // Test hook: refresh on a custom interval instead of auto_refresh_minutes.
+    void StartAutoRefresh(std::chrono::milliseconds interval);
     void StopAutoRefresh();
     bool IsAutoRefreshing() const;
     int GetAutoRefreshMinutes() const;
@@ -206,6 +211,9 @@ class AppCore {
     // render a "fetching..." indicator. WaitForInitialFetch() joins the
     // background thread (no-op in Sync mode).
     bool IsFetching() const { return m_fetching.load(); }
+    // True once the most recent network fetch (initial or auto-refresh)
+    // completed and was stored.
+    bool LastFetchSucceeded() const { return m_last_fetch_ok.load(); }
     void WaitForInitialFetch();
 
     // Category (arxiv tag) filter applied across every view. The set is
@@ -270,8 +278,35 @@ class AppCore {
     // string if the vault isn't configured / the write fails.
     std::string ExportSelectedToObsidian();
 
+    // ── Background tasks ────────────────────────────────────────────────────
+    // Exports that write many files or download PDFs run on a worker thread so
+    // the UI stays responsive; the UI polls GetBackgroundTaskStatus() to show
+    // progress. One task runs at a time: Start* returns false if a task is
+    // already running or there is nothing to do. The selection and settings
+    // are captured when the task starts.
+    struct BackgroundTaskStatus {
+        bool running{false};
+        std::string label;   // e.g. "Exporting to Obsidian"
+        std::size_t done{0}; // items finished
+        std::size_t total{0};
+        std::string result;  // output path once the task has succeeded
+        std::string error;   // set if the task failed
+        std::string message; // one-line summary for the UI once finished
+        std::chrono::steady_clock::time_point finished_at{};
+    };
+    bool StartExportSelectedToObsidian();
+    bool StartExportSelectedDigest();
+    bool StartExportSelectedDigestArchive();
+    bool StartDownloadArticle(const std::string& article_link);
+    BackgroundTaskStatus GetBackgroundTaskStatus() const;
+    bool IsBackgroundTaskRunning() const { return GetBackgroundTaskStatus().running; }
+    void WaitForBackgroundTask();
+
     // Live config access (used by settings dialog)
     const Config& GetConfig() const { return m_config; }
+    // Apply edited settings (from the Settings dialog) to the running core.
+    // Topics take effect on the next start.
+    void ApplyConfig(const Config& config);
 
     // Keyword management (cold-start ranking)
     void ReloadKeywords();
@@ -320,6 +355,30 @@ class AppCore {
     // warm_start=true: keep existing vocab and weights as starting point.
     // warm_start=false: refit vocabulary and reset weights (full retrain).
     void SpawnTrainingThread(bool warm_start);
+    void RefreshFromNetwork();
+    // Replay/diagnostic event; a no-op without a recorder.
+    void Record(const std::string& name, const std::string& detail = "") const;
+    // The selection if any, otherwise the focused article (empty if none).
+    std::vector<std::string> TargetLinks() const;
+    // An article by link: the current list first, then the DB.
+    std::optional<Article> FindArticle(const std::string& link) const;
+    // The selected articles (in link order), resolved via FindArticle.
+    std::vector<Article> SelectedArticles() const;
+    bool MatchesActiveCategory(const std::string& categories) const;
+
+    // Project notes as a lookup for Export::Project*.
+    std::function<std::string(const std::string&)> NotesFor(const std::string& project) const;
+
+    struct TaskOutcome {
+        std::string result, error, message;
+    };
+    using TaskWork = std::function<TaskOutcome(const std::function<void()>& progress)>;
+    bool StartTask(std::string label, std::size_t total, TaskWork work);
+    bool StartDigestTask(bool archive);
+    mutable std::mutex m_task_mutex;
+    BackgroundTaskStatus m_task_status;      // guarded by m_task_mutex
+    std::vector<std::string> m_pending_read; // guarded by m_task_mutex
+    std::thread m_task_thread;
 
     std::vector<Article> m_current_articles;
     std::vector<std::string> m_current_titles;
@@ -385,6 +444,7 @@ class AppCore {
     // Initial network fetch state.
     std::thread m_initial_fetch_thread;
     std::atomic<bool> m_fetching{false};
+    std::atomic<bool> m_last_fetch_ok{false};
     ReplayRecorder* m_recorder = nullptr;
 
     // Active arxiv categories — empty = no filter. Initialised in the
@@ -414,7 +474,6 @@ class AppCore {
     void RefreshTitles();
     void RefreshFilterOptions();
     void NotifyArticleUpdate();
-    std::string ConstructBibtexFromArticle(const Article& article) const;
 };
 
 } // namespace Arxiv

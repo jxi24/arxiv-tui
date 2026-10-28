@@ -207,6 +207,8 @@ long long ReplayRecorder::NowMs() {
 void ReplayRecorder::Record(const std::string& json_line) {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_entries.push_back(json_line);
+    if (m_entries.size() > static_cast<std::size_t>(kMaxEntries))
+        m_entries.pop_front();
     if (m_file.is_open()) {
         m_file << json_line << '\n';
         m_file.flush();
@@ -450,7 +452,7 @@ bool ReplayPlayer::DispatchAction(const std::string& json_line,
     json j;
     try {
         j = json::parse(json_line);
-    } catch (const json::parse_error& e) {
+    } catch (const json::exception& e) { // parse_error, or out_of_range (1e70000)
         error_out = std::string("JSON parse error: ") + e.what();
         return false;
     }
@@ -466,7 +468,14 @@ bool ReplayPlayer::DispatchAction(const std::string& json_line,
         // Unknown action — caller treats this as skipped, not error
         return false;
     }
-    it->second(core, j);
+    // Handlers read fields with json::value(), which throws type_error when a
+    // field has the wrong type; a malformed line is an error, not a crash.
+    try {
+        it->second(core, j);
+    } catch (const json::exception& e) {
+        error_out = std::string("Malformed '") + it->first + "' action: " + e.what();
+        return false;
+    }
     return true;
 }
 

@@ -102,6 +102,22 @@ target_include_directories(arxiv_tui_options INTERFACE
     "$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>"
 )
 
+# Fuzzing (Clang + libFuzzer). Instruments all project code for coverage and
+# ASan/UBSan; the fuzz binaries themselves are added from test/fuzz.
+option(ARXIV_TUI_ENABLE_FUZZING "Build libFuzzer targets (requires Clang)" OFF)
+if(ARXIV_TUI_ENABLE_FUZZING)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "ARXIV_TUI_ENABLE_FUZZING requires Clang")
+    endif()
+    set(ARXIV_TUI_ENABLE_TESTING ON)
+    target_compile_options(arxiv_tui_options INTERFACE
+        -fsanitize=fuzzer-no-link,address,undefined -fno-sanitize-recover=all
+        -fno-omit-frame-pointer -g)
+    # UB is a crash, not a log line, so libFuzzer stops and saves the input.
+    target_link_options(arxiv_tui_options INTERFACE
+        -fsanitize=address,undefined -fno-sanitize-recover=all)
+endif()
+
 # Testing
 if(ARXIV_TUI_ENABLE_TESTING)
     if(ARXIV_TUI_COVERAGE)

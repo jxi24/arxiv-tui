@@ -8,7 +8,9 @@
 
 #include "Arxiv/App.hh"
 #include "Arxiv/Config.hh"
+#include "Arxiv/DatabaseManager.hh"
 #include "Arxiv/KeyBindings.hh"
+#include "Arxiv/Views/Colors.hh"
 
 #include <ftxui/component/event.hpp>
 #include <ftxui/dom/elements.hpp>
@@ -16,6 +18,10 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
+#include <chrono>
+#include <filesystem>
+#include <fstream>
+#include <unistd.h>
 
 #include "fixtures/test_data.hh"
 #include "mocks/DatabaseManagerMock.hh"
@@ -318,4 +324,304 @@ TEST_CASE("ArxivApp: navigating with detail panel open marks article as read",
     const std::string& second_link = arxiv_tui::test::fixtures::sample_articles[1].link;
     REQUIRE_CALL(*db_ptr, MarkArticleRead(second_link));
     handler->OnEvent(Event::Character("j"));
+}
+
+// ---------------------------------------------------------------------------
+// Regressions found in code review — each fails until the bug is fixed.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("ArxivApp regression: reopening settings shows the values saved last time",
+          "[tui][settings][regression]") {
+    auto app = make_app(); // download_dir "/tmp"
+    auto handler = app->GetEventHandler();
+    handler->OnEvent(Event::Character("S"));
+    handler->OnEvent(Event::Return);         // edit "Download dir"
+    handler->OnEvent(Event::Character("X")); // "/tmpX"
+    handler->OnEvent(Event::Return);         // commit
+    handler->OnEvent(Event::Escape);         // save and close
+
+    handler->OnEvent(Event::Character("S")); // reopen
+
+    REQUIRE_THAT(render(*app), Catch::Matchers::ContainsSubstring("/tmpX"));
+}
+
+TEST_CASE("ArxivApp regression: saved settings take effect without a restart",
+          "[tui][settings][regression]") {
+    auto app = make_app();
+    auto handler = app->GetEventHandler();
+    handler->OnEvent(Event::Character("S"));
+    handler->OnEvent(Event::Return);
+    handler->OnEvent(Event::Character("X"));
+    handler->OnEvent(Event::Return);
+    handler->OnEvent(Event::Escape);
+
+    REQUIRE(app->GetCore().GetConfig().get_download_dir() == "/tmpX");
+}
+
+TEST_CASE("ArxivApp regression: navigation keys can be typed into a settings field",
+          "[tui][settings][regression]") {
+    auto app = make_app();
+    auto handler = app->GetEventHandler();
+    handler->OnEvent(Event::Character("S"));
+    handler->OnEvent(Event::Return); // edit "Download dir" = "/tmp"
+
+    handler->OnEvent(Event::Character("j"));
+    handler->OnEvent(Event::Character("k"));
+
+    REQUIRE_THAT(render(*app), Catch::Matchers::ContainsSubstring("/tmpjk"));
+}
+
+// ---------------------------------------------------------------------------
+// Help overlay: grouped by task, keys first, nothing truncated, conflicts shown
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Help overlay groups bindings by task", "[tui][help]") {
+    auto app = make_app();
+    app->GetEventHandler()->OnEvent(Event::Character("?"));
+    const std::string out = render(*app);
+
+    SECTION("navigation") { REQUIRE_THAT(out, Catch::Matchers::ContainsSubstring("Navigation")); }
+    SECTION("export") { REQUIRE_THAT(out, Catch::Matchers::ContainsSubstring("Export & share")); }
+}
+
+TEST_CASE("Help overlay shows every action name and key in full", "[tui][help]") {
+    auto app = make_app();
+    app->GetEventHandler()->OnEvent(Event::Character("?"));
+    const std::string out = render(*app);
+
+    SECTION("long action name") {
+        REQUIRE_THAT(out, Catch::Matchers::ContainsSubstring("Export Selected Digest"));
+    }
+    SECTION("space key spelled out, not cut off") {
+        REQUIRE_THAT(out, !Catch::Matchers::ContainsSubstring("<space"));
+        REQUIRE_THAT(out, Catch::Matchers::ContainsSubstring("Toggle Selection"));
+    }
+}
+
+TEST_CASE("Help overlay warns about keys bound to two actions", "[tui][help]") {
+    auto db = std::make_unique<DatabaseManagerMock>();
+    auto fetcher = std::make_unique<FetcherMock>();
+    KeyBindings kb{std::vector<Config::KeyMapping>{{"next", "b"}}}; // b is also Bookmark
+    auto app = std::make_unique<ArxivApp>(
+        make_test_config(), std::move(db), std::move(fetcher), std::move(kb));
+    app->GetEventHandler()->OnEvent(Event::Character("?"));
+
+    REQUIRE_THAT(render(*app), Catch::Matchers::ContainsSubstring("bound twice"));
+}
+
+// ---------------------------------------------------------------------------
+// Article list layout (TUI audit)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Article list keeps the title readable when many columns are configured",
+          "[tui][layout]") {
+    // With title, date, authors and category on an 80-column terminal the
+    // title used to get 8 characters while authors took 24. Optional columns
+    // are dropped from the right until the title has room.
+    Config cfg = make_test_config();
+    cfg.set_article_columns({"title", "date", "authors", "category"});
+    auto [db, app] = make_app_with_articles(cfg);
+    app->GetCore().SetFilterIndex(AppCore::FilterView::All);
+
+    REQUIRE_THAT(render(*app), Catch::Matchers::ContainsSubstring("Sample Article Title"));
+}
+
+TEST_CASE("An empty Bookmarks view says how to add one", "[tui][layout]") {
+    auto app = make_app();
+    app->GetCore().SetFilterIndex(AppCore::FilterView::Bookmarks);
+
+    REQUIRE_THAT(render(*app), Catch::Matchers::ContainsSubstring("press b"));
+}
+
+TEST_CASE("The footer drops the topic list rather than overlap on a narrow terminal",
+          "[tui][layout]") {
+    Config cfg = make_test_config();
+    cfg.set_topics({"hep-ph", "hep-ex", "hep-lat", "hep-th", "astro-ph.CO"});
+    auto [db, app] = make_app_with_articles(cfg);
+    app->GetCore().SetFilterIndex(AppCore::FilterView::All);
+
+    auto screen = Screen::Create(Dimension::Fixed(80), Dimension::Fixed(24));
+    ftxui::Render(screen, app->GetEventHandler()->Render());
+    const std::string out = screen.ToString();
+    REQUIRE_THAT(out, !Catch::Matchers::ContainsSubstring("2hep"));
+}
+
+TEST_CASE("The configured theme is applied when the app starts", "[tui][theme]") {
+    Config cfg = make_test_config();
+    cfg.set_theme("high-contrast");
+    auto app = make_app(cfg);
+    const ftxui::Color hc_base = TextColors::base();
+    Arxiv::SetTheme("frappe");
+    REQUIRE_FALSE(hc_base == TextColors::base());
+}
+
+TEST_CASE("Settings lets the user cycle the theme", "[tui][theme][settings]") {
+    auto app = make_app();
+    auto handler = app->GetEventHandler();
+    handler->OnEvent(Event::Character("S"));
+    for (int i = 0; i < 3; ++i) // General: download dir, auto-refresh, scroll margin, theme
+        handler->OnEvent(Event::Character("j"));
+    REQUIRE_THAT(render(*app), Catch::Matchers::ContainsSubstring("Theme"));
+
+    handler->OnEvent(Event::Return); // next preset
+    REQUIRE_THAT(render(*app), Catch::Matchers::ContainsSubstring("latte"));
+    Arxiv::SetTheme("frappe");
+}
+
+// ---------------------------------------------------------------------------
+// Bad config pop-up
+// ---------------------------------------------------------------------------
+
+TEST_CASE("A bad config value is reported in a pop-up at startup", "[tui][config]") {
+    const auto path = (std::filesystem::temp_directory_path() /
+                       ("arxiv_tui_badcfg_" + std::to_string(::getpid()) + ".yml"))
+                          .string();
+    {
+        std::ofstream f(path);
+        f << "article_settings:\n  download_dir: /tmp\n  topics: [hep-ph]\n"
+          << "retrain_interval: five\n";
+    }
+    Config cfg(path);
+    std::filesystem::remove(path);
+    auto app = make_app(cfg);
+
+    const std::string out = render(*app);
+    SECTION("names the key") {
+        REQUIRE_THAT(out, Catch::Matchers::ContainsSubstring("retrain_interval"));
+    }
+    SECTION("says the default is used") {
+        REQUIRE_THAT(out, Catch::Matchers::ContainsSubstring("default"));
+    }
+    SECTION("dismissed with Enter") {
+        app->GetEventHandler()->OnEvent(Event::Return);
+        REQUIRE_THAT(render(*app), !Catch::Matchers::ContainsSubstring("retrain_interval"));
+    }
+}
+
+TEST_CASE("A valid config shows no pop-up", "[tui][config]") {
+    auto app = make_app();
+    REQUIRE_THAT(render(*app), !Catch::Matchers::ContainsSubstring("Config problem"));
+}
+
+// ---------------------------------------------------------------------------
+// Followed-authors dialog (f)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Real in-memory DB; the newest article (focused first) is by Wei Li and Jane Smith.
+std::unique_ptr<ArxivApp> make_follow_app() {
+    static int counter = 0;
+    auto db = std::make_unique<DatabaseManager>(":memory:");
+    const auto now = std::chrono::system_clock::now();
+    db->AddArticle(Article(
+        "Newest", "https://arxiv.org/abs/2401.00100", "A", "Wei Li, Jane Smith", now, "hep-ph"));
+    db->AddArticle(Article("Older",
+                           "https://arxiv.org/abs/2401.00101",
+                           "B",
+                           "Xiao Li",
+                           now - std::chrono::hours(48),
+                           "hep-ph"));
+    Config cfg = make_test_config();
+    cfg.set_ranker_file((std::filesystem::temp_directory_path() /
+                         ("arxiv_follow_ui_" + std::to_string(counter++) + ".bin"))
+                            .string());
+    KeyBindings kb{std::vector<Config::KeyMapping>{}};
+    auto app = std::make_unique<ArxivApp>(
+        cfg, std::move(db), std::make_unique<FetcherMock>(), std::move(kb));
+    app->GetCore().SetFilterIndex(AppCore::FilterView::All);
+    return app;
+}
+
+void type(ArxivApp& app, const std::string& s) {
+    for (char c : s)
+        app.GetEventHandler()->OnEvent(Event::Character(c));
+}
+
+} // namespace
+
+TEST_CASE("KeyBindings: Follow Authors defaults to f", "[tui][follow]") {
+    KeyBindings kb{std::vector<Config::KeyMapping>{}};
+    REQUIRE(kb.get_key(KeyBindings::Action::FollowAuthors) == "f");
+}
+
+TEST_CASE("f opens the followed-authors dialog with the focused article's authors",
+          "[tui][follow]") {
+    auto app = make_follow_app();
+    app->GetEventHandler()->OnEvent(Event::Character("f"));
+    const std::string out = render(*app);
+
+    SECTION("title") { REQUIRE_THAT(out, Catch::Matchers::ContainsSubstring("Followed Authors")); }
+    SECTION("first author") { REQUIRE_THAT(out, Catch::Matchers::ContainsSubstring("Wei Li")); }
+    SECTION("second author") {
+        REQUIRE_THAT(out, Catch::Matchers::ContainsSubstring("Jane Smith"));
+    }
+}
+
+TEST_CASE("Enter on an article author follows and unfollows them", "[tui][follow]") {
+    auto app = make_follow_app();
+    auto handler = app->GetEventHandler();
+    handler->OnEvent(Event::Character("f"));
+
+    handler->OnEvent(Event::Return); // first row: Wei Li
+    SECTION("follows") {
+        REQUIRE(app->GetCore().GetFollowedAuthors() == std::vector<std::string>{"Wei Li"});
+    }
+    SECTION("second Enter unfollows") {
+        handler->OnEvent(Event::Return);
+        REQUIRE(app->GetCore().GetFollowedAuthors().empty());
+    }
+}
+
+TEST_CASE("A typed name can be followed", "[tui][follow]") {
+    auto app = make_follow_app();
+    app->GetEventHandler()->OnEvent(Event::Character("f"));
+    app->GetEventHandler()->OnEvent(Event::Character("+"));
+    type(*app, "J. K. Rowling"); // j and k are text here, not navigation
+    app->GetEventHandler()->OnEvent(Event::Return);
+
+    REQUIRE(app->GetCore().GetFollowedAuthors() == std::vector<std::string>{"J. K. Rowling"});
+}
+
+TEST_CASE("Following a name without a first initial asks for confirmation", "[tui][follow]") {
+    auto app = make_follow_app();
+    auto handler = app->GetEventHandler();
+    handler->OnEvent(Event::Character("f"));
+    handler->OnEvent(Event::Character("+"));
+    type(*app, "Li");
+    handler->OnEvent(Event::Return);
+
+    SECTION("warns and waits") {
+        REQUIRE_THAT(render(*app), Catch::Matchers::ContainsSubstring("no first initial"));
+        REQUIRE(app->GetCore().GetFollowedAuthors().empty());
+    }
+    SECTION("Enter again follows anyway") {
+        handler->OnEvent(Event::Return);
+        REQUIRE(app->GetCore().GetFollowedAuthors() == std::vector<std::string>{"Li"});
+    }
+    SECTION("Esc cancels") {
+        handler->OnEvent(Event::Escape);
+        REQUIRE(app->GetCore().GetFollowedAuthors().empty());
+    }
+}
+
+TEST_CASE("A followed name without a first initial is flagged in the list", "[tui][follow]") {
+    auto app = make_follow_app();
+    app->GetCore().FollowAuthor("Li");
+    app->GetEventHandler()->OnEvent(Event::Character("f"));
+
+    REQUIRE_THAT(render(*app), Catch::Matchers::ContainsSubstring("no first initial"));
+}
+
+TEST_CASE("d removes a followed author from the list", "[tui][follow]") {
+    auto app = make_follow_app();
+    app->GetCore().FollowAuthor("X. Li");
+    auto handler = app->GetEventHandler();
+    handler->OnEvent(Event::Character("f"));
+    // Rows: Wei Li, Jane Smith (this article), then X. Li (following).
+    handler->OnEvent(Event::Character("j"));
+    handler->OnEvent(Event::Character("j"));
+    handler->OnEvent(Event::Character("d"));
+
+    REQUIRE(app->GetCore().GetFollowedAuthors().empty());
 }

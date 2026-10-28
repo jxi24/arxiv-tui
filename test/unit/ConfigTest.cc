@@ -7,11 +7,14 @@
 #include <atomic>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <optional>
 #include <string>
 #include <unistd.h>
+#include <vector>
 
 using Arxiv::Config;
 
@@ -83,7 +86,8 @@ TEST_CASE("Config: recommend_threshold round-trips through save/load", "[config]
     cfg.save_to_file(tmp.path);
 
     Config loaded(tmp.path);
-    REQUIRE_THAT(loaded.get_recommend_threshold(), Catch::Matchers::WithinRel(4.2f, 0.001f));
+    REQUIRE_THAT(static_cast<double>(loaded.get_recommend_threshold()),
+                 Catch::Matchers::WithinRel(4.2, 0.001));
 }
 
 TEST_CASE("Config: retrain_interval round-trips through save/load", "[config]") {
@@ -283,4 +287,121 @@ TEST_CASE("Config: article_columns absent from file gives default", "[config]") 
     REQUIRE_FALSE(cols.empty());
     bool has_title = std::find(cols.begin(), cols.end(), "title") != cols.end();
     REQUIRE(has_title);
+}
+
+// ---------------------------------------------------------------------------
+// Regressions found in code review — each fails until the bug is fixed.
+// A hand-edited config with a bad value must not crash the app at startup;
+// the bad key falls back to its default.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Config regression: a wrongly typed value falls back to its default",
+          "[config][regression]") {
+    TempConfig tmp;
+    {
+        std::ofstream f(tmp.path);
+        f << "article_settings:\n"
+          << "  download_dir: /tmp\n"
+          << "  topics: [cs.AI]\n"
+          << "retrain_interval: five\n";
+    }
+
+    std::optional<Config> loaded;
+    REQUIRE_NOTHROW(loaded.emplace(tmp.path));
+    REQUIRE(loaded->get_retrain_interval() == 5);
+}
+
+TEST_CASE("Config regression: article_settings without download_dir loads",
+          "[config][regression]") {
+    TempConfig tmp;
+    {
+        std::ofstream f(tmp.path);
+        f << "article_settings:\n"
+          << "  topics: [cs.AI]\n";
+    }
+
+    std::optional<Config> loaded;
+    REQUIRE_NOTHROW(loaded.emplace(tmp.path));
+    REQUIRE(loaded->get_topics() == std::vector<std::string>{"cs.AI"});
+}
+
+TEST_CASE("Config regression: out-of-range numbers fall back to their defaults",
+          "[config][regression]") {
+    TempConfig tmp;
+    {
+        std::ofstream f(tmp.path);
+        f << "article_settings:\n"
+          << "  download_dir: /tmp\n"
+          << "  topics: [cs.AI]\n"
+          << "retrain_interval: 0\n"
+          << "undo_buffer_size: -1\n";
+    }
+
+    std::optional<Config> loaded;
+    REQUIRE_NOTHROW(loaded.emplace(tmp.path));
+
+    SECTION("retrain_interval must be positive") { REQUIRE(loaded->get_retrain_interval() == 5); }
+    SECTION("undo_buffer_size must not wrap around") {
+        REQUIRE(loaded->get_undo_buffer_size() == 10);
+    }
+}
+
+TEST_CASE("Config: theme and colour overrides round-trip", "[config][theme]") {
+    TempConfig tmp;
+    Config cfg;
+    REQUIRE(cfg.get_theme() == "frappe"); // default: the original palette
+    cfg.set_theme("latte");
+    cfg.set_theme_colors({{"primary", "#112233"}});
+    cfg.save_to_file(tmp.path);
+
+    Config loaded(tmp.path);
+    REQUIRE(loaded.get_theme() == "latte");
+    REQUIRE(loaded.get_theme_colors().at("primary") == "#112233");
+}
+
+// ---------------------------------------------------------------------------
+// Bad config: every rejected value is reported (the TUI shows them in a
+// pop-up) and the default is used instead.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Config: rejected values are reported as warnings", "[config][warnings]") {
+    TempConfig tmp;
+    {
+        std::ofstream f(tmp.path);
+        f << "article_settings:\n"
+          << "  download_dir: /tmp\n"
+          << "  topics: [cs.AI]\n"
+          << "retrain_interval: five\n"
+          << "scroll_margin: -4\n";
+    }
+    Config loaded(tmp.path);
+    const auto& warnings = loaded.get_warnings();
+
+    REQUIRE(warnings.size() == 2);
+    REQUIRE_THAT(warnings[0], Catch::Matchers::ContainsSubstring("retrain_interval"));
+    REQUIRE_THAT(warnings[1], Catch::Matchers::ContainsSubstring("scroll_margin"));
+    REQUIRE(loaded.get_retrain_interval() == 5);
+    REQUIRE(loaded.get_scroll_margin() == 3);
+}
+
+TEST_CASE("Config: a valid file produces no warnings", "[config][warnings]") {
+    TempConfig tmp;
+    Config cfg;
+    cfg.set_topics({"hep-ph"});
+    cfg.save_to_file(tmp.path);
+    REQUIRE(Config(tmp.path).get_warnings().empty());
+}
+
+TEST_CASE("Config: an unparseable file loads the defaults with a warning", "[config][warnings]") {
+    TempConfig tmp;
+    {
+        std::ofstream f(tmp.path);
+        f << "article_settings: [unclosed\n  topics: {\n";
+    }
+    std::optional<Config> loaded;
+    REQUIRE_NOTHROW(loaded.emplace(tmp.path));
+    REQUIRE(loaded->get_topics() ==
+            std::vector<std::string>{"hep-ph", "hep-ex", "hep-lat", "hep-th"});
+    REQUIRE(loaded->get_warnings().size() == 1);
+    REQUIRE_THAT(loaded->get_warnings()[0], Catch::Matchers::ContainsSubstring("defaults"));
 }

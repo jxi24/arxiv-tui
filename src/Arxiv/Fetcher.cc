@@ -8,6 +8,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <cctype>
 #include <chrono>
 #include <ctime>
@@ -15,6 +16,7 @@
 #include <iomanip>
 #include <iterator>
 #include <locale>
+#include <regex>
 #include <sstream>
 #include <string_view>
 #include <utility>
@@ -39,8 +41,7 @@ constexpr std::string_view ARXIV_QUERY_FROM_FORMAT = "%Y%m%d0000";
 constexpr std::string_view ARXIV_QUERY_TO_FORMAT = "%Y%m%d2359";
 
 // Apply every (find, replace) entry in `table` to `text` in order, in-place.
-// Both StyleLatex and ReplaceLatexAccents do this exact loop; isolating it
-// removes the duplicate find-and-advance bookkeeping.
+// Used by ReplaceLatexAccents.
 void apply_replacements(std::string& text,
                         const std::vector<std::pair<std::string, std::string>>& table) {
     for (const auto& [needle, sub] : table) {
@@ -82,32 +83,19 @@ Fetcher::Fetcher(const std::vector<std::string>& topics, const std::string& _bas
 }
 
 std::vector<Article> Fetcher::Fetch() {
-    std::vector<Article> all_articles;
     auto response = FetchFeeds();
-    if (response) {
-        all_articles = ParseFeed(response.value());
-    }
+    if (!response)
+        throw FetchError("arXiv RSS feed could not be fetched");
+    std::vector<Article> all_articles = ParseFeed(response.value());
 
     spdlog::info("[Fetcher]: Fetched {} articles", all_articles.size());
     return all_articles;
 }
 
-std::vector<Article> Fetcher::FetchToday() {
-    // For now, just return the most recent articles from Fetch()
-    // In a real implementation, this would filter for today's articles
-    return Fetch();
-}
-
 bool Fetcher::DownloadPaper(const std::string& paper_id, const std::string& output_path) {
-    if (testing) {
-        // In testing mode, just create an empty file
-        std::ofstream file(output_path);
-        return file.good();
-    }
-
     try {
         auto url = ConstructPaperUrl(paper_id, "pdf");
-        auto response = cpr::Get(cpr::Url{url});
+        auto response = cpr::Get(cpr::Url{url}, cpr::Timeout{120000});
 
         if (response.status_code == 200) {
             std::ofstream file(base_path / output_path, std::ios::binary);
@@ -133,51 +121,46 @@ bool Fetcher::DownloadPaper(const std::string& paper_id, const std::string& outp
     }
 }
 
-std::string Fetcher::GetPaperAbstract(const std::string& paper_id) {
-    if (testing) {
-        return "Sample abstract for testing purposes.";
-    }
-
-    try {
-        auto url = ConstructPaperUrl(paper_id, "abs");
-        auto response = cpr::Get(cpr::Url{url});
-
-        if (response.status_code == 200) {
-            pugi::xml_document doc;
-            if (doc.load_string(response.text.c_str())) {
-                auto abstract_node = doc.select_node("//div[@class='abstract']");
-                if (abstract_node) {
-                    return abstract_node.node().text().get();
-                }
-            }
-        }
-        spdlog::error("[Fetcher]: Failed to fetch abstract for paper {}: HTTP {}",
-                      paper_id,
-                      response.status_code);
-        return "";
-    } catch (const std::exception& e) {
-        spdlog::error("[Fetcher]: Error fetching abstract for paper {}: {}", paper_id, e.what());
-        return "";
-    }
-}
-
 std::string Fetcher::NormalizeLink(const std::string& link) {
     std::string result = link;
 
     // Normalize scheme to https
-    if (result.substr(0, 7) == "http://")
+    if (result.compare(0, 7, "http://") == 0)
         result.replace(0, 7, "https://");
 
-    // Strip trailing version suffix: "v" followed only by digits
-    auto v_pos = result.rfind('v');
-    if (v_pos != std::string::npos && v_pos + 1 < result.size()) {
-        std::string_view suffix(result.c_str() + v_pos + 1);
-        bool all_digits = !suffix.empty() && std::all_of(suffix.begin(), suffix.end(), ::isdigit);
-        if (all_digits)
-            result.erase(v_pos);
-    }
+    // A PDF link names the same paper as its abstract page: store one form.
+    static const std::regex pdf(R"(^(https://arxiv\.org)/pdf/(.+?)(?:\.pdf)?$)");
+    std::smatch pm;
+    if (std::regex_match(result, pm, pdf))
+        result = pm[1].str() + "/abs/" + pm[2].str();
+
+    // Strip the version suffix of a real arXiv identifier only — new style
+    // (2401.12345v2) or old style (hep-ph/0101001v3). Stripping any trailing
+    // "v<digits>" made the result depend on how often it was applied.
+    static const std::regex versioned(
+        R"(^(.*/abs/(?:\d{4}\.\d{4,5}|[A-Za-z-]+(?:\.[A-Za-z]{2})?/\d{7}))v\d+$)");
+    std::smatch m;
+    if (std::regex_match(result, m, versioned))
+        result = m[1].str();
 
     return result;
+}
+
+bool Fetcher::IsArxivLink(const std::string& link) {
+    constexpr std::string_view host = "https://arxiv.org/";
+    if (link.compare(0, host.size(), host) != 0)
+        return false;
+    const std::string_view path(link.c_str() + host.size());
+    std::string_view id;
+    for (std::string_view kind : {"abs/", "pdf/"})
+        if (path.substr(0, kind.size()) == kind)
+            id = path.substr(kind.size());
+    if (id.empty() || id.front() == '/' || id.find("..") != std::string_view::npos)
+        return false;
+    return std::all_of(id.begin(), id.end(), [](char c) {
+        return std::isalnum(static_cast<unsigned char>(c)) || c == '.' || c == '-' || c == '/' ||
+               c == '_';
+    });
 }
 
 std::string Fetcher::ConstructPaperUrl(const std::string& paper_id,
@@ -186,17 +169,11 @@ std::string Fetcher::ConstructPaperUrl(const std::string& paper_id,
 }
 
 std::optional<std::string> Fetcher::FetchFeeds() {
-    if (testing) {
-        std::ifstream rss("hep-ph+hep-ex.rss");
-        std::stringstream buffer;
-        buffer << rss.rdbuf();
-        return buffer.str();
-    }
     spdlog::trace("[Fetcher]: Fetching articles for topics [{}]", fmt::join(m_topics, ", "));
     try {
-        auto url = fmt::format("http://rss.arxiv.org/rss/{}", fmt::join(m_topics, "+"));
+        auto url = fmt::format("https://rss.arxiv.org/rss/{}", fmt::join(m_topics, "+"));
 
-        auto response = cpr::Get(cpr::Url{url});
+        auto response = cpr::Get(cpr::Url{url}, cpr::Timeout{30000});
 
         if (response.status_code == 200) {
             return response.text;
@@ -237,6 +214,10 @@ std::vector<Article> Fetcher::ParseFeed(const std::string& xml_content) const {
             // Extract basic fields using node values
             article.title = LatexToMarkdown(item.child_value("title"));
             article.link = NormalizeLink(item.child_value("link"));
+            if (!IsArxivLink(article.link)) {
+                spdlog::warn("[Fetcher]: Skipping RSS item with invalid link '{}'", article.link);
+                continue;
+            }
             std::string abstract_text = item.child_value("description");
             // Find the position of "Abstract:" and remove everything up to and including it
             size_t abstract_pos = abstract_text.find("Abstract:");
@@ -293,6 +274,14 @@ std::vector<Article> Fetcher::ParseFeed(const std::string& xml_content) const {
     return articles;
 }
 
+namespace {
+
+// system_clock counts nanoseconds in 64 bits (about 1678–2262); anything
+// outside a sane window would overflow from_time_t. arXiv dates start in 1991.
+bool year_in_range(const std::tm& tm) { return tm.tm_year >= 0 && tm.tm_year <= 300; }
+
+} // namespace
+
 std::optional<Arxiv::time_point> Fetcher::ParseDate(const std::string& date) const {
     if (date.empty())
         return std::nullopt;
@@ -309,7 +298,7 @@ std::optional<Arxiv::time_point> Fetcher::ParseDate(const std::string& date) con
         ss.imbue(std::locale::classic());
         std::tm tm = {};
         ss >> std::get_time(&tm, "%a, %d %b %Y %H:%M:%S");
-        if (ss.fail())
+        if (ss.fail() || !year_in_range(tm))
             return std::nullopt;
 
         // The fields in tm are wall-clock time at the trailing zone offset.
@@ -337,7 +326,7 @@ std::optional<Arxiv::time_point> Fetcher::ParseDate(const std::string& date) con
     ss.imbue(std::locale::classic());
     std::tm tm = {};
     ss >> std::get_time(&tm, "%Y-%m-%dT%H:%M:%S");
-    if (ss.fail())
+    if (ss.fail() || !year_in_range(tm))
         return std::nullopt;
     // The ISO feed is UTC ('Z'); interpret the fields as UTC, not local time.
     return std::chrono::system_clock::from_time_t(timegm(&tm));
@@ -411,51 +400,6 @@ std::string Fetcher::LatexToMarkdown(const std::string& text) const {
         prev = result;
         apply_latex_conversions(result, conversions);
     } while (result != prev);
-
-    return result;
-}
-
-std::string Fetcher::StyleLatex(const std::string& text) const {
-    std::string result = text;
-
-    // For each formatting command, replace \cmd{content} with content in one
-    // pass so both the opening marker and its matching closing brace are
-    // removed together.  Processing innermost first (repeated until stable)
-    // handles nested commands correctly.
-    static const std::vector<std::string> commands = {"\\textit",
-                                                      "\\textbf",
-                                                      "\\emph",
-                                                      "\\textsl",
-                                                      "\\textsc",
-                                                      "\\texttt",
-                                                      "\\textnormal",
-                                                      "\\textrm",
-                                                      "\\textsf",
-                                                      "\\textmd",
-                                                      "\\textup",
-                                                      "\\textdown",
-                                                      "\\underline",
-                                                      "\\overline",
-                                                      "\\st"};
-    bool changed = true;
-    while (changed) {
-        changed = false;
-        for (const auto& cmd : commands) {
-            std::string open = cmd + "{";
-            size_t pos = 0;
-            while ((pos = result.find(open, pos)) != std::string::npos) {
-                size_t content_start = pos + open.size();
-                size_t close = result.find("}", content_start);
-                if (close == std::string::npos)
-                    break;
-                result.replace(
-                    pos, close - pos + 1, result.substr(content_start, close - content_start));
-                changed = true;
-                // Re-scan from same position — the replacement may itself
-                // contain a further instance of the same command.
-            }
-        }
-    }
 
     return result;
 }
@@ -662,13 +606,13 @@ std::vector<Article> Fetcher::FetchSince(const std::string& utc_date) {
     // This is NOT the peer-reviewed journal publication date (that is the
     // separate <arxiv:journal_ref> element).  We start the query window at
     // utc_date itself so that papers whose submission date equals utc_date are
-    // not silently dropped.  Duplicates already in the DB are handled by
-    // INSERT OR IGNORE in AddArticle.
+    // not silently dropped.  Papers already in the DB are upserted by
+    // AddArticle, which never rewrites their date.
     // arXiv submittedDate query format: YYYYMMDDHHMI (e.g. 202605020000).
     // Start the window announce_lag_days before utc_date: papers are announced
     // (and thus first visible) a day or more after their submission date, so a
     // window anchored exactly at the last fetch would miss papers submitted just
-    // before it but announced after. AddArticle de-dupes the overlap.
+    // before it but announced after. AddArticle's upsert absorbs the overlap.
     const std::string window_start = FetchSinceWindowStart(utc_date);
     std::tm from_tm{};
     parse_ymd_prefix(window_start, from_tm);
@@ -722,18 +666,16 @@ std::vector<Article> Fetcher::FetchSince(const std::string& utc_date) {
                                max_results);
 
         spdlog::info("[Fetcher]: FetchSince GET {}", url);
+        // A failure part-way through paging must not look like a complete
+        // (shorter) result: the caller would mark the missed days as fetched.
         cpr::Response resp;
         try {
             resp = cpr::Get(cpr::Url{url}, cpr::Timeout{15000});
         } catch (const std::exception& e) {
-            spdlog::error("[Fetcher]: FetchSince network error: {}", e.what());
-            break;
+            throw FetchError(std::string("arXiv API network error: ") + e.what());
         }
-
-        if (resp.status_code != 200) {
-            spdlog::warn("[Fetcher]: FetchSince HTTP {}", resp.status_code);
-            break;
-        }
+        if (resp.status_code != 200)
+            throw FetchError("arXiv API returned HTTP " + std::to_string(resp.status_code));
 
         auto batch = ParseAtomFeed(resp.text);
         if (batch.empty())
@@ -784,6 +726,11 @@ std::vector<Article> Fetcher::ParseAtomFeed(const std::string& xml_content) cons
         // <id> holds the URL e.g. http://arxiv.org/abs/2605.12345v1; normalize it.
         std::string raw_link = entry.child_value("id");
         article.link = NormalizeLink(raw_link);
+        // The API reports errors as an <entry> whose id is an errors URL.
+        if (!IsArxivLink(article.link)) {
+            spdlog::warn("[Fetcher]: Skipping Atom entry with id '{}'", raw_link);
+            continue;
+        }
 
         article.title = LatexToMarkdown(entry.child_value("title"));
         article.abstract = LatexToMarkdown(entry.child_value("summary"));
@@ -844,7 +791,7 @@ std::optional<Arxiv::time_point> Fetcher::ParseAtomDate(const std::string& date)
     // Format: "2026-05-04T00:00:00-04:00" or "2026-05-04T00:00:00Z"
     // We only need the date portion for day-level granularity.
     std::tm tm{};
-    if (!parse_ymd_prefix(date, tm))
+    if (!parse_ymd_prefix(date, tm) || !year_in_range(tm))
         return std::nullopt;
     return std::chrono::system_clock::from_time_t(timegm(&tm));
 }

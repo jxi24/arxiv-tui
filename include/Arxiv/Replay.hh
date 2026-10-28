@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <deque>
 #include <fstream>
 #include <mutex>
 #include <string>
@@ -78,13 +79,17 @@ class ReplayRecorder {
 
     /// Returns all recorded entries as a JSONL string (one JSON object per
     /// line, each terminated with '\n').
+    // The in-memory copy (for crash reports) keeps only the newest entries;
+    // the replay file keeps everything.
+    static constexpr int kMaxEntries = 2000;
+
     std::string GetJSONL() const;
 
     /// Number of entries recorded so far.
     std::size_t GetCount() const;
 
   private:
-    std::vector<std::string> m_entries;
+    std::deque<std::string> m_entries; // newest kMaxEntries
     std::ofstream m_file;
     mutable std::mutex m_mutex;
 

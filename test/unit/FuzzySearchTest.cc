@@ -128,3 +128,14 @@ TEST_CASE("AppCore::FuzzySearchArticles: empty corpus returns empty", "[fuzzy][a
     auto results = core->FuzzySearchArticles("anything", 80);
     REQUIRE(results.empty());
 }
+
+TEST_CASE("FuzzyMatch::MatchesText: a dropped letter inside a longer text still matches",
+          "[fuzzy]") {
+    // Comparing only windows exactly as long as the query scored "quantm "
+    // (two edits) instead of "quantm" (one edit, 86%).
+    REQUIRE(Arxiv::FuzzyMatch::MatchesText("quantum", "lattice quantm chromodynamics", 80));
+}
+
+TEST_CASE("FuzzyMatch::MatchesText: unrelated text does not match", "[fuzzy]") {
+    REQUIRE_FALSE(Arxiv::FuzzyMatch::MatchesText("quantum", "galaxy rotation curves", 80));
+}

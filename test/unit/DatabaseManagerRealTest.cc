@@ -13,7 +13,10 @@
 #include <ctime>
 #include <filesystem>
 #include <fixtures/test_data.hh>
+#include <future>
 #include <sqlite3.h>
+#include <stdexcept>
+#include <thread>
 #include <unistd.h>
 
 // Tests against the *real* DatabaseManager implementation (in-memory SQLite).
@@ -884,4 +887,293 @@ TEST_CASE("DB migration: updated_at column is added to a pre-existing database",
 
     // Existing rows carry no update stamp — they were never seen as updates.
     REQUIRE(db.GetArticlesUpdatedSince(0).empty());
+}
+
+// ---------------------------------------------------------------------------
+// Regressions found in code review — each fails until the bug is fixed.
+// ---------------------------------------------------------------------------
+TEST_CASE("Real DB regression: AddProject on an existing project keeps its parent and bib path",
+          "[database][real][regression]") {
+    DatabaseManager db(":memory:");
+    db.AddProject("parent");
+    db.AddProject("child");
+    db.SetProjectParent("child", "parent");
+    db.SetProjectBibPath("child", "/tmp/child.bib");
+
+    // INSERT OR REPLACE deletes and re-inserts the row, resetting every
+    // other column to its default.
+    db.AddProject("child");
+
+    SECTION("parent survives") { REQUIRE(db.GetProjectParent("child") == "parent"); }
+    SECTION("bib path survives") { REQUIRE(db.GetProjectBibPath("child") == "/tmp/child.bib"); }
+}
+
+TEST_CASE("Real DB regression: DeleteArticle removes the article's tag links",
+          "[database][real][regression]") {
+    DatabaseManager db(":memory:");
+    db.AddArticle(sample_articles[0]);
+    db.LinkArticleToTag(sample_articles[0].link, "to-read");
+
+    db.DeleteArticle(sample_articles[0].link);
+
+    REQUIRE(db.GetTagsForArticle(sample_articles[0].link).empty());
+}
+
+TEST_CASE("Real DB regression: PruneArticles keeps tagged articles",
+          "[database][real][regression]") {
+    DatabaseManager db(":memory:");
+    Article old_article = sample_articles[0];
+    old_article.date = std::chrono::system_clock::from_time_t(1000); // 1970
+    db.AddArticle(old_article);
+    db.LinkArticleToTag(old_article.link, "keep");
+
+    db.PruneArticles(30);
+
+    REQUIRE(db.GetArticlesForTag("keep").size() == 1);
+}
+
+TEST_CASE("Real DB regression: a write from another thread is not lost when a bulk insert "
+          "rolls back",
+          "[database][real][regression][threads]") {
+    // The background fetch and the UI share one connection. Without
+    // serialisation, a bookmark written while AddArticles holds its
+    // transaction open becomes part of it and is discarded by the ROLLBACK.
+    struct FailingDb : DatabaseManager {
+        using DatabaseManager::DatabaseManager;
+        std::promise<void> inside_txn;
+        void AddArticle(const Article& a) override {
+            if (a.link == "https://arxiv.org/abs/poison") {
+                inside_txn.set_value();
+                // Give the other thread time to write; with a lock it blocks
+                // until the rollback below has finished.
+                std::this_thread::sleep_for(std::chrono::milliseconds(300));
+                throw std::runtime_error("simulated insert failure");
+            }
+            DatabaseManager::AddArticle(a);
+        }
+    };
+
+    auto path = (std::filesystem::temp_directory_path() /
+                 ("arxiv_rollback_" + std::to_string(::getpid()) + ".db"))
+                    .string();
+    std::filesystem::remove(path);
+    FailingDb db(path);
+    db.AddArticle(sample_articles[0]);
+    auto started = db.inside_txn.get_future();
+
+    Article poison = sample_articles[1];
+    poison.link = "https://arxiv.org/abs/poison";
+    std::thread fetch([&] {
+        try {
+            db.AddArticles({sample_articles[1], poison});
+        } catch (const std::exception&) {
+        }
+    });
+    started.wait();
+    db.ToggleBookmark(sample_articles[0].link, true);
+    fetch.join();
+
+    auto bookmarked = db.ListBookmarked();
+    REQUIRE(std::any_of(bookmarked.begin(), bookmarked.end(), [](const Article& a) {
+        return a.link == sample_articles[0].link;
+    }));
+    std::filesystem::remove(path);
+}
+
+TEST_CASE("Real DB regression: NULL values in name columns are skipped, not dereferenced",
+          "[database][real][regression]") {
+    // TEXT PRIMARY KEY columns accept NULL in SQLite; building a std::string
+    // from the NULL pointer sqlite3_column_text returns is undefined.
+    auto path = (std::filesystem::temp_directory_path() /
+                 ("arxiv_nulls_" + std::to_string(::getpid()) + ".db"))
+                    .string();
+    std::filesystem::remove(path);
+    {
+        DatabaseManager create(path);
+    }
+    sqlite3* raw = nullptr;
+    REQUIRE(sqlite3_open(path.c_str(), &raw) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(raw,
+                         "INSERT INTO projects (name) VALUES (NULL);"
+                         "INSERT INTO followed_authors (author_name) VALUES (NULL);"
+                         "INSERT INTO project_articles (project_name, article_link) "
+                         "VALUES (NULL, 'https://arxiv.org/abs/1');",
+                         nullptr,
+                         nullptr,
+                         nullptr) == SQLITE_OK);
+    sqlite3_close(raw);
+
+    DatabaseManager db(path);
+    SECTION("projects") {
+        std::vector<std::string> projects;
+        REQUIRE_NOTHROW(projects = db.GetProjects());
+        REQUIRE(projects.empty());
+    }
+    SECTION("followed authors") {
+        std::vector<std::string> authors;
+        REQUIRE_NOTHROW(authors = db.GetFollowedAuthors());
+        REQUIRE(authors.empty());
+    }
+    SECTION("projects for an article") {
+        std::vector<std::string> projects;
+        REQUIRE_NOTHROW(projects = db.GetProjectsForArticle("https://arxiv.org/abs/1"));
+        REQUIRE(projects.empty());
+    }
+    std::filesystem::remove(path);
+}
+
+TEST_CASE("Real DB regression: PruneArticles keeps articles that carry a note",
+          "[database][real][regression]") {
+    // Found by fuzz_db_ops: a note does not require project membership, so
+    // pruning deleted the article and left its note orphaned. Notes are user
+    // content, like ratings and tags, so the article is kept.
+    DatabaseManager db(":memory:");
+    Article old_article = sample_articles[0];
+    old_article.date = std::chrono::system_clock::from_time_t(1000);
+    db.AddArticle(old_article);
+    db.SetProjectNote("reading", old_article.link, "check eq. 3");
+
+    db.PruneArticles(30);
+
+    REQUIRE(db.GetProjectNote("reading", old_article.link) == "check eq. 3");
+    REQUIRE(db.GetRecent(-1).size() == 1);
+}
+
+TEST_CASE("Real DB regression: text with an embedded NUL is stored in full",
+          "[database][real][regression]") {
+    // Found by fuzz_digest_yaml: strings were bound with length -1, so SQLite
+    // stopped at the first NUL byte and the rest was lost.
+    DatabaseManager db(":memory:");
+    Article a = sample_articles[0];
+    a.authors = std::string("A. Author\0B. Author", 19);
+    db.AddArticle(a);
+
+    auto stored = db.GetArticle(a.link);
+    REQUIRE(stored.has_value());
+    REQUIRE(stored->authors == a.authors);
+}
+
+TEST_CASE("Real DB regression: a malformed date for GetArticlesSince is not fatal",
+          "[database][real][regression]") {
+    // The date comes from the metadata table; a corrupt value used to throw
+    // std::invalid_argument out of std::stoi and abort startup.
+    DatabaseManager db(":memory:");
+    db.AddArticle(sample_articles[0]);
+    std::vector<Article> found;
+    REQUIRE_NOTHROW(found = db.GetArticlesSince("not-a-date"));
+}
+
+// ---------------------------------------------------------------------------
+// DB-layer cleanup (code review §4) — behaviour the refactor must provide.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+std::string temp_db_path(const std::string& stem) {
+    auto p = (std::filesystem::temp_directory_path() /
+              ("arxiv_" + stem + "_" + std::to_string(::getpid()) + ".db"))
+                 .string();
+    for (const char* suffix : {"", "-wal", "-shm"})
+        std::filesystem::remove(p + suffix);
+    return p;
+}
+
+std::string query_text(const std::string& path, const char* sql) {
+    sqlite3* raw = nullptr;
+    sqlite3_open(path.c_str(), &raw);
+    sqlite3_stmt* st = nullptr;
+    sqlite3_prepare_v2(raw, sql, -1, &st, nullptr);
+    std::string out;
+    if (sqlite3_step(st) == SQLITE_ROW && sqlite3_column_text(st, 0))
+        out = reinterpret_cast<const char*>(sqlite3_column_text(st, 0));
+    sqlite3_finalize(st);
+    sqlite3_close(raw);
+    return out;
+}
+
+} // namespace
+
+TEST_CASE("Real DB: list queries return the newest articles first", "[database][real]") {
+    DatabaseManager db(":memory:");
+    Article older = sample_articles[0];
+    older.date = std::chrono::system_clock::from_time_t(1'700'000'000);
+    older.bookmarked = true;
+    Article newer = sample_articles[1];
+    newer.date = std::chrono::system_clock::from_time_t(1'800'000'000);
+    newer.bookmarked = true;
+    db.AddArticle(older); // inserted first: rowid order would put it first
+    db.AddArticle(newer);
+    db.LinkArticleToProject(older.link, "p");
+    db.LinkArticleToProject(newer.link, "p");
+    db.LinkArticleToTag(older.link, "t");
+    db.LinkArticleToTag(newer.link, "t");
+
+    SECTION("bookmarks") { REQUIRE(db.ListBookmarked().front().link == newer.link); }
+    SECTION("unread") { REQUIRE(db.GetUnreadArticles().front().link == newer.link); }
+    SECTION("project") { REQUIRE(db.GetArticlesForProject("p").front().link == newer.link); }
+    SECTION("tag") { REQUIRE(db.GetArticlesForTag("t").front().link == newer.link); }
+}
+
+TEST_CASE("Real DB: file databases use WAL journaling", "[database][real]") {
+    // WAL lets the TUI read while a cron --fetch writes.
+    auto path = temp_db_path("wal");
+    {
+        DatabaseManager db(path);
+    }
+    REQUIRE(query_text(path, "PRAGMA journal_mode") == "wal");
+}
+
+TEST_CASE("Real DB: a write waits for another connection's lock instead of failing",
+          "[database][real]") {
+    auto path = temp_db_path("busy");
+    DatabaseManager db(path);
+    db.AddArticle(sample_articles[0]);
+
+    sqlite3* other = nullptr;
+    sqlite3_open(path.c_str(), &other);
+    REQUIRE(sqlite3_exec(other, "BEGIN IMMEDIATE", nullptr, nullptr, nullptr) == SQLITE_OK);
+    std::thread release([other] {
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        sqlite3_exec(other, "COMMIT", nullptr, nullptr, nullptr);
+    });
+
+    bool failed = false;
+    try {
+        db.ToggleBookmark(sample_articles[0].link, true);
+    } catch (const std::exception&) {
+        failed = true; // SQLITE_BUSY without a busy timeout
+    }
+    release.join();
+    sqlite3_close(other);
+    REQUIRE_FALSE(failed);
+}
+
+TEST_CASE("Real DB: the full-text index is only rewritten when indexed columns change",
+          "[database][real]") {
+    // Bookmarking, read marks and relevance scores used to rewrite the FTS
+    // row on every UPDATE.
+    auto path = temp_db_path("fts_trigger");
+    {
+        DatabaseManager db(path);
+    }
+    const std::string trigger =
+        query_text(path, "SELECT sql FROM sqlite_master WHERE name = 'articles_au'");
+    REQUIRE_THAT(trigger, ContainsSubstring("UPDATE OF title, authors, abstract"));
+}
+
+TEST_CASE("Real DB regression: search input never throws", "[database][real][regression]") {
+    // Found by fuzz_db_ops once statement errors stopped being swallowed: a
+    // NUL byte inside a quoted token is an FTS5 syntax error.
+    DatabaseManager db(":memory:");
+    db.AddArticle(sample_articles[0]);
+    std::vector<Article> found;
+
+    SECTION("embedded NUL") {
+        REQUIRE_NOTHROW(found = db.SearchArticles(std::string("Sam\0ple", 7)));
+    }
+    SECTION("control characters") { REQUIRE_NOTHROW(found = db.SearchArticles("\x01\x02 \x7f")); }
+    SECTION("still finds the article around them") {
+        found = db.SearchArticles(std::string("Sample\x01", 7));
+        REQUIRE(found.size() == 1);
+    }
 }

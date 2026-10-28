@@ -1,0 +1,4 @@
+retrain_interval: five
+undo_buffer_size: -1
+article_settings:
+  topics: [cs.AI]

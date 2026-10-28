@@ -4,6 +4,7 @@
 
 #include "Arxiv/App.hh"
 #include "Arxiv/Clipboard.hh"
+#include "Arxiv/Process.hh"
 #include "Arxiv/Views/Colors.hh"
 
 #include <chrono>
@@ -131,7 +132,13 @@ void ArxivApp::SetupMainRenderer() {
         footer_els.push_back(text("  ") | color(TextColors::subtext()));
         footer_els.push_back(text(position) | color(TextColors::text()));
         footer_els.push_back(filler());
-        footer_els.push_back(text(topics_str) | color(TextColors::subtext()));
+        // The topic list is the least important part: leave it out rather
+        // than let it run into the position counter on a narrow terminal.
+        const std::size_t left_width = quit_key.size() + help_key.size() + filter_label.size() +
+                                       (filter_detail.empty() ? 0 : filter_detail.size() + 2) +
+                                       position.size() + 34;
+        if (left_width + topics_str.size() + 2 <= static_cast<std::size_t>(Terminal::Size().dimx))
+            footer_els.push_back(text(topics_str) | color(TextColors::subtext()));
         footer_els.push_back(text(" "));
 
         auto footer =
@@ -152,6 +159,24 @@ void ArxivApp::SetupMainRenderer() {
                                 borderStyled(ROUNDED, TextColors::error()) |
                                 bgcolor(TextColors::surface()) | clear_under | center;
             document = dbox({document, error_dialog});
+        } else if (dialog_depth == Dialog::ConfigWarning) {
+            Elements lines = {
+                text("Config problem") | bold | center | color(TextColors::error()),
+                separator() | color(TextColors::error()),
+            };
+            for (const auto& w : m_config.get_warnings())
+                lines.push_back(paragraph("• " + w) | color(TextColors::text()));
+            lines.push_back(separator() | color(TextColors::border()));
+            lines.push_back(
+                text("Fix config.yml, or change these in Settings (" +
+                     KeyBindings::DisplayKey(key_bindings.get_key(KeyBindings::Action::Settings)) +
+                     ").") |
+                color(TextColors::subtext()));
+            lines.push_back(text("Press Enter or Esc to continue") | color(TextColors::subtext()));
+            auto warning_dialog = vbox(lines) | size(WIDTH, LESS_THAN, 76) |
+                                  borderStyled(ROUNDED, TextColors::error()) |
+                                  bgcolor(TextColors::surface()) | clear_under | center;
+            document = dbox({document, warning_dialog});
         } else if (dialog_depth == Dialog::Success) {
             auto success_dialog =
                 vbox({
@@ -177,6 +202,8 @@ void ArxivApp::SetupMainRenderer() {
             document = dbox({document, import_dialog->Render()});
         } else if (dialog_depth == Dialog::KeywordEditor) {
             document = dbox({document, keyword_dialog->Render()});
+        } else if (dialog_depth == Dialog::FollowAuthors) {
+            document = dbox({document, follow_dialog->Render()});
         } else if (dialog_depth == Dialog::CategoryFilter) {
             document = dbox({document, category_dialog->Render()});
         } else if (dialog_depth == Dialog::Settings) {
@@ -203,6 +230,30 @@ void ArxivApp::SetupMainRenderer() {
 
         if (show_help) {
             document = dbox({document, help_dialog->Render()});
+        }
+
+        auto task = core.GetBackgroundTaskStatus();
+        const bool show_task_result =
+            !task.running && !task.label.empty() &&
+            std::chrono::steady_clock::now() - task.finished_at < std::chrono::seconds(8);
+        if (task.running || show_task_result) {
+            Element badge;
+            if (task.running) {
+                std::string progress = task.label;
+                if (task.total > 1)
+                    progress += " " + std::to_string(task.done) + "/" + std::to_string(task.total);
+                badge = text(" " + progress + "… ") | bold | color(TextColors::primary());
+            } else if (!task.error.empty()) {
+                badge = text(" ✗ " + task.error + " ") | bold | color(TextColors::error());
+            } else {
+                badge = text(" ✓ " + task.message + " ") | color(TextColors::primary());
+            }
+            auto overlay = vbox({
+                filler(),
+                hbox({filler(), badge | bgcolor(TextColors::surface())}),
+                text(""), // stay clear of the fetching badge row
+            });
+            document = dbox({document, overlay});
         }
 
         if (core.IsFetching()) {
@@ -271,6 +322,12 @@ void ArxivApp::SetupEventHandler() {
         if (dialog_depth == Dialog::Export)
             return HandleExportEvent(event);
 
+        if (dialog_depth == Dialog::ConfigWarning) {
+            if (event == Event::Return || event == Event::Escape)
+                dialog_depth = Dialog::None;
+            return true;
+        }
+
         // Success dialog dismiss
         if (dialog_depth == Dialog::Success) {
             if (event == Event::Return || event == Event::Escape) {
@@ -297,6 +354,8 @@ void ArxivApp::SetupEventHandler() {
             return HandleCategoryFilterEvent(event);
         if (dialog_depth == Dialog::KeywordEditor)
             return HandleKeywordEditorEvent(event);
+        if (dialog_depth == Dialog::FollowAuthors)
+            return HandleFollowAuthorsEvent(event);
         if (dialog_depth == Dialog::Settings)
             return HandleSettingsEvent(event);
 
@@ -356,6 +415,16 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
         return true;
     }
 
+    // Open the followed-authors dialog (authors of the focused article + list)
+    if (key_bindings.matches(event, KeyBindings::Action::FollowAuthors)) {
+        follow_selected_index = 0;
+        follow_adding = false;
+        follow_new_name.clear();
+        follow_pending_name.clear();
+        dialog_depth = Dialog::FollowAuthors;
+        return true;
+    }
+
     // Open arXiv category filter
     if (key_bindings.matches(event, KeyBindings::Action::FilterCategories)) {
         category_selected_index = 0;
@@ -369,7 +438,8 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
         settings_field_index = 0;
         settings_editing = false;
         settings_edit_buffer.clear();
-        m_config = core.GetConfig();
+        // m_config already holds the last saved settings; resetting it from
+        // the core's startup copy used to discard them.
         dialog_depth = Dialog::Settings;
         return true;
     }
@@ -391,56 +461,37 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
     }
 
     // Export selected articles as markdown digest + PDF bundle
+    // Exports that download PDFs run in the background; the status badge
+    // shows their progress and outcome.
     if (key_bindings.matches(event, KeyBindings::Action::ExportSelectedDigest)) {
-        std::string dir = core.ExportSelectedDigest();
-        if (dir.empty()) {
-            err_msg = core.GetSelectionCount() == 0 ? "No articles selected (Space to select)"
-                                                    : "Failed to export digest";
-            spdlog::warn("export_selected_digest failed: {}", err_msg);
-            dialog_depth = Dialog::Error;
-        } else {
-            if (m_recorder)
-                m_recorder->RecordExportSelectedDigest(dir);
-            spdlog::info("export_selected_digest path={}", dir);
-            success_msg = "Digest exported to " + dir;
-            dialog_depth = Dialog::Success;
-        }
+        if (!StartTaskOrExplain(core.StartExportSelectedDigest(), true))
+            return true;
+        if (m_recorder)
+            m_recorder->RecordExportSelectedDigest("");
+        spdlog::info("export_selected_digest started");
         return true;
     }
 
     // Export selected articles as a .tar.gz archive (digest + PDFs)
     if (key_bindings.matches(event, KeyBindings::Action::ExportDigestArchive)) {
-        std::string archive = core.ExportSelectedDigestArchive();
-        if (archive.empty()) {
-            err_msg = core.GetSelectionCount() == 0 ? "No articles selected (Space to select)"
-                                                    : "Failed to create digest archive";
-            spdlog::warn("export_digest_archive failed: {}", err_msg);
-            dialog_depth = Dialog::Error;
-        } else {
-            spdlog::info("export_digest_archive path={}", archive);
-            success_msg = "Archive exported to " + archive;
-            dialog_depth = Dialog::Success;
-        }
+        if (StartTaskOrExplain(core.StartExportSelectedDigestArchive(), true))
+            spdlog::info("export_digest_archive started");
         return true;
     }
 
     // Export selected articles into the configured Obsidian vault
     if (key_bindings.matches(event, KeyBindings::Action::ExportToObsidian)) {
-        std::string path = core.ExportSelectedToObsidian();
-        if (path.empty()) {
-            if (core.GetSelectionCount() == 0)
-                err_msg = "No articles selected (Space to select)";
-            else
-                err_msg = "Obsidian export failed — set 'obsidian_vault' in .arxiv-tui.yml";
-            spdlog::warn("export_to_obsidian failed: {}", err_msg);
+        if (m_config.get_obsidian_vault().empty() && core.GetSelectionCount() > 0 &&
+            !core.IsBackgroundTaskRunning()) {
+            err_msg = "No Obsidian vault set — add one in Settings (S), Export section";
             dialog_depth = Dialog::Error;
-        } else {
-            if (m_recorder)
-                m_recorder->RecordExportToObsidian(path);
-            spdlog::info("export_to_obsidian path={}", path);
-            success_msg = "Exported to Obsidian vault: " + path;
-            dialog_depth = Dialog::Success;
+            return true;
         }
+        if (!StartTaskOrExplain(core.StartExportSelectedToObsidian(), true))
+            return true;
+        if (m_recorder)
+            m_recorder->RecordExportToObsidian("");
+        spdlog::info("export_to_obsidian started");
         return true;
     }
 
@@ -522,10 +573,8 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
     if (key_bindings.matches(event, KeyBindings::Action::OpenInBrowser)) {
         auto links = core.GetLinksToOpen();
         for (const auto& url : links) {
-            std::string cmd = "xdg-open \"" + url + "\" >/dev/null 2>&1 &";
-            FILE* p = ::popen(cmd.c_str(), "r");
-            if (p)
-                ::pclose(p);
+            // No shell: the link is passed to xdg-open as a single argument.
+            Process::SpawnDetached({"xdg-open", url});
             spdlog::info("open_in_browser url={}", url);
         }
         if (!links.empty()) {
@@ -582,5 +631,18 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
         return HandleAssignProjectEvent(event);
     }
 
+    return false;
+}
+
+bool ArxivApp::StartTaskOrExplain(bool started, bool needs_selection) {
+    if (started)
+        return true;
+    if (core.IsBackgroundTaskRunning())
+        err_msg = "Still working on: " + core.GetBackgroundTaskStatus().label;
+    else if (needs_selection && core.GetSelectionCount() == 0)
+        err_msg = "No articles selected (Space to select)";
+    else
+        err_msg = "Could not start the export";
+    dialog_depth = Dialog::Error;
     return false;
 }

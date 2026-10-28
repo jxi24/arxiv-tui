@@ -46,6 +46,8 @@ enum class Dialog {
     Settings = 13,
     CitationBibtex = 14,
     ConfirmDelete = 15,
+    ConfigWarning = 16,
+    FollowAuthors = 17,
 };
 
 class ArxivApp {
@@ -69,6 +71,7 @@ class ArxivApp {
              KeyBindings kb,
              const std::string& config_path = "");
     Component GetEventHandler() const { return event_handler; }
+    AppCore& GetCore() { return core; }
 #endif
 
   private:
@@ -143,6 +146,20 @@ class ArxivApp {
     int keyword_selected_index = 0;
     Component keyword_dialog;
 
+    // Followed-authors dialog
+    struct FollowRow {
+        std::string name;
+        bool from_article; // an author of the focused article (else: a followed entry)
+        bool followed;     // this exact name is in the followed list
+    };
+    std::vector<FollowRow> FollowRows() const;
+    void RequestFollow(const std::string& name);
+    int follow_selected_index = 0;
+    bool follow_adding = false;      // typing a name to add
+    std::string follow_new_name;     // the name being typed
+    std::string follow_pending_name; // awaiting confirmation (no first initial)
+    Component follow_dialog;
+
     // Category filter dialog
     int category_selected_index = 0;
     Component category_dialog;
@@ -194,9 +211,15 @@ class ArxivApp {
     void SetupExportDialog();
     void SetupImportDialog();
     void SetupKeywordEditorDialog();
+    void SetupFollowAuthorsDialog();
     void SetupCategoryFilterDialog();
     void SetupSettingsDialog();
     void SetupMainRenderer();
+    // Shows why a background task did not start (busy, nothing selected);
+    // returns `started`.
+    bool StartTaskOrExplain(bool started, bool needs_selection);
+    // What to show instead of an empty article list, per view.
+    std::string EmptyViewMessage() const;
     void SetupEventHandler();
 
     // Event handlers (called from SetupEventHandler dispatch or HandleGlobalEvent)
@@ -211,6 +234,7 @@ class ArxivApp {
     bool HandleExportEvent(ftxui::Event event);
     bool HandleImportEvent(ftxui::Event event);
     bool HandleKeywordEditorEvent(ftxui::Event event);
+    bool HandleFollowAuthorsEvent(ftxui::Event event);
     bool HandleCategoryFilterEvent(ftxui::Event event);
     bool HandleSettingsEvent(ftxui::Event event);
     bool HandleGlobalEvent(ftxui::Event event);
