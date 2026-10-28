@@ -125,7 +125,26 @@ libxcursor-dev libxi-dev libxkbcommon-dev``):
    ./build/src/GUI/arxiv-gui
 
 It reads ``config.yml`` and ``articles.db`` from the locations above and logs
-to ``arxiv_gui.log`` in the state directory.
+to ``arxiv_gui.log`` (and keeps its window layout, ``imgui.ini``) in the state
+directory. The window opens at once and fills in when the fetch finishes;
+the Refresh button fetches again in the background. Pick a view in the
+sidebar, search from the box in the header (``/`` focuses it), and move with
+``j``/``k`` or the arrow keys (``b`` bookmarks, ``o`` opens in the browser).
+The detail pane rates (click a star), downloads, bookmarks and opens the
+paper; More… (or right-clicking a card) copies the link and edits tags and
+projects. Unread papers carry a dot, and the status bar shows fetches,
+downloads and when arXiv cannot be reached.
+
+The window uses Inter, Noto Sans, Cantarell or DejaVu Sans, whichever is
+installed first; set ``ARXIV_GUI_FONT`` (and ``ARXIV_GUI_FONT_BOLD``) to a
+``.ttf``/``.otf`` path to choose another.
+
+With a `Nerd Font <https://www.nerdfonts.com>`_ installed (any of them; the
+icon-only *Symbols Nerd Font* is enough) the sidebar, buttons and menus get
+icons. The GUI looks in ``~/.local/share/fonts``, ``~/.fonts``,
+``/usr/local/share/fonts`` and ``/usr/share/fonts`` (following
+``XDG_DATA_HOME`` / ``XDG_DATA_DIRS``). Set ``ARXIV_GUI_ICON_FONT`` to a font
+file to pick one, or to an empty value to turn icons off.
 
 Command line
 ------------

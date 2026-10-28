@@ -320,7 +320,8 @@ a cron job:</p>
 <span class="m">0</span><span class="w"> </span><span class="m">7</span><span class="w"> </span>*<span class="w"> </span>*<span class="w"> </span><span class="m">1</span>-5<span class="w">  </span>arxiv-tui<span class="w"> </span>--fetch
 </pre></div>
 </div>
-<p>Today’s articles can also be exported without the TUI. <code class="docutils literal notranslate"><span class="pre">--export-yaml</span></code>
+<p>Today’s articles (the latest mailing, as in the Today view) can also be
+exported without the TUI. <code class="docutils literal notranslate"><span class="pre">--export-yaml</span></code>
 writes them ranked by predicted score (the trained model blended with the
 interest keywords), highest first, with <code class="docutils literal notranslate"><span class="pre">id</span></code>, <code class="docutils literal notranslate"><span class="pre">title</span></code>, <code class="docutils literal notranslate"><span class="pre">authors</span></code>,
 <code class="docutils literal notranslate"><span class="pre">link</span></code>, <code class="docutils literal notranslate"><span class="pre">category</span></code>, <code class="docutils literal notranslate"><span class="pre">score</span></code> and <code class="docutils literal notranslate"><span class="pre">abstract</span></code> per article, so another
@@ -358,7 +359,8 @@ their own <strong>Tags</strong> and <strong>Projects</strong> headings:</p>
 <td><p>Articles you have bookmarked</p></td>
 </tr>
 <tr class="row-even"><td><p><strong>Today</strong></p></td>
-<td><p>Articles submitted or updated today</p></td>
+<td><p>The latest arXiv mailing (over a weekend or holiday, the last one
+announced, e.g. Friday’s)</p></td>
 </tr>
 <tr class="row-odd"><td><p><strong>Range</strong></p></td>
 <td><p>Articles within a custom date range (press <code class="docutils literal notranslate"><span class="pre">r</span></code> to set the range)</p></td>
@@ -382,9 +384,9 @@ their own <strong>Tags</strong> and <strong>Projects</strong> headings:</p>
 <section id="full-text-and-fuzzy-search">
 <h2>Full-text and fuzzy search<a class="headerlink" href="#full-text-and-fuzzy-search" title="Link to this heading">¶</a></h2>
 <p>Pressing <code class="docutils literal notranslate"><span class="pre">/</span></code> opens a search dialog. arxiv-tui uses SQLite’s FTS5 extension
-to search across titles, authors, and abstracts with stemming and relevance
-ranking. Fuzzy matching surfaces near-miss results when an exact match is not
-found.</p>
+to search the chosen field (title, authors or abstract); every word must
+appear. When nothing matches exactly, fuzzy matching on the same field
+surfaces near misses (a typo, another form of the word).</p>
 </section>
 <section id="read-unread-tracking">
 <h2>Read/unread tracking<a class="headerlink" href="#read-unread-tracking" title="Link to this heading">¶</a></h2>
@@ -412,7 +414,10 @@ Bookmarked articles are protected from the <code class="docutils literal notrans
 to the current project.</p></li>
 <li><p><strong>Export</strong> — press <code class="docutils literal notranslate"><span class="pre">e</span></code> to export the project as Markdown, plain text,
 BibTeX, or JSON.</p></li>
-<li><p><strong>Import</strong> — press <code class="docutils literal notranslate"><span class="pre">I</span></code> to import a project from a JSON file.</p></li>
+<li><p><strong>Import</strong> — press <code class="docutils literal notranslate"><span class="pre">I</span></code> to import a project from a JSON file. A JSON
+export carries the project’s parent and each paper’s notes, category, tags
+and rating, so importing it elsewhere restores them (a rating in the file
+never replaces one you already gave).</p></li>
 <li><p><strong>Auto-update .bib</strong> — adding an article to a project that has a
 previously exported <code class="docutils literal notranslate"><span class="pre">.bib</span></code> file automatically appends the new BibTeX
 entry without a manual re-export.</p></li>
@@ -456,7 +461,8 @@ name.</p></li>
 arxiv-tui first queries InspireHEP for rich metadata and falls back to the
 arXiv-derived fields if the lookup fails.</p>
 <p>To export BibTeX to a file, use the project export dialog (<code class="docutils literal notranslate"><span class="pre">e</span></code>), which
-can produce a <code class="docutils literal notranslate"><span class="pre">.bib</span></code> for the entire project or for a selection of articles.</p>
+produces a <code class="docutils literal notranslate"><span class="pre">.bib</span></code> for the whole project. Once exported, the file is kept up
+to date as papers are added to the project.</p>
 </section>
 <section id="multi-article-selection-and-bulk-actions">
 <h2>Multi-article selection and bulk actions<a class="headerlink" href="#multi-article-selection-and-bulk-actions" title="Link to this heading">¶</a></h2>
@@ -464,7 +470,7 @@ can produce a <code class="docutils literal notranslate"><span class="pre">.bib<
 are selected the article pane header shows <code class="docutils literal notranslate"><span class="pre">[N</span> <span class="pre">selected]</span></code>. Bulk actions:</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">b</span></code> — bookmark all selected</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">n</span></code> — rate all selected with a single score</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">W</span></code> — rate all selected with a single score (<code class="docutils literal notranslate"><span class="pre">n</span></code> rates only the focused one)</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">p</span></code> — assign all selected to projects</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">D</span></code> — delete all selected (with confirmation)</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">g</span></code> — export as a Markdown digest + PDF bundle</p></li>
@@ -526,10 +532,12 @@ filter pane.</p>
 </section>
 <section id="undo-delete">
 <h2>Undo delete<a class="headerlink" href="#undo-delete" title="Link to this heading">¶</a></h2>
-<p>Press <code class="docutils literal notranslate"><span class="pre">u</span></code> to restore the most recently deleted article (or bulk-deleted
+<p>A deleted paper stays deleted: later fetches skip it even when arXiv lists it
+again (a new version, a backfill). Press <code class="docutils literal notranslate"><span class="pre">u</span></code> to restore the most recently deleted article (or bulk-deleted
 selection). The full state is restored:</p>
 <ul class="simple">
-<li><p>The article row itself (title, authors, abstract, date, category, bookmark flag)</p></li>
+<li><p>The article row itself (title, authors, abstract, date, category, bookmark flag),
+with the time it was first stored, so it does not show as new again</p></li>
 <li><p>Its star rating, if it had one</p></li>
 <li><p>All project memberships, with the per-article note for each project</p></li>
 <li><p>All tags</p></li>

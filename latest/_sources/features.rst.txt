@@ -21,7 +21,8 @@ a cron job:
    # or schedule with cron
    0 7 * * 1-5  arxiv-tui --fetch
 
-Today's articles can also be exported without the TUI. ``--export-yaml``
+Today's articles (the latest mailing, as in the Today view) can also be
+exported without the TUI. ``--export-yaml``
 writes them ranked by predicted score (the trained model blended with the
 interest keywords), highest first, with ``id``, ``title``, ``authors``,
 ``link``, ``category``, ``score`` and ``abstract`` per article, so another
@@ -55,7 +56,8 @@ their own **Tags** and **Projects** headings:
    * - **Bookmarks**
      - Articles you have bookmarked
    * - **Today**
-     - Articles submitted or updated today
+     - The latest arXiv mailing (over a weekend or holiday, the last one
+       announced, e.g. Friday's)
    * - **Range**
      - Articles within a custom date range (press ``r`` to set the range)
    * - **Search**
@@ -71,9 +73,9 @@ Full-text and fuzzy search
 --------------------------
 
 Pressing ``/`` opens a search dialog. arxiv-tui uses SQLite's FTS5 extension
-to search across titles, authors, and abstracts with stemming and relevance
-ranking. Fuzzy matching surfaces near-miss results when an exact match is not
-found.
+to search the chosen field (title, authors or abstract); every word must
+appear. When nothing matches exactly, fuzzy matching on the same field
+surfaces near misses (a typo, another form of the word).
 
 Read/unread tracking
 ---------------------
@@ -104,7 +106,10 @@ Projects are named groups of articles. They support:
   to the current project.
 - **Export** — press ``e`` to export the project as Markdown, plain text,
   BibTeX, or JSON.
-- **Import** — press ``I`` to import a project from a JSON file.
+- **Import** — press ``I`` to import a project from a JSON file. A JSON
+  export carries the project's parent and each paper's notes, category, tags
+  and rating, so importing it elsewhere restores them (a rating in the file
+  never replaces one you already gave).
 - **Auto-update .bib** — adding an article to a project that has a
   previously exported ``.bib`` file automatically appends the new BibTeX
   entry without a manual re-export.
@@ -153,7 +158,8 @@ arxiv-tui first queries InspireHEP for rich metadata and falls back to the
 arXiv-derived fields if the lookup fails.
 
 To export BibTeX to a file, use the project export dialog (``e``), which
-can produce a ``.bib`` for the entire project or for a selection of articles.
+produces a ``.bib`` for the whole project. Once exported, the file is kept up
+to date as papers are added to the project.
 
 Multi-article selection and bulk actions
 -----------------------------------------
@@ -162,7 +168,7 @@ Press ``Space`` to toggle the selection on the current article. While articles
 are selected the article pane header shows ``[N selected]``. Bulk actions:
 
 - ``b`` — bookmark all selected
-- ``n`` — rate all selected with a single score
+- ``W`` — rate all selected with a single score (``n`` rates only the focused one)
 - ``p`` — assign all selected to projects
 - ``D`` — delete all selected (with confirmation)
 - ``g`` — export as a Markdown digest + PDF bundle
@@ -233,10 +239,12 @@ filter pane.
 Undo delete
 -----------
 
-Press ``u`` to restore the most recently deleted article (or bulk-deleted
+A deleted paper stays deleted: later fetches skip it even when arXiv lists it
+again (a new version, a backfill). Press ``u`` to restore the most recently deleted article (or bulk-deleted
 selection). The full state is restored:
 
-- The article row itself (title, authors, abstract, date, category, bookmark flag)
+- The article row itself (title, authors, abstract, date, category, bookmark flag),
+  with the time it was first stored, so it does not show as new again
 - Its star rating, if it had one
 - All project memberships, with the per-article note for each project
 - All tags

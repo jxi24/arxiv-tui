@@ -445,7 +445,24 @@ cmake<span class="w"> </span>--build<span class="w"> </span>build<span class="w"
 </pre></div>
 </div>
 <p>It reads <code class="docutils literal notranslate"><span class="pre">config.yml</span></code> and <code class="docutils literal notranslate"><span class="pre">articles.db</span></code> from the locations above and logs
-to <code class="docutils literal notranslate"><span class="pre">arxiv_gui.log</span></code> in the state directory.</p>
+to <code class="docutils literal notranslate"><span class="pre">arxiv_gui.log</span></code> (and keeps its window layout, <code class="docutils literal notranslate"><span class="pre">imgui.ini</span></code>) in the state
+directory. The window opens at once and fills in when the fetch finishes;
+the Refresh button fetches again in the background. Pick a view in the
+sidebar, search from the box in the header (<code class="docutils literal notranslate"><span class="pre">/</span></code> focuses it), and move with
+<code class="docutils literal notranslate"><span class="pre">j</span></code>/<code class="docutils literal notranslate"><span class="pre">k</span></code> or the arrow keys (<code class="docutils literal notranslate"><span class="pre">b</span></code> bookmarks, <code class="docutils literal notranslate"><span class="pre">o</span></code> opens in the browser).
+The detail pane rates (click a star), downloads, bookmarks and opens the
+paper; More… (or right-clicking a card) copies the link and edits tags and
+projects. Unread papers carry a dot, and the status bar shows fetches,
+downloads and when arXiv cannot be reached.</p>
+<p>The window uses Inter, Noto Sans, Cantarell or DejaVu Sans, whichever is
+installed first; set <code class="docutils literal notranslate"><span class="pre">ARXIV_GUI_FONT</span></code> (and <code class="docutils literal notranslate"><span class="pre">ARXIV_GUI_FONT_BOLD</span></code>) to a
+<code class="docutils literal notranslate"><span class="pre">.ttf</span></code>/<code class="docutils literal notranslate"><span class="pre">.otf</span></code> path to choose another.</p>
+<p>With a <a class="reference external" href="https://www.nerdfonts.com">Nerd Font</a> installed (any of them; the
+icon-only <em>Symbols Nerd Font</em> is enough) the sidebar, buttons and menus get
+icons. The GUI looks in <code class="docutils literal notranslate"><span class="pre">~/.local/share/fonts</span></code>, <code class="docutils literal notranslate"><span class="pre">~/.fonts</span></code>,
+<code class="docutils literal notranslate"><span class="pre">/usr/local/share/fonts</span></code> and <code class="docutils literal notranslate"><span class="pre">/usr/share/fonts</span></code> (following
+<code class="docutils literal notranslate"><span class="pre">XDG_DATA_HOME</span></code> / <code class="docutils literal notranslate"><span class="pre">XDG_DATA_DIRS</span></code>). Set <code class="docutils literal notranslate"><span class="pre">ARXIV_GUI_ICON_FONT</span></code> to a font
+file to pick one, or to an empty value to turn icons off.</p>
 </section>
 <section id="command-line">
 <h2>Command line<a class="headerlink" href="#command-line" title="Link to this heading">¶</a></h2>

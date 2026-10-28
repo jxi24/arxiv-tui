@@ -94,6 +94,9 @@ Selection
    * - ``Space``
      - ``toggle_selection``
      - Select or deselect the article
+   * - ``C``
+     - ``clear_selection``
+     - Deselect everything (the selection is kept across views)
    * - ``W``
      - ``rate_selection``
      - Rate every selected article with one score
@@ -136,7 +139,13 @@ Projects
      - Add the article (or the selection) to projects, or create one
    * - ``x``
      - ``delete_project``
-     - Delete the focused project
+     - Delete the focused project (asks first)
+   * - ``E``
+     - ``rename``
+     - Rename the project or tag selected in the filter pane
+   * - ``M``
+     - ``move_project``
+     - Move the selected project under another one (or to the top level)
    * - ``e``
      - ``export_project``
      - Export the project (Markdown / plain text / BibTeX / JSON)

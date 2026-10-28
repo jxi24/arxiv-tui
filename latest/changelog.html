@@ -310,6 +310,148 @@
 <section id="unreleased">
 <h2>Unreleased<a class="headerlink" href="#unreleased" title="Link to this heading">¶</a></h2>
 <ul class="simple">
+<li><p><strong>Quitting no longer waits for the network</strong> — closing the app during the
+start-up fetch, a missed-days backfill, an auto-refresh or a PDF download
+used to wait for it to finish (a backfill pauses 3 s between API pages, and
+a stalled request could take its whole 15–120 s timeout). Quitting now
+abandons the request in flight; nothing half-fetched is recorded, so the
+next start fetches those days again.</p></li>
+<li><p><strong>Today over the weekend</strong> — Today, Recommended and the daily digests
+(<code class="docutils literal notranslate"><span class="pre">X</span></code>, <code class="docutils literal notranslate"><span class="pre">--export-today</span></code>, <code class="docutils literal notranslate"><span class="pre">--export-yaml</span></code>) show the latest arXiv
+mailing instead of the last 24 hours. arXiv does not announce on weekends
+or holidays, so they used to be empty from Saturday morning until Monday’s
+mailing; now they show Friday’s papers until the next one arrives.</p></li>
+<li><p><strong>GUI restyle</strong> — <code class="docutils literal notranslate"><span class="pre">arxiv-gui</span></code> has a dark theme with one accent colour,
+a system sans font (Inter, Noto Sans, Cantarell or DejaVu Sans;
+<code class="docutils literal notranslate"><span class="pre">ARXIV_GUI_FONT</span></code> overrides), a header with search and Refresh, a sidebar
+of views with counts, article cards (unread dot, bookmark star, category
+chip), a detail pane with clickable stars and action buttons, and
+keyboard navigation (<code class="docutils literal notranslate"><span class="pre">j</span></code>/<code class="docutils literal notranslate"><span class="pre">k</span></code>, <code class="docutils literal notranslate"><span class="pre">/</span></code>, <code class="docutils literal notranslate"><span class="pre">b</span></code>, <code class="docutils literal notranslate"><span class="pre">o</span></code>). Greek, maths and
+accented characters in titles and author names render instead of <code class="docutils literal notranslate"><span class="pre">?</span></code>.
+With a Nerd Font installed, views, buttons and menus also get icons
+(<code class="docutils literal notranslate"><span class="pre">ARXIV_GUI_ICON_FONT</span></code> picks the font; empty turns them off).</p></li>
+<li><p><strong>GUI catches up</strong> — <code class="docutils literal notranslate"><span class="pre">arxiv-gui</span></code> opens at once and fetches in the
+background (it used to fetch before showing the window), Refresh
+fetches from arXiv instead of re-reading the database, and downloads no
+longer freeze the window. Papers can be rated, tagged and added to
+projects; read papers are dimmed, the filter list shows counts and
+headings, and a status bar reports fetches, downloads and offline state.
+Its <code class="docutils literal notranslate"><span class="pre">imgui.ini</span></code> goes to the state directory, not the working directory.</p></li>
+<li><p><strong>Project JSON round-trips</strong> — the export now carries the project’s parent
+and each paper’s category, tags and rating, and the import restores them
+(without overriding a rating you already gave). A paper without a date is
+dated at import instead of 1 January 1970, and a blank project name is
+refused. A new sub-project typed with spaces around its name now keeps
+its parent.</p></li>
+<li><p><strong>Rename and move</strong> — <code class="docutils literal notranslate"><span class="pre">E</span></code> renames the project or tag selected in the
+filter pane (papers, notes, sub-projects and an exported <code class="docutils literal notranslate"><span class="pre">.bib</span></code> follow the
+new name); <code class="docutils literal notranslate"><span class="pre">M</span></code> moves a project under another one or back to the top
+level. A project cannot be moved under itself or its own sub-projects.</p></li>
+<li><p><strong>Clear the selection</strong> — <code class="docutils literal notranslate"><span class="pre">C</span></code> deselects everything. The selection is
+kept when you switch views, so bulk actions could apply to papers no longer
+on screen and there was no way to drop it. The footer shows the key while
+papers are selected.</p></li>
+<li><p><strong>Bookmarks view updates</strong> — un-bookmarking a paper in the Bookmarks view
+now removes it from the list.</p></li>
+<li><p><strong>Offline notice</strong> — when arXiv cannot be reached (at start-up or on an
+auto refresh) the footer says “Offline: showing stored papers” until a
+fetch succeeds; before, the list just stayed as it was.</p></li>
+<li><p><strong>Accented names and titles are cut cleanly</strong> — the article list
+truncated author names and other columns, and scrolled long titles, by
+byte, so a cut could fall inside a character (<code class="docutils literal notranslate"><span class="pre">Schr\xC3…</span></code>). Both now work
+by character.</p></li>
+<li><p><strong>Deleted papers stay deleted</strong> — the next fetch brought a deleted paper
+back (as “new”). Deletions are now remembered and fetches skip them; <code class="docutils literal notranslate"><span class="pre">u</span></code>
+restores a paper with the time it was first stored, so it is not new again,
+and its tags reappear in the filter pane even if the tag was deleted
+meanwhile. (Database schema version 2; older arxiv-tui versions refuse to
+open the upgraded database.)</p></li>
+<li><p><strong>Papers from a cron ``–fetch`` stay new</strong> — a <code class="docutils literal notranslate"><span class="pre">--fetch</span></code> that crossed a
+day moved the New Articles window just like opening the TUI does, so with a
+daily cron job each run hid what the previous run had stored. <code class="docutils literal notranslate"><span class="pre">--fetch</span></code>
+now leaves the window alone; it moves only when you open arxiv-tui.</p></li>
+<li><p><strong>Search</strong> — asking for several fields at once (the GUI searches title,
+authors and abstract) searched titles only; every field asked for is now
+searched. When nothing matches exactly, near misses are shown (the fuzzy
+matching the docs described was never used). The docs no longer claim
+stemming, which the search index does not do.</p></li>
+<li><p><strong>InspireHEP answers are checked</strong> — the BibTeX it returned went to the
+clipboard and into project <code class="docutils literal notranslate"><span class="pre">.bib</span></code> files whatever it was; an answer that
+does not start with an <code class="docutils literal notranslate"><span class="pre">&#64;</span></code> entry or is larger than 64 KiB is now ignored
+(the paper’s own BibTeX is used instead).</p></li>
+<li><p><strong>Only arXiv links are opened in the browser</strong> — <code class="docutils literal notranslate"><span class="pre">O</span></code> passed whatever link
+a stored paper had to <code class="docutils literal notranslate"><span class="pre">xdg-open</span></code>; rows from before links were checked
+could hold <code class="docutils literal notranslate"><span class="pre">file://</span></code> or <code class="docutils literal notranslate"><span class="pre">javascript:</span></code> links. Anything that is not an
+arXiv page is now skipped.</p></li>
+<li><p><strong>Feed text in the log is escaped</strong> — a rejected feed link was logged as
+it came, so escape sequences in it ran in the terminal of anyone tailing
+the log and newlines in it forged log lines. Control characters are now
+shown as <code class="docutils literal notranslate"><span class="pre">\xNN</span></code> and long values are cut.</p></li>
+<li><p><strong>Obsidian notes: feed text stays inside its values</strong> — the category went
+into the frontmatter unquoted, so a category with a newline could add keys
+or end the frontmatter; control characters made the YAML invalid. Every
+value (and each tag) is now quoted and control characters are dropped.</p></li>
+<li><p><strong>Network limits</strong> — responses are capped at 64 MiB (a huge or endless
+answer no longer fills memory), redirects are followed at most five hops
+and only to <code class="docutils literal notranslate"><span class="pre">https</span></code> (the InspireHEP host check only saw the first URL),
+and a backfill stops with an error after 50 API pages (10,000 papers)
+instead of paging for as long as the API keeps answering.</p></li>
+<li><p><strong>Private files</strong> — the replay log (searches, notes, keywords, paths), the
+log file and a new database (notes, ratings) are created readable by you
+only (mode 0600), and new data and state directories mode 0700; before
+they followed the umask (usually world-readable). Programs arxiv-tui starts
+(browser, <code class="docutils literal notranslate"><span class="pre">tar</span></code>, the clipboard tool) no longer inherit its open files.
+Existing files and directories keep their permissions:
+<code class="docutils literal notranslate"><span class="pre">chmod</span> <span class="pre">600</span> <span class="pre">~/.local/share/arxiv-tui/articles.db</span> <span class="pre">~/.local/state/arxiv-tui/*</span></code>
+tightens them.</p></li>
+<li><p><strong>The cursor stays where you were</strong> — every reload of the list (auto
+refresh, a retrain finishing, tagging, deleting, undo) sent the cursor back
+to the first paper. It now stays on the same paper, or on the same row if
+that paper was deleted. Switching views, searching or setting a date range
+still starts at the top.</p></li>
+<li><p><strong>Deleting a project asks first</strong> — <code class="docutils literal notranslate"><span class="pre">x</span></code> in the filter pane removed the
+project with its memberships and notes at once; it now asks (<code class="docutils literal notranslate"><span class="pre">y</span></code> deletes,
+any other key keeps it), like deleting articles and tags.</p></li>
+<li><p><strong>Untitled papers</strong> — a paper with no title (a link-only entry in a
+project import) is listed as “(no title)”; with it focused, the title
+scroller divided by the empty title’s length.</p></li>
+<li><p><strong>The first automatic retrain learns from your ratings</strong> — with no saved
+model yet, reaching <code class="docutils literal notranslate"><span class="pre">retrain_interval</span></code> ratings started a “warm” retrain
+from an empty model, which kept its empty vocabulary: every paper got the
+same score until a full retrain (<code class="docutils literal notranslate"><span class="pre">R</span></code>). It now trains from scratch when
+there is no model to continue from.</p></li>
+<li><p><strong>Key bindings edited in Settings work</strong> — the Keys section saved the
+action’s display name (“Rate Article”) instead of its config name
+(<code class="docutils literal notranslate"><span class="pre">rate_article</span></code>), so the new key was ignored. It now saves the config
+name, and entries saved the old way take effect too. Settings also checks
+numbers with the same rules as <code class="docutils literal notranslate"><span class="pre">config.yml</span></code>: a retrain interval below 1,
+negative minutes or margins, or a threshold outside 1–5 are refused.</p></li>
+<li><p><strong>Typing in a dialog no longer triggers other commands</strong> — keys reached
+the global bindings before the open dialog: naming a project “dark matter”
+toggled the detail pane and opened the category filter, <code class="docutils literal notranslate"><span class="pre">/</span></code> opened Search
+instead of being typed into a path, <code class="docutils literal notranslate"><span class="pre">?</span></code> in a search opened the help, and
+Space in “Assign to project” selected the article instead of ticking the
+project. An open dialog now gets every key first, and keys it does not use
+go nowhere (an error message no longer lets <code class="docutils literal notranslate"><span class="pre">j</span></code>/<code class="docutils literal notranslate"><span class="pre">k</span></code> move the list
+behind it). <code class="docutils literal notranslate"><span class="pre">Esc</span></code> closes New Project and Assign to Project.</p></li>
+<li><p><strong>A config.yml of the wrong shape no longer stops the app starting</strong> — a
+file that is valid YAML but not a list of settings (a single word, a list),
+a non-map <code class="docutils literal notranslate"><span class="pre">article_settings</span></code>, or a key mapping that is not an
+action/key pair threw and aborted. These now load the defaults with a
+warning, like any other bad value. A key that is missing from the file
+(e.g. <code class="docutils literal notranslate"><span class="pre">topics</span></code>) now keeps its default instead of being left empty. An
+empty <code class="docutils literal notranslate"><span class="pre">key_mappings</span></code> list is saved as <code class="docutils literal notranslate"><span class="pre">[]</span></code> so it stays empty.</p></li>
+<li><p><strong>Invalid UTF-8 no longer crashes the app</strong> — Backspace in every text field
+removed one byte, so “é” then Backspace left half a character behind; the
+replay recorder then threw on it and the TUI exited. The same happened when
+exporting a project whose papers had invalid bytes from the feed. Backspace
+now removes a whole character, and the JSON writers replace invalid bytes
+with U+FFFD instead of throwing.</p></li>
+<li><p><strong>A very long link no longer crashes the app</strong> — links in feeds and project
+imports were matched with <code class="docutils literal notranslate"><span class="pre">std::regex</span></code>, which recurses once per character
+and overflowed the stack on a link of a few hundred kilobytes. Links longer
+than any real arXiv link (256 characters) are now refused before any regex
+runs, and CI fuzzes inputs up to 256 KiB (it used libFuzzer’s 4 KiB default).</p></li>
 <li><p><strong>Crash reports start with a JSON header</strong> — one line with the format
 marker, version, signal, UTC time, pid and replay-log path, written from
 the signal handler. <code class="docutils literal notranslate"><span class="pre">--replay</span></code> prints it and warns when the report came
