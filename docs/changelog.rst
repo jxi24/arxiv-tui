@@ -7,6 +7,121 @@ Changelog
 Unreleased
 ----------
 
+- **Accented names and titles are cut cleanly** — the article list
+  truncated author names and other columns, and scrolled long titles, by
+  byte, so a cut could fall inside a character (``Schr\xC3…``). Both now work
+  by character.
+
+- **Deleted papers stay deleted** — the next fetch brought a deleted paper
+  back (as "new"). Deletions are now remembered and fetches skip them; ``u``
+  restores a paper with the time it was first stored, so it is not new again,
+  and its tags reappear in the filter pane even if the tag was deleted
+  meanwhile. (Database schema version 2; older arxiv-tui versions refuse to
+  open the upgraded database.)
+
+- **Papers from a cron ``--fetch`` stay new** — a ``--fetch`` that crossed a
+  day moved the New Articles window just like opening the TUI does, so with a
+  daily cron job each run hid what the previous run had stored. ``--fetch``
+  now leaves the window alone; it moves only when you open arxiv-tui.
+
+- **Search** — asking for several fields at once (the GUI searches title,
+  authors and abstract) searched titles only; every field asked for is now
+  searched. When nothing matches exactly, near misses are shown (the fuzzy
+  matching the docs described was never used). The docs no longer claim
+  stemming, which the search index does not do.
+
+- **InspireHEP answers are checked** — the BibTeX it returned went to the
+  clipboard and into project ``.bib`` files whatever it was; an answer that
+  does not start with an ``@`` entry or is larger than 64 KiB is now ignored
+  (the paper's own BibTeX is used instead).
+
+- **Only arXiv links are opened in the browser** — ``O`` passed whatever link
+  a stored paper had to ``xdg-open``; rows from before links were checked
+  could hold ``file://`` or ``javascript:`` links. Anything that is not an
+  arXiv page is now skipped.
+
+- **Feed text in the log is escaped** — a rejected feed link was logged as
+  it came, so escape sequences in it ran in the terminal of anyone tailing
+  the log and newlines in it forged log lines. Control characters are now
+  shown as ``\xNN`` and long values are cut.
+
+- **Obsidian notes: feed text stays inside its values** — the category went
+  into the frontmatter unquoted, so a category with a newline could add keys
+  or end the frontmatter; control characters made the YAML invalid. Every
+  value (and each tag) is now quoted and control characters are dropped.
+
+- **Network limits** — responses are capped at 64 MiB (a huge or endless
+  answer no longer fills memory), redirects are followed at most five hops
+  and only to ``https`` (the InspireHEP host check only saw the first URL),
+  and a backfill stops with an error after 50 API pages (10,000 papers)
+  instead of paging for as long as the API keeps answering.
+
+- **Private files** — the replay log (searches, notes, keywords, paths), the
+  log file and a new database (notes, ratings) are created readable by you
+  only (mode 0600), and new data and state directories mode 0700; before
+  they followed the umask (usually world-readable). Programs arxiv-tui starts
+  (browser, ``tar``, the clipboard tool) no longer inherit its open files.
+  Existing files and directories keep their permissions:
+  ``chmod 600 ~/.local/share/arxiv-tui/articles.db ~/.local/state/arxiv-tui/*``
+  tightens them.
+
+- **The cursor stays where you were** — every reload of the list (auto
+  refresh, a retrain finishing, tagging, deleting, undo) sent the cursor back
+  to the first paper. It now stays on the same paper, or on the same row if
+  that paper was deleted. Switching views, searching or setting a date range
+  still starts at the top.
+
+- **Deleting a project asks first** — ``x`` in the filter pane removed the
+  project with its memberships and notes at once; it now asks (``y`` deletes,
+  any other key keeps it), like deleting articles and tags.
+
+- **Untitled papers** — a paper with no title (a link-only entry in a
+  project import) is listed as "(no title)"; with it focused, the title
+  scroller divided by the empty title's length.
+
+- **The first automatic retrain learns from your ratings** — with no saved
+  model yet, reaching ``retrain_interval`` ratings started a "warm" retrain
+  from an empty model, which kept its empty vocabulary: every paper got the
+  same score until a full retrain (``R``). It now trains from scratch when
+  there is no model to continue from.
+
+- **Key bindings edited in Settings work** — the Keys section saved the
+  action's display name ("Rate Article") instead of its config name
+  (``rate_article``), so the new key was ignored. It now saves the config
+  name, and entries saved the old way take effect too. Settings also checks
+  numbers with the same rules as ``config.yml``: a retrain interval below 1,
+  negative minutes or margins, or a threshold outside 1–5 are refused.
+
+- **Typing in a dialog no longer triggers other commands** — keys reached
+  the global bindings before the open dialog: naming a project "dark matter"
+  toggled the detail pane and opened the category filter, ``/`` opened Search
+  instead of being typed into a path, ``?`` in a search opened the help, and
+  Space in "Assign to project" selected the article instead of ticking the
+  project. An open dialog now gets every key first, and keys it does not use
+  go nowhere (an error message no longer lets ``j``/``k`` move the list
+  behind it). ``Esc`` closes New Project and Assign to Project.
+
+- **A config.yml of the wrong shape no longer stops the app starting** — a
+  file that is valid YAML but not a list of settings (a single word, a list),
+  a non-map ``article_settings``, or a key mapping that is not an
+  action/key pair threw and aborted. These now load the defaults with a
+  warning, like any other bad value. A key that is missing from the file
+  (e.g. ``topics``) now keeps its default instead of being left empty. An
+  empty ``key_mappings`` list is saved as ``[]`` so it stays empty.
+
+- **Invalid UTF-8 no longer crashes the app** — Backspace in every text field
+  removed one byte, so "é" then Backspace left half a character behind; the
+  replay recorder then threw on it and the TUI exited. The same happened when
+  exporting a project whose papers had invalid bytes from the feed. Backspace
+  now removes a whole character, and the JSON writers replace invalid bytes
+  with U+FFFD instead of throwing.
+
+- **A very long link no longer crashes the app** — links in feeds and project
+  imports were matched with ``std::regex``, which recurses once per character
+  and overflowed the stack on a link of a few hundred kilobytes. Links longer
+  than any real arXiv link (256 characters) are now refused before any regex
+  runs, and CI fuzzes inputs up to 256 KiB (it used libFuzzer's 4 KiB default).
+
 - **Crash reports start with a JSON header** — one line with the format
   marker, version, signal, UTC time, pid and replay-log path, written from
   the signal handler. ``--replay`` prints it and warns when the report came

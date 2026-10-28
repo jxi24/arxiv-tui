@@ -60,8 +60,13 @@ class KeyBindings {
     // Get the action name as a string
     static std::string get_action_name(Action action);
 
+    // The action's key under "key_mappings" in config.yml ("rate_article").
+    static std::string get_config_name(Action action);
+
     // Get all bindings as a vector of pairs (action name, key)
     std::vector<std::pair<std::string, std::string>> get_all_bindings() const;
+    // The actions in the same order as get_all_bindings().
+    std::vector<Action> actions() const;
 
     // Return only bindings whose action name or key contains query (case-insensitive).
     // Empty query returns all bindings.

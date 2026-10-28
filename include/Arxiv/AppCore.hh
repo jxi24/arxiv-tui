@@ -44,7 +44,10 @@ class AppCore {
     // Offline: no network fetch and no fetch bookkeeping (last fetch date,
     // New Articles anchor) — for headless exports and replay, which must not
     // consume the interactive session's day-boundary crossing.
-    enum class FetchMode { Sync, Async, Offline };
+    // Headless: what --fetch (cron) uses — fetches and stores like Sync, but
+    // the user has not seen anything, so the New Articles window is left
+    // for the next interactive session.
+    enum class FetchMode { Sync, Async, Offline, Headless };
 
     // Constructor with dependency injection. `recorder` is optional and used
     // for diagnostic instrumentation (lifecycle / fetch-progress events) so
@@ -416,6 +419,7 @@ class AppCore {
     std::vector<std::string> m_filter_project_names;
 
     int m_filter_index{static_cast<int>(FilterView::NewArticles)};
+    int m_fetched_filter_index{-1}; // the view m_current_articles holds
     int m_article_index{0};
 
     ArticleUpdateCallback m_article_update_callback;
@@ -443,22 +447,26 @@ class AppCore {
     struct SearchFilter {
         bool active = false;
         std::string query;
-        SearchMode mode = SearchMode::title;
+        // Fields to search; any combination (the TUI picks one, the GUI all).
+        bool title = true;
+        bool authors = false;
+        bool abstract = false;
 
-        void set(const std::string& q, SearchMode m) {
+        void set(const std::string& q, bool in_title, bool in_authors, bool in_abstract) {
             query = q;
-            mode = m;
+            title = in_title;
+            authors = in_authors;
+            abstract = in_abstract;
             active = true;
         }
-        void clear() {
-            active = false;
-            query.clear();
-            mode = SearchMode::title;
-        }
+        void clear() { *this = SearchFilter{}; }
     };
 
     DateRangeFilter m_date_range;
     SearchFilter m_search;
+    // Articles whose searched fields nearly match (the fallback when the
+    // full-text search finds nothing).
+    std::vector<Article> FuzzySearch(const SearchFilter& search, int threshold = 80) const;
 
     // Background auto-refresh
     std::thread m_refresh_thread;

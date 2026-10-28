@@ -8,6 +8,7 @@
 #include "Arxiv/HttpClient.hh"
 
 #include <chrono>
+#include <cstddef>
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -113,9 +114,23 @@ class Fetcher {
     /// empty string if the lookup fails (caller should generate fallback BibTeX).
     virtual std::string FetchBibTeX(const std::string& paper_id);
 
+    /// Longer than any real arXiv link (ids are at most ~30 characters). Longer
+    /// input is never a paper, and is refused before any regex sees it:
+    /// std::regex recurses per character and overflows the stack on ~100 KB.
+    static constexpr std::size_t kMaxLinkLength = 256;
+
+    /// FetchSince gives up (FetchError) after this many API pages of 200
+    /// papers: far more than any real backfill.
+    static constexpr int kMaxApiPages = 50;
+
+    /// FetchBibTeX ignores an InspireHEP answer larger than this (one entry
+    /// is a few kilobytes).
+    static constexpr std::size_t kMaxBibTeXBytes = 64 * 1024;
+
     /// Normalize an arXiv link to canonical form: https scheme, /abs/ (a /pdf/
     /// link and its ".pdf" are folded into it), no version suffix.
     /// e.g. "http://arxiv.org/abs/2605.28788v1" → "https://arxiv.org/abs/2605.28788"
+    /// Links longer than kMaxLinkLength are returned unchanged.
     static std::string NormalizeLink(const std::string& link);
 
     /// True if `link` is an arXiv abstract or PDF URL

@@ -71,9 +71,9 @@ Full-text and fuzzy search
 --------------------------
 
 Pressing ``/`` opens a search dialog. arxiv-tui uses SQLite's FTS5 extension
-to search across titles, authors, and abstracts with stemming and relevance
-ranking. Fuzzy matching surfaces near-miss results when an exact match is not
-found.
+to search the chosen field (title, authors or abstract); every word must
+appear. When nothing matches exactly, fuzzy matching on the same field
+surfaces near misses (a typo, another form of the word).
 
 Read/unread tracking
 ---------------------
@@ -153,7 +153,8 @@ arxiv-tui first queries InspireHEP for rich metadata and falls back to the
 arXiv-derived fields if the lookup fails.
 
 To export BibTeX to a file, use the project export dialog (``e``), which
-can produce a ``.bib`` for the entire project or for a selection of articles.
+produces a ``.bib`` for the whole project. Once exported, the file is kept up
+to date as papers are added to the project.
 
 Multi-article selection and bulk actions
 -----------------------------------------
@@ -162,7 +163,7 @@ Press ``Space`` to toggle the selection on the current article. While articles
 are selected the article pane header shows ``[N selected]``. Bulk actions:
 
 - ``b`` — bookmark all selected
-- ``n`` — rate all selected with a single score
+- ``W`` — rate all selected with a single score (``n`` rates only the focused one)
 - ``p`` — assign all selected to projects
 - ``D`` — delete all selected (with confirmation)
 - ``g`` — export as a Markdown digest + PDF bundle
@@ -233,10 +234,12 @@ filter pane.
 Undo delete
 -----------
 
-Press ``u`` to restore the most recently deleted article (or bulk-deleted
+A deleted paper stays deleted: later fetches skip it even when arXiv lists it
+again (a new version, a backfill). Press ``u`` to restore the most recently deleted article (or bulk-deleted
 selection). The full state is restored:
 
-- The article row itself (title, authors, abstract, date, category, bookmark flag)
+- The article row itself (title, authors, abstract, date, category, bookmark flag),
+  with the time it was first stored, so it does not show as new again
 - Its star rating, if it had one
 - All project memberships, with the per-article note for each project
 - All tags

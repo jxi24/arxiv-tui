@@ -2,7 +2,11 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
+#include <spdlog/sinks/ostream_sink.h>
+#include <spdlog/spdlog.h>
+
 #include <Arxiv/Fetcher.hh>
+#include <Arxiv/Logging.hh>
 #include <Arxiv/Version.hh>
 #include <algorithm>
 #include <catch2/catch_test_macros.hpp>
@@ -13,6 +17,7 @@
 #include <fixtures/test_data.hh>
 #include <fstream>
 #include <iterator>
+#include <sstream>
 #include <unistd.h>
 #include <vector>
 
@@ -738,5 +743,43 @@ TEST_CASE("RequestPacer spaces requests by the interval", "[fetcher][etiquette]"
         now += 5s;
         pacer.Wait();
         REQUIRE(slept.empty());
+    }
+}
+
+TEST_CASE("Fetcher regression: a very long link is rejected, not a crash",
+          "[fetcher][regression]") {
+    // libstdc++'s std::regex recurses once per character: a ~300 KB link (one
+    // fits easily in a project import) overflowed the stack in NormalizeLink.
+    const std::string id(300000, '1');
+    const std::string link = "https://arxiv.org/abs/" + id;
+
+    SECTION("NormalizeLink leaves it alone") { REQUIRE(Fetcher::NormalizeLink(link) == link); }
+    SECTION("IsArxivLink refuses it") { REQUIRE_FALSE(Fetcher::IsArxivLink(link)); }
+    SECTION("no InspireHEP query for it") { REQUIRE_FALSE(Fetcher::InspireSearchUrl(id)); }
+}
+
+TEST_CASE("Untrusted text is escaped before it is logged", "[logging][security][regression]") {
+    // A rejected feed link went into the log verbatim: ESC sequences ran in
+    // the terminal of whoever tailed the log, and newlines forged log lines.
+    SECTION("control characters are shown escaped") {
+        REQUIRE(Arxiv::ForLog("a\x1b[2J\nb") == "a\\x1b[2J\\nb");
+    }
+    SECTION("long text is cut") { REQUIRE(Arxiv::ForLog(std::string(1000, 'x')).size() < 300); }
+    SECTION("a rejected feed link") {
+        std::ostringstream captured;
+        auto sink = std::make_shared<spdlog::sinks::ostream_sink_mt>(captured);
+        auto previous = spdlog::default_logger();
+        spdlog::set_default_logger(std::make_shared<spdlog::logger>("capture", sink));
+        Fetcher fetcher({"hep-ph"});
+        const std::string feed = R"(<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel><item><title>T</title><link>https://evil.example/)"
+                                 "\x1b[2J\nFORGED"
+                                 R"(</link><description>A</description></item></channel></rss>)";
+
+        (void)fetcher.ParseFeed(feed);
+        spdlog::set_default_logger(previous);
+
+        REQUIRE(captured.str().find('\x1b') == std::string::npos);
+        REQUIRE(captured.str().find("\nFORGED") == std::string::npos);
     }
 }

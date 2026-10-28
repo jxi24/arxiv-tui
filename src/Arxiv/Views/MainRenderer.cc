@@ -210,8 +210,11 @@ void ArxivApp::SetupMainRenderer() {
             document = dbox({document, settings_dialog->Render()});
         } else if (dialog_depth == Dialog::ConfirmDelete) {
             std::size_t n = core.GetSelectionCount();
-            std::string msg = n > 0 ? "Delete " + std::to_string(n) + " selected article(s)?"
-                                    : "Delete this article?";
+            std::string msg = !m_pending_project_delete.empty()
+                                  ? "Delete project '" + m_pending_project_delete +
+                                        "' with its notes? (Papers stay.)"
+                              : n > 0 ? "Delete " + std::to_string(n) + " selected article(s)?"
+                                      : "Delete this article?";
             auto confirm_dialog = vbox({
                                       text("DELETE") | bold | center | color(TextColors::error()),
                                       separator() | color(TextColors::error()),
@@ -297,19 +300,18 @@ void ArxivApp::SetupEventHandler() {
         if (event.is_mouse())
             return show_help || dialog_depth != Dialog::None || HandleMouseEvent(event);
 
-        // Help overlay takes priority: block or close
+        // The help overlay, then an open dialog, get every key first: a
+        // dialog is modal, so nothing typed into it may trigger a global
+        // binding (a, t, / or ? used to fire mid-word).
         if (show_help)
             return HandleHelpEvent(event);
+        if (dialog_depth != Dialog::None)
+            return HandleDialogEvent(event);
 
-        // Help toggle (open help from any state)
         if (key_bindings.matches(event, KeyBindings::Action::ShowHelp)) {
             ToggleHelp();
             return true;
         }
-
-        // DateRange dialog: handle events, or open via key binding
-        if (dialog_depth == Dialog::DateRange)
-            return HandleDateRangeEvent(event);
         if (key_bindings.matches(event, KeyBindings::Action::SetDateRange) &&
             core.GetFilterView() == AppCore::FilterView::Range) {
             dialog_depth = Dialog::DateRange;
@@ -318,10 +320,6 @@ void ArxivApp::SetupEventHandler() {
             end_date.clear();
             return true;
         }
-
-        // Search dialog: handle events, or open via key binding
-        if (dialog_depth == Dialog::Search)
-            return HandleSearchEvent(event);
         if (key_bindings.matches(event, KeyBindings::Action::Search)) {
             dialog_depth = Dialog::Search;
             search_query.clear();
@@ -329,46 +327,81 @@ void ArxivApp::SetupEventHandler() {
             search_area_index = static_cast<int>(search_field);
             return true;
         }
-
-        if (dialog_depth == Dialog::Rating)
-            return HandleRatingEvent(event);
-        if (dialog_depth == Dialog::Notes)
-            return HandleNotesEvent(event);
-        if (dialog_depth == Dialog::Export)
-            return HandleExportEvent(event);
-
-        if (dialog_depth == Dialog::ConfigWarning) {
-            if (event == Event::Return || event == Event::Escape)
-                dialog_depth = Dialog::None;
-            return true;
-        }
-
-        // Delete confirmation: y = confirm, anything else = cancel
-        if (dialog_depth == Dialog::ConfirmDelete) {
-            if (event == Event::Character('y') || event == Event::Character('Y')) {
-                core.DeleteCurrentOrSelected();
-                dialog_depth = Dialog::None;
-            } else {
-                dialog_depth = Dialog::None;
-            }
-            return true;
-        }
-
-        if (dialog_depth == Dialog::Import)
-            return HandleImportEvent(event);
-        if (dialog_depth == Dialog::CategoryFilter)
-            return HandleCategoryFilterEvent(event);
-        if (dialog_depth == Dialog::KeywordEditor)
-            return HandleKeywordEditorEvent(event);
-        if (dialog_depth == Dialog::FollowAuthors)
-            return HandleFollowAuthorsEvent(event);
-        if (dialog_depth == Dialog::Tags)
-            return HandleTagsEvent(event);
-        if (dialog_depth == Dialog::Settings)
-            return HandleSettingsEvent(event);
-
         return HandleGlobalEvent(event);
     });
+}
+
+bool ArxivApp::HandleDialogEvent(ftxui::Event event) {
+    switch (dialog_depth) {
+    case Dialog::NewProject:
+        HandleNewProjectEvent(event);
+        break;
+    case Dialog::AssignProject:
+        HandleAssignProjectEvent(event);
+        break;
+    case Dialog::DateRange:
+        HandleDateRangeEvent(event);
+        break;
+    case Dialog::Search:
+        HandleSearchEvent(event);
+        break;
+    case Dialog::Rating:
+        HandleRatingEvent(event);
+        break;
+    case Dialog::Notes:
+        HandleNotesEvent(event);
+        break;
+    case Dialog::Export:
+        HandleExportEvent(event);
+        break;
+    case Dialog::Import:
+        HandleImportEvent(event);
+        break;
+    case Dialog::CategoryFilter:
+        HandleCategoryFilterEvent(event);
+        break;
+    case Dialog::KeywordEditor:
+        HandleKeywordEditorEvent(event);
+        break;
+    case Dialog::FollowAuthors:
+        HandleFollowAuthorsEvent(event);
+        break;
+    case Dialog::Tags:
+        HandleTagsEvent(event);
+        break;
+    case Dialog::Settings:
+        HandleSettingsEvent(event);
+        break;
+    case Dialog::ConfirmDelete:
+        // y confirms; any other key cancels.
+        if (event == Event::Character('y') || event == Event::Character('Y')) {
+            if (!m_pending_project_delete.empty()) {
+                core.RemoveProject(m_pending_project_delete);
+                if (m_recorder)
+                    m_recorder->RecordRemoveProject(m_pending_project_delete);
+            } else {
+                core.DeleteCurrentOrSelected();
+            }
+        }
+        m_pending_project_delete.clear();
+        dialog_depth = Dialog::None;
+        break;
+    case Dialog::Error:
+    case Dialog::ConfigWarning:
+    case Dialog::CitationBibtex:
+        // Messages: Enter, Esc or the quit key dismiss them.
+        if (event == Event::Return || event == Event::Escape ||
+            key_bindings.matches(event, KeyBindings::Action::Quit)) {
+            dialog_depth = Dialog::None;
+            err_msg.clear();
+        }
+        break;
+    case Dialog::None:
+        return false;
+    }
+    // Modal: keys a dialog does not use go nowhere else (not to the panes
+    // behind it).
+    return true;
 }
 
 bool ArxivApp::HandleMouseEvent(ftxui::Event event) {
@@ -660,25 +693,9 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
         return true;
     }
 
-    // Quit / dismiss any open dialog
     if (key_bindings.matches(event, KeyBindings::Action::Quit) || event == Event::Escape) {
-        if (dialog_depth != Dialog::None) {
-            dialog_depth = Dialog::None;
-            err_msg = "";
-            return true;
-        }
         screen.Exit();
         return true;
-    }
-
-    // NewProject dialog events (handled here so quit above can dismiss first)
-    if (dialog_depth == Dialog::NewProject) {
-        return HandleNewProjectEvent(event);
-    }
-
-    // AssignProject dialog events
-    if (dialog_depth == Dialog::AssignProject) {
-        return HandleAssignProjectEvent(event);
     }
 
     return false;

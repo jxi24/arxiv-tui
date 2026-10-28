@@ -69,7 +69,8 @@ bool write_file(const std::string& path,
 
 // Quote a string for YAML frontmatter — wrap in double quotes and escape
 // embedded backslashes / double quotes. Newlines are folded to spaces so a
-// single-line value remains valid in flow style.
+// single-line value remains valid in flow style; other control characters
+// (feed text can carry ESC) are dropped, as YAML does not allow them raw.
 std::string yaml_quote(const std::string& s) {
     std::string out = "\"";
     out.reserve(s.size() + 2);
@@ -78,8 +79,10 @@ std::string yaml_quote(const std::string& s) {
             out += "\\\\";
         else if (c == '"')
             out += "\\\"";
-        else if (c == '\n' || c == '\r')
+        else if (c == '\n' || c == '\r' || c == '\t')
             out += ' ';
+        else if (static_cast<unsigned char>(c) < 0x20 || c == 0x7f)
+            continue;
         else
             out += c;
     }
@@ -87,8 +90,9 @@ std::string yaml_quote(const std::string& s) {
     return out;
 }
 
-// Split a comma-separated category string into a YAML inline list.
-// "hep-ph, hep-lat" -> "[hep-ph, hep-lat]"
+// Split a comma-separated category string into a YAML inline list of quoted
+// items: "hep-ph, hep-lat" -> ["hep-ph", "hep-lat"]. Unquoted, feed text with
+// a newline could add frontmatter keys.
 std::string yaml_inline_list(const std::string& csv) {
     std::string out = "[";
     bool first = true;
@@ -107,7 +111,7 @@ std::string yaml_inline_list(const std::string& csv) {
             return;
         if (!first)
             out += ", ";
-        out += t;
+        out += yaml_quote(t);
         first = false;
     };
     for (char c : csv) {
@@ -196,7 +200,8 @@ bool ProjectJSON(const std::string& path,
             entry["note"] = note_for(a.link);
             j["articles"].push_back(std::move(entry));
         }
-        file << j.dump(2) << "\n";
+        // Invalid UTF-8 from a feed becomes U+FFFD rather than an exception.
+        file << j.dump(2, ' ', false, nlohmann::json::error_handler_t::replace) << "\n";
     });
 }
 

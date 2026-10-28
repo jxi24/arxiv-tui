@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 #include "Arxiv/App.hh"
+#include "Arxiv/Utf8.hh"
 #include "Arxiv/Views/Colors.hh"
 
 #include <fmt/format.h>
@@ -237,13 +238,8 @@ void ArxivApp::SetupArticlePane() {
             std::strftime(buf, sizeof(buf), "%Y-%m-%d", &tm_val);
             return buf;
         };
-        auto truncate = [](const std::string& s, int w) -> std::string {
-            if (w <= 0)
-                return "";
-            if (static_cast<int>(s.size()) <= w)
-                return s;
-            return s.substr(0, static_cast<size_t>(w - 1)) + "…";
-        };
+        // By character, not byte: accented names must not be cut mid-letter.
+        auto truncate = [](const std::string& s, int w) { return Utf8::Truncate(s, w); };
 
         // Build column header row (blank over the status column).
         Elements header_cells = {text(std::string(kStatusWidth, ' ')) |
@@ -280,12 +276,13 @@ void ArxivApp::SetupArticlePane() {
             // Compute the title cell value (with prefix and scrolling for current row).
             std::string title_cell;
             if (has_title) {
-                std::string title = article.title;
+                std::string title = article.title.empty() ? "(no title)" : article.title;
                 if (is_current) {
-                    size_t start_pos = static_cast<size_t>(std::floor(title_start_position)) %
-                                       article.title.length();
-                    if (title.length() > static_cast<size_t>(title_w - 2)) {
-                        title = title.substr(start_pos) + "    " + title.substr(0, start_pos);
+                    // Scroll a title too long for the column, a character at
+                    // a time (a byte offset could start mid-letter).
+                    if (Utf8::CharStarts(title).size() > static_cast<size_t>(title_w - 2)) {
+                        title = Utf8::Rotate(
+                            title, static_cast<size_t>(std::floor(title_start_position)), "    ");
                     }
                     title_cell = "> " + title;
                 } else {

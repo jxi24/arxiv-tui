@@ -4,6 +4,7 @@
 
 #include "Arxiv/App.hh"
 #include "Arxiv/AuthorMatch.hh"
+#include "Arxiv/Utf8.hh"
 #include "Arxiv/Views/Colors.hh"
 
 #include <algorithm>
@@ -157,7 +158,7 @@ bool ArxivApp::HandleFollowAuthorsEvent(ftxui::Event event) {
             follow_new_name.clear();
         } else if (event == Event::Backspace) {
             if (!follow_new_name.empty())
-                follow_new_name.pop_back();
+                Utf8::PopBack(follow_new_name);
         } else if (event.is_character()) {
             follow_new_name += event.character();
         }

@@ -5,6 +5,7 @@
 #pragma once
 
 #include <chrono>
+#include <cstddef>
 #include <functional>
 #include <memory>
 #include <string>
@@ -32,6 +33,9 @@ class HttpClient {
 };
 
 /// The real client (cpr/libcurl).
-std::unique_ptr<HttpClient> MakeCprHttpClient();
+/// Get() refuses (status 0, error set) a body larger than this.
+inline constexpr std::size_t kMaxResponseBytes = std::size_t{64} << 20;
+
+std::unique_ptr<HttpClient> MakeCprHttpClient(std::size_t max_body_bytes = kMaxResponseBytes);
 
 } // namespace Arxiv

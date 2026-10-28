@@ -1249,3 +1249,188 @@ TEST_CASE("Mouse selects views and articles", "[tui][mouse]") {
         REQUIRE(core.GetArticleIndex() == 0);
     }
 }
+
+TEST_CASE("Backspace in a text field removes a whole character", "[tui][utf8][regression]") {
+    RealDbApp t;
+    auto handler = t.app->GetEventHandler();
+    handler->OnEvent(Event::Character("p")); // new project (filter pane)
+    handler->OnEvent(Event::Character("z"));
+    handler->OnEvent(Event::Character("\xC3\xA9")); // é
+    handler->OnEvent(Event::Backspace);
+    handler->OnEvent(Event::Return);
+
+    REQUIRE(t.app->GetCore().GetProjects() == std::vector<std::string>{"z"});
+}
+
+// ---------------------------------------------------------------------------
+// An open dialog gets every key first: global bindings used to fire while the
+// user was typing (a for detail, t for categories, / for search, ...).
+// ---------------------------------------------------------------------------
+
+namespace {
+void type_text(ArxivApp& app, const std::string& s) {
+    for (char c : s)
+        app.GetEventHandler()->OnEvent(Event::Character(std::string(1, c)));
+}
+} // namespace
+
+TEST_CASE("Dialogs get keys before the global bindings", "[tui][dialogs][regression]") {
+    RealDbApp t;
+    auto& core = t.app->GetCore();
+    auto handler = t.app->GetEventHandler();
+
+    SECTION("a project name can use any letter") {
+        handler->OnEvent(Event::Character("p")); // new project (filter pane)
+        type_text(*t.app, "dark matter");
+        handler->OnEvent(Event::Return);
+        REQUIRE(core.GetProjects() == std::vector<std::string>{"dark matter"});
+    }
+    SECTION("/ can be typed into a text field") {
+        handler->OnEvent(Event::Character("p"));
+        type_text(*t.app, "dm/x");
+        handler->OnEvent(Event::Return);
+        REQUIRE(core.GetProjects() == std::vector<std::string>{"dm/x"});
+    }
+    SECTION("? is part of a search, not the help") {
+        handler->OnEvent(Event::Character("/"));
+        type_text(*t.app, "why?");
+        handler->OnEvent(Event::Return);
+        REQUIRE(core.GetSearchQuery() == "why?");
+    }
+    SECTION("Escape cancels a new project") {
+        handler->OnEvent(Event::Character("p"));
+        type_text(*t.app, "zz");
+        handler->OnEvent(Event::Escape);
+        handler->OnEvent(Event::Return);
+        REQUIRE(core.GetProjects().empty());
+    }
+    SECTION("Space in Assign Project ticks the project, not the article") {
+        core.AddProject("P");
+        core.SetFilterIndex(Arxiv::AppCore::FilterView::All);
+        const auto link = core.GetCurrentArticles().front().link;
+        handler->OnEvent(Event::Character("l")); // article list
+        handler->OnEvent(Event::Character("p")); // assign to project
+        handler->OnEvent(Event::Character(" "));
+        handler->OnEvent(Event::Return);
+        REQUIRE(core.GetSelectionCount() == 0);
+        REQUIRE(core.GetProjectsForArticle(link) == std::vector<std::string>{"P"});
+    }
+    SECTION("an error message keeps keys from the panes") {
+        handler->OnEvent(Event::Character("l"));
+        handler->OnEvent(Event::Character("W")); // rate selection with none: error
+        handler->OnEvent(Event::Character("j"));
+        REQUIRE(core.GetArticleIndex() == 0);
+        handler->OnEvent(Event::Return); // dismiss
+        handler->OnEvent(Event::Character("j"));
+        REQUIRE(core.GetArticleIndex() == 1);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Settings: a key edited in the Keys section takes effect and is saved under
+// its config name; numbers out of range are refused like in config.yml.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Settings: an edited key binding works and is saved by its config name",
+          "[tui][settings][regression]") {
+    RealDbApp t;
+    auto& core = t.app->GetCore();
+    auto handler = t.app->GetEventHandler();
+    // Where Bookmark sits in the Keys list.
+    KeyBindings kb{std::vector<Config::KeyMapping>{}};
+    const auto all = kb.get_all_bindings();
+    const auto row = std::find_if(all.begin(),
+                                  all.end(),
+                                  [](const auto& b) {
+                                      return b.first == KeyBindings::get_action_name(
+                                                            KeyBindings::Action::Bookmark);
+                                  }) -
+                     all.begin();
+
+    handler->OnEvent(Event::Character("S"));
+    for (int i = 0; i < 4; ++i)
+        handler->OnEvent(Event::Tab); // Keys section
+    for (int i = 0; i < row; ++i)
+        handler->OnEvent(Event::Character("j"));
+    handler->OnEvent(Event::Return); // edit
+    handler->OnEvent(Event::Backspace);
+    handler->OnEvent(Event::Character("m"));
+    handler->OnEvent(Event::Return); // commit
+    handler->OnEvent(Event::Escape); // save and close
+
+    SECTION("saved under the config name") {
+        const auto mappings = core.GetConfig().get_key_mappings();
+        REQUIRE(std::any_of(mappings.begin(), mappings.end(), [](const auto& m) {
+            return m.action == "bookmark" && m.key == "m";
+        }));
+    }
+    SECTION("the new key works") {
+        handler->OnEvent(Event::Character("l")); // article list
+        const auto link = core.GetCurrentArticles().front().link;
+        const bool before = core.IsArticleBookmarked(link);
+        handler->OnEvent(Event::Character("m"));
+        REQUIRE(core.IsArticleBookmarked(link) != before);
+    }
+}
+
+TEST_CASE("Settings: an out-of-range number is refused", "[tui][settings][regression]") {
+    RealDbApp t;
+    auto handler = t.app->GetEventHandler();
+    const int before = t.app->GetCore().GetConfig().get_retrain_interval();
+    handler->OnEvent(Event::Character("S"));
+    handler->OnEvent(Event::Tab);
+    handler->OnEvent(Event::Tab);            // Ranker section
+    handler->OnEvent(Event::Character("j")); // Retrain interval
+    handler->OnEvent(Event::Return);
+    for (int i = 0; i < 4; ++i)
+        handler->OnEvent(Event::Backspace);
+    handler->OnEvent(Event::Character("0"));
+    handler->OnEvent(Event::Return);
+    handler->OnEvent(Event::Escape);
+
+    REQUIRE(t.app->GetCore().GetConfig().get_retrain_interval() == before);
+}
+
+TEST_CASE("An article without a title is listed as untitled", "[tui][regression]") {
+    // The focused row's title scroller computed `% title.length()`: a
+    // division by zero for an empty title (a link-only project import).
+    auto db = std::make_unique<Arxiv::DatabaseManager>(":memory:");
+    auto paper = arxiv_tui::test::fixtures::sample_articles[0];
+    paper.title.clear();
+    db->AddArticle(paper);
+    KeyBindings kb{std::vector<Config::KeyMapping>{}};
+    ArxivApp app(make_test_config(), std::move(db), std::make_unique<FetcherMock>(), std::move(kb));
+    app.GetCore().SetFilterIndex(Arxiv::AppCore::FilterView::All);
+    app.GetEventHandler()->OnEvent(Event::Character("l")); // focus the list
+    app.GetEventHandler()->OnEvent(Event::Character("a")); // detail: title scrolls
+
+    REQUIRE(any_line_matches(plain_lines(app), "\\(no title\\)"));
+}
+
+TEST_CASE("Deleting a project asks first", "[tui][projects][regression]") {
+    // x removed the project, its memberships and notes at once.
+    RealDbApp t;
+    auto& core = t.app->GetCore();
+    core.AddProject("thesis");
+    const auto& options = core.GetFilterOptions();
+    const int index =
+        static_cast<int>(std::find(options.begin(), options.end(), "thesis") - options.begin());
+    core.SetFilterIndex(index);
+    auto handler = t.app->GetEventHandler();
+
+    handler->OnEvent(Event::Character("x"));
+
+    SECTION("nothing is deleted yet, and the question names the project") {
+        REQUIRE(core.GetProjects() == std::vector<std::string>{"thesis"});
+        REQUIRE(any_line_matches(plain_lines(*t.app), "thesis"));
+    }
+    SECTION("y deletes it") {
+        handler->OnEvent(Event::Character("y"));
+        REQUIRE(core.GetProjects().empty());
+    }
+    SECTION("any other key keeps it") {
+        handler->OnEvent(Event::Character("n"));
+        handler->OnEvent(Event::Character("y"));
+        REQUIRE(core.GetProjects() == std::vector<std::string>{"thesis"});
+    }
+}

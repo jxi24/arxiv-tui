@@ -129,7 +129,7 @@ Business logic. Receives `DatabaseManager` and `Fetcher` via `unique_ptr` (depen
 SQLite3 persistence layer. All virtual methods — mock-friendly for testing. File databases use WAL with a 5 s busy timeout (TUI and cron `--fetch` share the file). Every public method holds a recursive mutex (one connection is shared with the background fetch). Statement errors throw (`Stmt::for_each` no longer stops silently); schema additions use `AddColumnIfMissing`; strings are bound and read by length (NUL-safe).
 
 **`Fetcher`** (`Fetcher.hh/cc`)
-Parses arXiv RSS/XML feeds via `pugixml`. Downloads PDFs. All virtual methods. Every request goes through an injected `HttpClient` (`HttpClient.hh`; `MakeCprHttpClient()` by default, which sets the User-Agent `Fetcher::UserAgent()` and timeouts); `FetchSince` API pages are spaced 3 s apart by `RequestPacer` (`SetApiPacer` in tests). Network behaviour is tested with a scripted client in `FetcherNetTest.cc`. The version comes from the generated `Version.hh` (`Version.hh.in`).
+Parses arXiv RSS/XML feeds via `pugixml`. Downloads PDFs. All virtual methods. Every request goes through an injected `HttpClient` (`HttpClient.hh`; `MakeCprHttpClient()` by default, which sets the User-Agent `Fetcher::UserAgent()` and timeouts, caps bodies at `kMaxResponseBytes`, and follows at most 5 redirects, https only — `HttpClientTest.cc` runs it against a local server); `FetchSince` stops after `kMaxApiPages`; `FetchSince` API pages are spaced 3 s apart by `RequestPacer` (`SetApiPacer` in tests). Network behaviour is tested with a scripted client in `FetcherNetTest.cc`. The version comes from the generated `Version.hh` (`Version.hh.in`).
 
 **`Config`** (`Config.hh/cc`)
 Loads `config.yml` from the XDG config path on startup; creates defaults if missing. Stores topics, download directory, key bindings, and runtime file paths (`db_file_`, `ranker_file_`). The db and ranker paths are not written to YAML — they are set programmatically by `main.cc` from `Paths::Resolve()` before the app is constructed.
@@ -165,7 +165,9 @@ The single fallback BibTeX builder (`BibTeX::Build`) used by the clipboard and f
 Followed-author matching: whole last names (particles included), first initial (and first name when both spelled out), middle initials only when both give one; last name alone matches that last name.
 
 **`Process`** (`Process.hh/cc`)
-Starts external programs (`xdg-open`, `tar`, the clipboard backend) via `posix_spawnp` with an argument vector and stdio on `/dev/null` (`RunWithInput` feeds stdin through a socket, so no SIGPIPE). Never build shell command strings from article data or config.
+Starts external programs (`xdg-open`, `tar`, the clipboard backend) via `posix_spawnp` with an argument vector and stdio on `/dev/null` (`RunWithInput` feeds stdin through a socket, so no SIGPIPE); every descriptor above stderr is closed in the child.
+
+**Private files**: the replay log, the log (`MakeFileLogger`, `Logging.hh`) and a new database are created 0600 and close-on-exec; `Paths::CreateDirectories` makes new data/state dirs 0700. Never build shell command strings from article data or config.
 
 **Replay** (`Replay.hh/cc`, `--replay`)
 Logs and crash reports take one path: `ReplayLog::Parse` turns either into entries (a report also gives `CrashInfo` from its first-line JSON header, control characters stripped; pre-header reports are still read), `ReplayPlayer::Run` is the only replay loop, and `ReplayPlayer::RunSandboxed` (what `--replay` calls) replays on `DatabaseManager::InMemoryCopyOf` with the ranker/keywords copied to a `mkdtemp` scratch dir. File/download actions are skipped unless `Options::file_actions`. The crash handler (`CrashHandler.cc`) is async-signal-safe: it copies the tail of the replay *file*, never touches the recorder's lock.
@@ -185,13 +187,18 @@ CREATE TABLE articles (
     category        TEXT DEFAULT '',
     is_replacement  INTEGER DEFAULT 0,
     read_at         INTEGER DEFAULT NULL,
-    added_at        INTEGER DEFAULT NULL  -- when we first stored the row;
+    added_at        INTEGER DEFAULT NULL, -- when we first stored the row;
                                           -- drives the New Articles window
+    updated_at      INTEGER DEFAULT NULL  -- last seen as a replacement (Updated view)
 );
 
 CREATE TABLE projects (
-    name TEXT PRIMARY KEY
+    name     TEXT PRIMARY KEY,
+    parent   TEXT DEFAULT '',  -- sub-projects
+    bib_path TEXT DEFAULT ''   -- exported .bib kept up to date
 );
+-- Also: tags(name), followed_authors, metadata(key, value) — fetch markers
+-- (last_fetch_*, last_view_*, new_articles_anchor*) — and the FTS5 index.
 
 CREATE TABLE project_articles (
     project_name TEXT REFERENCES projects(name) ON DELETE CASCADE ON UPDATE CASCADE,
@@ -200,12 +207,18 @@ CREATE TABLE project_articles (
 );
 -- article_ratings, project_notes and article_tags cascade the same way
 -- (kLinkTables in DatabaseManager.cc).
+
+CREATE TABLE deleted_articles (   -- schema v2
+    link TEXT PRIMARY KEY, deleted_at INTEGER, added_at INTEGER
+);
+-- DeleteArticle records the paper here; AddArticles (fetches) skips these
+-- links; AddArticle (undo, import) restores added_at and removes the row.
 ```
 
 `PRAGMA foreign_keys` is on for every connection, and `PRAGMA user_version`
 holds `DatabaseManager::kSchemaVersion`. `MigrateSchema` runs the numbered
 migrations once each (1: rebuild the link tables with cascading keys,
-dropping orphan rows); a database with a higher version is refused. Inserts
+dropping orphan rows; 2: `deleted_articles`); a database with a higher version is refused. Inserts
 into link tables are guarded (`WHERE EXISTS`), so linking/rating/noting a
 paper or project that is not stored is a no-op rather than a constraint
 error. Add a new migration as the next version, not as another
@@ -331,7 +344,7 @@ object programmatically.
 Tests tagged `[regression]` reproduce bugs found in code review (now fixed); the `[threads]` ones are only meaningful under ThreadSanitizer (the Sanitizers CI workflow). `[background]` covers the background-task API.
 
 ### Fuzzing
-- `test/fuzz/fuzz_<name>.cc` — libFuzzer targets (`-DARXIV_TUI_ENABLE_FUZZING=ON`, Clang only; `-fno-sanitize-recover`, so UB is a crash). Harness helpers in `FuzzSupport.hh` / `CoreHarness.hh` (offline fetcher, sandboxed AppCore, GCC-safe byte reader — read input bytes in separate statements, never inside one call's argument list).
+- `test/fuzz/fuzz_<name>.cc` — libFuzzer targets (CI runs them with `-max_len=262144`) (`-DARXIV_TUI_ENABLE_FUZZING=ON`, Clang only; `-fno-sanitize-recover`, so UB is a crash). Harness helpers in `FuzzSupport.hh` / `CoreHarness.hh` (offline fetcher, sandboxed AppCore, GCC-safe byte reader — read input bytes in separate statements, never inside one call's argument list).
 - Every testing build makes `fuzz_<name>_replay`; ctest replays `test/fuzz/corpus/<name>/`. Crashers go in the corpus as `regress_<what>` together with a unit regression test.
 - CI: `.github/workflows/fuzz.yml`.
 
@@ -423,8 +436,9 @@ Inside test bodies, plain `ALLOW_CALL` is fine because the generated local varia
 - Empty article lists show `ArxivApp::EmptyViewMessage()` — one line per view saying what to do next, using the user's actual keys.
 - UI components are built in `ArxivApp::SetupUI()`.
 - A background `std::thread` drives periodic UI refresh via `screen.PostEvent(Event::Custom)`.
-- Key events are dispatched through the `event_handler` component which checks `KeyBindings` before falling through to child components.
+- Key events are dispatched through the `event_handler` component: the help overlay, then the open dialog (`HandleDialogEvent`, modal — it consumes every key), then global `KeyBindings` (`HandleGlobalEvent`), then the focused pane. A new dialog gets a `case` in `HandleDialogEvent` and handles its own Escape.
 - AppCore exposes no writable state: menus bind UI-owned indices (`filter_menu_index`, `article_menu_index`) and every change goes through `ArxivApp::SelectFilter` / `SelectArticle`. The selected project/tag name is `AppCore::CurrentProject()` / `CurrentTag()`; `FilterView::Tag`/`Project` are kinds, not indices (`kFirstTagIndex`).
+- Text fields hold UTF-8: Backspace is `Utf8::PopBack` (`Utf8.hh`), never `pop_back()`. JSON is written with `error_handler_t::replace` (invalid bytes from feeds or typing must not throw).
 - `TESTING` preprocessor macro is defined when building tests; use it to skip UI-only code paths if needed.
 
 ---
@@ -432,7 +446,7 @@ Inside test bodies, plain `ALLOW_CALL` is fine because the generated local varia
 ## Common Development Tasks
 
 ### Add a New arXiv Topic
-Edit `.arxiv-tui.yml` and add the topic string under `articles.topics`. Topics correspond to arXiv category identifiers (e.g., `cs.LG`, `quant-ph`).
+Edit `~/.config/arxiv-tui/config.yml` and add the topic string under `article_settings.topics` (or use the Settings dialog, Topics section). Topics correspond to arXiv category identifiers (e.g., `cs.LG`, `quant-ph`).
 
 ### Add a New Key Binding
 1. Define the action string in `KeyBindings.hh/.cc`.
@@ -441,7 +455,7 @@ Edit `.arxiv-tui.yml` and add the topic string under `articles.topics`. Topics c
 
 ### Add a New Filter
 1. Add a filter name to `AppCore::RefreshFilterOptions()`.
-2. Handle the filter index in `AppCore::SetFilterIndex()` (update `m_current_articles`).
+2. Handle the view in `AppCore::FetchArticles()` (the `switch (GetFilterView())` that fills `m_current_articles`).
 3. Update `ArxivApp` event handling if the filter requires a dialog.
 
 ### Add a New Database Table/Column
@@ -510,7 +524,10 @@ A brief record of what has been implemented. Consult `README.md` for user-facing
   showed only the current day. `AppCore` reads `new_articles_anchor_ts` (the instant the
   *previous* session finished fetching, persisted as `last_fetch_end_ts` right after the
   bulk insert) and calls `DatabaseManager::GetArticlesAddedSince`. Articles stored in
-  between by a headless `--fetch` are covered too. The old date window remains as a
+  between by a headless `--fetch` are covered too: `--fetch` runs `FetchMode::Headless`,
+  which never moves the anchor, and the anchor follows `last_view_date` /
+  `last_view_end_ts`, written only by interactive sessions (falling back to the
+  `last_fetch_*` markers on databases from before them). The old date window remains as a
   fallback so the view is never blank (fresh DB, first run after the upgrade, or fetch
   still in flight). `MigrateAddAddedAt` backfills pre-existing rows from `date`.
 - **The anchor is exclusive** — `GetArticlesAddedSince` compares `added_at > since_ts`,

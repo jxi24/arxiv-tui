@@ -10,12 +10,15 @@
 #include <algorithm>
 #include <chrono>
 #include <ctime>
+#include <fcntl.h>
+#include <filesystem>
 #include <mutex>
 #include <sqlite3.h>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <unistd.h>
 
 #include "spdlog/spdlog.h"
 
@@ -106,6 +109,8 @@ class Stmt {
     }
 
     sqlite3_stmt* raw() { return m_stmt; }
+    /// Ready the statement to run again (bindings are replaced by the next bind).
+    void reset() { sqlite3_reset(m_stmt); }
 
   private:
     sqlite3* m_db;
@@ -117,6 +122,14 @@ class Stmt {
 
 DatabaseManager::DatabaseManager(const std::string& path) {
     spdlog::info("[Database]: Opening database at {}", path);
+    // A new database holds notes and ratings: create it mode 0600 (SQLite
+    // gives its -wal and -shm files the same mode).
+    if (!path.empty() && path != ":memory:" && path.rfind("file:", 0) != 0 &&
+        !std::filesystem::exists(path)) {
+        const int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+        if (fd >= 0)
+            ::close(fd);
+    }
     if (sqlite3_open(path.c_str(), &db) != SQLITE_OK) {
         std::string error = db ? sqlite3_errmsg(db) : "out of memory";
         sqlite3_close(db); // a handle is returned even on failure
@@ -278,6 +291,12 @@ void DatabaseManager::MigrateSchema() {
     // they are switched on for good afterwards.
     if (version < 1)
         MigrateToCascadingLinks();
+    if (version < 2) {
+        // Papers the user deleted: fetches skip them; AddArticle (undo,
+        // import) brings one back with its original added_at.
+        ExecuteSQL("CREATE TABLE IF NOT EXISTS deleted_articles ("
+                   "link TEXT PRIMARY KEY, deleted_at INTEGER, added_at INTEGER)");
+    }
     ExecuteSQL("PRAGMA user_version = " + std::to_string(kSchemaVersion));
     ExecuteSQL("PRAGMA foreign_keys = ON");
 }
@@ -497,8 +516,15 @@ void DatabaseManager::AddArticles(const std::vector<Article>& articles) {
         return;
     ExecuteSQL("BEGIN TRANSACTION");
     try {
-        for (const auto& a : articles)
+        // A paper the user deleted stays deleted, however often the feed
+        // lists it again.
+        Stmt deleted(db, "SELECT 1 FROM deleted_articles WHERE link = ?", "AddArticles/deleted");
+        for (const auto& a : articles) {
+            deleted.reset();
+            if (deleted.bind(1, a.link).step() == SQLITE_ROW)
+                continue;
             AddArticle(a);
+        }
         ExecuteSQL("COMMIT");
     } catch (...) {
         ExecuteSQL("ROLLBACK");
@@ -550,6 +576,17 @@ void DatabaseManager::AddArticle(const Article& article) {
         .bind(8, article.is_replacement ? 1 : 0)
         .bind(9, article.is_replacement ? 1 : 0);
     stmt.step_done();
+
+    // Adding a paper the user deleted (undo, an import) brings it back as it
+    // was: with the time it was first stored, so it is not "new" again.
+    Stmt restore(db,
+                 "UPDATE articles SET added_at = "
+                 "  COALESCE((SELECT added_at FROM deleted_articles WHERE link = ?1), added_at) "
+                 "WHERE link = ?1 AND EXISTS (SELECT 1 FROM deleted_articles WHERE link = ?1)",
+                 "AddArticle/restore");
+    restore.bind(1, article.link).step_done();
+    Stmt undelete(db, "DELETE FROM deleted_articles WHERE link = ?", "AddArticle/undelete");
+    undelete.bind(1, article.link).step_done();
 }
 
 std::vector<Arxiv::Article> DatabaseManager::GetRecent(int days) {
@@ -601,6 +638,12 @@ void DatabaseManager::ToggleBookmark(const std::string& link, bool bookmarked) {
 void DatabaseManager::DeleteArticle(const std::string& link) {
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
     spdlog::debug("[Database]: Deleting article {}", link);
+    // Remember the deletion (and when the paper was first stored, for undo).
+    Stmt mark(db,
+              "INSERT OR REPLACE INTO deleted_articles (link, deleted_at, added_at) "
+              "SELECT link, strftime('%s', 'now'), added_at FROM articles WHERE link = ?",
+              "DeleteArticle/mark");
+    mark.bind(1, link).step_done();
     // Memberships, ratings, notes and tags cascade.
     Stmt a(db, "DELETE FROM articles WHERE link = ?", "DeleteArticle");
     a.bind(1, link).step_done();

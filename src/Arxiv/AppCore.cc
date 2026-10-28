@@ -84,7 +84,17 @@ AppCore::AppCore(const Config& config,
     const std::string today = today_utc_string();
     const std::string prev_fetch = m_db->GetMetadata("last_fetch_date");
     std::string anchor = m_db->GetMetadata("new_articles_anchor");
-    const bool crossed_day_boundary = (!prev_fetch.empty() && prev_fetch < today);
+    // "New" means new to the user: the window follows interactive sessions
+    // only (last_view_*). A cron --fetch (Headless) fetches and stores but
+    // must not move it, or the papers it stored would never count as new.
+    // Databases from before last_view_* fall back to the fetch markers.
+    std::string prev_view = m_db->GetMetadata("last_view_date");
+    std::string prev_view_end = m_db->GetMetadata("last_view_end_ts");
+    if (prev_view.empty()) {
+        prev_view = prev_fetch;
+        prev_view_end = m_db->GetMetadata("last_fetch_end_ts");
+    }
+    const bool crossed_day_boundary = (!prev_view.empty() && prev_view < today);
 
     // The "New Articles" anchor only advances on a real day-boundary
     // crossing. A same-day restart must NOT collapse the anchor to today —
@@ -101,11 +111,12 @@ AppCore::AppCore(const Config& config,
     // persists nothing, so it never consumes the interactive session's
     // crossing.
     const bool offline = (fetch_mode == FetchMode::Offline);
+    const bool headless = (fetch_mode == FetchMode::Headless);
     m_new_articles_anchor_ts = parse_ts(m_db->GetMetadata("new_articles_anchor_ts"));
     if (crossed_day_boundary) {
-        anchor = prev_fetch;
-        m_new_articles_anchor_ts = parse_ts(m_db->GetMetadata("last_fetch_end_ts"));
-        if (!offline) {
+        anchor = prev_view;
+        m_new_articles_anchor_ts = parse_ts(prev_view_end);
+        if (!offline && !headless) {
             m_db->SetMetadata("new_articles_anchor", anchor);
             m_db->SetMetadata("new_articles_anchor_ts", std::to_string(m_new_articles_anchor_ts));
         }
@@ -138,7 +149,7 @@ AppCore::AppCore(const Config& config,
     // UI thread can refresh on its next tick via TryRefetchIfNeeded(). This
     // avoids racing with UI-thread reads and avoids invoking the callback
     // before App's SetupUI() has installed it.
-    auto do_fetch = [this, prev_fetch, today, fetch_mode]() {
+    auto do_fetch = [this, prev_fetch, today, fetch_mode, headless]() {
         Record("appcore/bg_fetch_begin",
                "mode=" + std::string(fetch_mode == FetchMode::Async ? "async" : "sync"));
         std::vector<Article> articles;
@@ -171,9 +182,15 @@ AppCore::AppCore(const Config& config,
         // Stamped after the insert so the next session's New Articles window
         // starts past everything this fetch stored — otherwise today's papers
         // would be replayed as new tomorrow.
-        m_db->SetMetadata("last_fetch_end_ts", std::to_string(now_ts()));
+        const std::string end_ts = std::to_string(now_ts());
+        m_db->SetMetadata("last_fetch_end_ts", end_ts);
         // Only now are the days up to today covered.
         m_db->SetMetadata("last_fetch_date", today);
+        if (!headless) {
+            // What the next session's New Articles window starts from.
+            m_db->SetMetadata("last_view_end_ts", end_ts);
+            m_db->SetMetadata("last_view_date", today);
+        }
         m_last_fetch_ok.store(true);
 
         if (fetch_mode == FetchMode::Sync) {
@@ -280,6 +297,16 @@ bool AppCore::MatchesActiveCategory(const std::string& categories) const {
 void AppCore::FetchArticles() {
     Record("appcore/fetcharticles_begin",
            "view=" + std::to_string(static_cast<int>(GetFilterView())));
+    // Reloading the same view keeps the cursor on the paper it was on (or,
+    // if that paper is gone, on the same row); another view starts at the
+    // top.
+    const bool same_view = m_fetched_filter_index == m_filter_index;
+    const int index_before = m_article_index;
+    const std::string focused_before =
+        same_view && index_before >= 0 && index_before < static_cast<int>(m_current_articles.size())
+            ? m_current_articles[static_cast<std::size_t>(index_before)].link
+            : std::string();
+    m_fetched_filter_index = m_filter_index;
     m_current_articles.clear();
 
     switch (GetFilterView()) {
@@ -302,11 +329,11 @@ void AppCore::FetchArticles() {
         break;
     case FilterView::Search:
         if (m_search.active) {
-            bool search_title = (m_search.mode == SearchMode::title);
-            bool search_authors = (m_search.mode == SearchMode::authors);
-            bool search_abstract = (m_search.mode == SearchMode::abstract);
-            m_current_articles =
-                m_db->SearchArticles(m_search.query, search_title, search_authors, search_abstract);
+            m_current_articles = m_db->SearchArticles(
+                m_search.query, m_search.title, m_search.authors, m_search.abstract);
+            // No exact hit (a typo, a different word form): near misses.
+            if (m_current_articles.empty())
+                m_current_articles = FuzzySearch(m_search);
         } else {
             m_current_articles = m_db->GetRecent(-1);
         }
@@ -403,6 +430,15 @@ void AppCore::FetchArticles() {
 
     RefreshTitles();
     m_article_index = 0;
+    if (same_view && !m_current_articles.empty()) {
+        auto it = std::find_if(m_current_articles.begin(),
+                               m_current_articles.end(),
+                               [&](const Article& a) { return a.link == focused_before; });
+        m_article_index =
+            it != m_current_articles.end()
+                ? static_cast<int>(it - m_current_articles.begin())
+                : std::min(index_before, static_cast<int>(m_current_articles.size()) - 1);
+    }
     Record("appcore/fetcharticles_end", "count=" + std::to_string(m_current_articles.size()));
     NotifyArticleUpdate();
 }
@@ -759,11 +795,13 @@ void AppCore::RefreshFilterOptions() {
 
 void AppCore::SetDateRange(const std::string& start, const std::string& end) {
     m_date_range.set(start, end);
+    m_fetched_filter_index = -1; // new results: start at the top
     FetchArticles();
 }
 
 void AppCore::ClearDateRange() {
     m_date_range.clear();
+    m_fetched_filter_index = -1; // new results: start at the top
     FetchArticles();
 }
 
@@ -771,19 +809,16 @@ void AppCore::SetSearchQuery(const std::string& query,
                              bool _search_title,
                              bool _search_authors,
                              bool _search_abstract) {
-    SearchMode mode = SearchMode::title;
-    if (_search_title)
-        mode = SearchMode::title;
-    else if (_search_authors)
-        mode = SearchMode::authors;
-    else if (_search_abstract)
-        mode = SearchMode::abstract;
-    m_search.set(query, mode);
+    // No field ticked means titles, as before.
+    const bool any = _search_title || _search_authors || _search_abstract;
+    m_search.set(query, _search_title || !any, _search_authors, _search_abstract);
+    m_fetched_filter_index = -1; // new results: start at the top
     FetchArticles();
 }
 
 void AppCore::ClearSearch() {
     m_search.clear();
+    m_fetched_filter_index = -1; // new results: start at the top
     FetchArticles();
 }
 
@@ -1013,14 +1048,20 @@ bool AppCore::ExportProjectBibTeX(const std::string& project_name, const std::st
 // ---------------------------------------------------------------------------
 
 std::vector<Article> AppCore::FuzzySearchArticles(const std::string& query, int threshold) const {
-    auto all = m_db->GetRecent(-1);
+    SearchFilter all_fields;
+    all_fields.set(query, true, true, true);
+    return FuzzySearch(all_fields, threshold);
+}
+
+std::vector<Article> AppCore::FuzzySearch(const SearchFilter& search, int threshold) const {
     std::vector<Article> results;
-    for (const auto& a : all) {
-        if (FuzzyMatch::MatchesText(query, a.title, threshold) ||
-            FuzzyMatch::MatchesText(query, a.authors, threshold) ||
-            FuzzyMatch::MatchesText(query, a.abstract, threshold)) {
-            results.push_back(a);
-        }
+    if (search.query.empty())
+        return results;
+    for (auto& a : m_db->GetRecent(-1)) {
+        if ((search.title && FuzzyMatch::MatchesText(search.query, a.title, threshold)) ||
+            (search.authors && FuzzyMatch::MatchesText(search.query, a.authors, threshold)) ||
+            (search.abstract && FuzzyMatch::MatchesText(search.query, a.abstract, threshold)))
+            results.push_back(std::move(a));
     }
     return results;
 }
@@ -1108,7 +1149,16 @@ void AppCore::ClearSelections() {
     NotifyArticleUpdate();
 }
 
-std::vector<std::string> AppCore::GetLinksToOpen() const { return TargetLinks(); }
+std::vector<std::string> AppCore::GetLinksToOpen() const {
+    // These go to xdg-open: only real arXiv pages, whatever an older
+    // database row holds (file://, javascript:, a leading "-").
+    auto links = TargetLinks();
+    links.erase(std::remove_if(links.begin(),
+                               links.end(),
+                               [](const std::string& l) { return !Fetcher::IsArxivLink(l); }),
+                links.end());
+    return links;
+}
 
 std::vector<std::string> AppCore::TargetLinks() const {
     if (!m_selected_links.empty())
@@ -1507,6 +1557,7 @@ void AppCore::UndoLastDelete() {
         for (const auto& tag : snap.tags)
             m_db->LinkArticleToTag(snap.article.link, tag);
     }
+    RefreshFilterOptions(); // a tag deleted meanwhile is back
     FetchArticles();
 }
 

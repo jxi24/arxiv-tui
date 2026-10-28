@@ -24,7 +24,8 @@ class DatabaseManager {
     using RatedArticleList = std::vector<std::pair<Article, int>>;
     /// Schema version written to PRAGMA user_version (see MigrateSchema).
     /// 1: link tables cascade on delete/update and foreign keys are enforced.
-    static constexpr int kSchemaVersion = 1;
+    /// 2: deleted_articles keeps deleted papers out of later fetches.
+    static constexpr int kSchemaVersion = 2;
 
     /// How many papers each filter view holds (for the filter pane).
     struct FilterCounts {

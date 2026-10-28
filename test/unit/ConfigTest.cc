@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <filesystem>
@@ -418,4 +419,39 @@ TEST_CASE("Config: export_dir", "[config]") {
         cfg.save_to_file(tmp.path);
         REQUIRE(Config(tmp.path).get_export_dir() == "/tmp/arxiv-exports");
     }
+}
+
+TEST_CASE("Config regression: valid YAML of the wrong shape loads the defaults",
+          "[config][warnings][regression]") {
+    // A file that parses but is not a map (or has a non-map where a map
+    // belongs) threw YAML::BadSubscript and aborted startup.
+    const std::string yaml = GENERATE(std::string("foo\n"),
+                                      std::string("- a\n- b\n"),
+                                      std::string("article_settings: foo\n"),
+                                      std::string("key_mappings:\n  - next\n  - [j, k]\n"));
+    CAPTURE(yaml);
+    TempConfig tmp;
+    std::ofstream(tmp.path) << yaml;
+
+    std::optional<Config> loaded;
+    REQUIRE_NOTHROW(loaded.emplace(tmp.path));
+    REQUIRE(loaded->get_topics() ==
+            std::vector<std::string>{"hep-ph", "hep-ex", "hep-lat", "hep-th"});
+    REQUIRE_FALSE(loaded->get_warnings().empty());
+}
+
+TEST_CASE("Config regression: an empty key_mappings list survives save and load",
+          "[config][regression]") {
+    // Found by fuzz_config: an empty list was saved as "key_mappings: ~",
+    // which the next load read as "no list" and filled with the defaults.
+    TempConfig tmp;
+    std::ofstream(tmp.path) << "key_mappings: []\n";
+    Config cfg(tmp.path);
+    REQUIRE(cfg.get_key_mappings().empty());
+
+    TempConfig saved;
+    REQUIRE(cfg.save_to_file(saved.path));
+    Config again(saved.path);
+
+    REQUIRE(again.get_key_mappings().empty());
 }

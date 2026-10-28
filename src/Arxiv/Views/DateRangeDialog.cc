@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 #include "Arxiv/App.hh"
+#include "Arxiv/Utf8.hh"
 #include "Arxiv/Views/Colors.hh"
 
 using namespace ftxui;
@@ -61,10 +62,10 @@ bool ArxivApp::HandleDateRangeEvent(ftxui::Event event) {
     if (event == Event::Backspace) {
         if (date_input_mode == DateInputMode::Start) {
             if (!start_date.empty())
-                start_date.pop_back();
+                Utf8::PopBack(start_date);
         } else {
             if (!end_date.empty())
-                end_date.pop_back();
+                Utf8::PopBack(end_date);
         }
         return true;
     }

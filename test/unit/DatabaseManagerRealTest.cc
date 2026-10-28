@@ -1432,3 +1432,44 @@ TEST_CASE("CountFilters counts bookmarks, unread papers, tags and projects",
         REQUIRE(counts.projects.at("idle") == 0);
     }
 }
+
+TEST_CASE("A deleted paper stays deleted", "[database][real][regression]") {
+    // DeleteArticle kept no record, so the next feed or backfill brought the
+    // paper back (with a fresh added_at: it even showed as new). Undo did
+    // the same: the restored paper looked new.
+    const auto file = std::filesystem::temp_directory_path() /
+                      ("deleted_papers_" + std::to_string(::getpid()) + ".db");
+    std::filesystem::remove(file);
+    const auto& paper = sample_articles[0];
+    {
+        DatabaseManager db(file.string());
+        db.AddArticle(paper);
+    }
+    {
+        // Stored long ago.
+        sqlite3* raw = nullptr;
+        sqlite3_open(file.c_str(), &raw);
+        sqlite3_exec(raw, "UPDATE articles SET added_at = 1000", nullptr, nullptr, nullptr);
+        sqlite3_close(raw);
+    }
+    DatabaseManager db(file.string());
+    db.DeleteArticle(paper.link);
+
+    SECTION("a fetch does not bring it back") {
+        db.AddArticles({paper});
+        REQUIRE_FALSE(db.GetArticle(paper.link).has_value());
+    }
+    SECTION("restoring it (undo, import) keeps when it was first stored") {
+        db.AddArticle(paper);
+        REQUIRE(db.GetArticle(paper.link).has_value());
+        REQUIRE(db.GetArticlesAddedSince(2000).empty());
+    }
+    SECTION("once restored, fetches update it again") {
+        db.AddArticle(paper);
+        auto renamed = paper;
+        renamed.title = "New title";
+        db.AddArticles({renamed});
+        REQUIRE(db.GetArticle(paper.link)->title == "New title");
+    }
+    std::filesystem::remove(file);
+}

@@ -3,8 +3,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 #include <Arxiv/AppCore.hh>
-#include <Arxiv/Config.hh>
+#include <Arxiv/Config.hh> // also yaml-cpp, with its warnings silenced
 #include <Arxiv/DatabaseManager.hh>
+#include <Arxiv/Export.hh>
 #include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers.hpp>
@@ -2335,4 +2336,231 @@ TEST_CASE("AppCore: adding a selection to a project updates the project's .bib",
     std::filesystem::remove(bib);
     REQUIRE_THAT(content, ContainsSubstring(a.id()));
     REQUIRE_THAT(content, ContainsSubstring(b.id()));
+}
+
+TEST_CASE("Project JSON export writes invalid UTF-8 from a feed instead of throwing",
+          "[export][regression]") {
+    // pugixml passes invalid bytes through and the database keeps them;
+    // json::dump then threw and took the TUI down.
+    auto dir =
+        std::filesystem::temp_directory_path() / ("utf8_export_" + std::to_string(::getpid()));
+    std::filesystem::create_directories(dir);
+    auto paper = arxiv_tui::test::fixtures::sample_articles[0];
+    paper.title = "Broken \xC3 title";
+    const auto path = (dir / "p.json").string();
+
+    bool ok = false;
+    REQUIRE_NOTHROW(ok = Arxiv::Export::ProjectJSON(
+                        path, "P", {paper}, [](const std::string&) { return std::string(); }));
+    REQUIRE(ok);
+    std::filesystem::remove_all(dir);
+}
+
+namespace {
+std::unique_ptr<Arxiv::AppCore> core_with_papers(int n) {
+    auto db = std::make_unique<Arxiv::DatabaseManager>(":memory:");
+    auto base = arxiv_tui::test::fixtures::sample_articles[0];
+    for (int i = 0; i < n; ++i) {
+        auto a = base;
+        a.link = "https://arxiv.org/abs/2607." + std::to_string(20000 + i);
+        a.title = "Paper " + std::to_string(i);
+        a.date = base.date - std::chrono::hours(i); // a fixed order
+        db->AddArticle(a);
+    }
+    Arxiv::Config cfg;
+    cfg.set_topics({"hep-ph"});
+    auto core = std::make_unique<Arxiv::AppCore>(
+        cfg, std::move(db), std::make_unique<FetcherMock>(), Arxiv::AppCore::FetchMode::Offline);
+    core->SetFilterIndex(Arxiv::AppCore::FilterView::All);
+    return core;
+}
+} // namespace
+
+TEST_CASE("Reloading a view keeps the cursor on the same paper", "[appcore][regression]") {
+    // FetchArticles reset the cursor to the top: every auto-refresh,
+    // retrain, tag change, delete or undo sent the user back to row 0.
+    auto core = core_with_papers(4);
+    core->SetArticleIndex(2);
+    const auto focused = core->GetCurrentArticles()[2].link;
+
+    SECTION("same view reloaded") {
+        core->AddTag("x"); // reloads the view
+        REQUIRE(
+            core->GetCurrentArticles()[static_cast<std::size_t>(core->GetArticleIndex())].link ==
+            focused);
+    }
+    SECTION("focused paper deleted: the cursor stays on that row") {
+        core->DeleteCurrentOrSelected();
+        REQUIRE(core->GetArticleIndex() == 2);
+    }
+    SECTION("last paper deleted: the cursor moves up one") {
+        core->SetArticleIndex(3);
+        core->DeleteCurrentOrSelected();
+        REQUIRE(core->GetArticleIndex() == 2);
+    }
+    SECTION("another view starts at the top") {
+        core->SetFilterIndex(Arxiv::AppCore::FilterView::Unread);
+        REQUIRE(core->GetArticleIndex() == 0);
+    }
+    SECTION("a new search starts at the top") {
+        core->SetFilterIndex(Arxiv::AppCore::FilterView::Search);
+        core->SetSearchQuery("Paper", true, false, false);
+        core->SetArticleIndex(2);
+        core->SetSearchQuery("Paper", true, false, false);
+        REQUIRE(core->GetArticleIndex() == 0);
+    }
+}
+
+TEST_CASE("Obsidian notes keep feed text inside its frontmatter values",
+          "[export][security][regression]") {
+    // The category went into the frontmatter unquoted: newlines in it added
+    // keys or closed the frontmatter early. Control bytes broke the YAML.
+    auto vault =
+        std::filesystem::temp_directory_path() / ("vault_yaml_" + std::to_string(::getpid()));
+    std::filesystem::remove_all(vault);
+    auto paper = arxiv_tui::test::fixtures::sample_articles[0];
+    paper.category = "hep-ph\nevil: injected\n---\n# Owned";
+    paper.title = "Title \x1b[2J with escape";
+    FetcherMock fetcher;
+
+    Arxiv::Export::ObsidianNotes(fetcher, {paper}, vault.string(), false, {});
+
+    std::filesystem::path note;
+    for (const auto& e : std::filesystem::recursive_directory_iterator(vault))
+        if (e.path().filename() == paper.file_stem() + ".md")
+            note = e.path();
+    std::ifstream in(note);
+    std::string line, front;
+    std::getline(in, line); // opening ---
+    while (std::getline(in, line) && line != "---")
+        front += line + "\n";
+    const YAML::Node yaml = YAML::Load(front);
+
+    SECTION("no injected key") { REQUIRE_FALSE(yaml["evil"]); }
+    SECTION("the category stays one value") {
+        REQUIRE(yaml["category"].as<std::string>().find("evil") != std::string::npos);
+    }
+    SECTION("no control characters") { REQUIRE(front.find('\x1b') == std::string::npos); }
+    std::filesystem::remove_all(vault);
+}
+
+TEST_CASE("Only arXiv links are handed to the browser", "[appcore][security][regression]") {
+    // Rows stored before links were validated (or only normalised by a
+    // migration) could hold file://, javascript: or "-..." values, which
+    // went to xdg-open as they were.
+    auto db = std::make_unique<Arxiv::DatabaseManager>(":memory:");
+    auto good = arxiv_tui::test::fixtures::sample_articles[0];
+    auto bad = good;
+    bad.link = "file:///etc/passwd";
+    db->AddArticle(good);
+    db->AddArticle(bad);
+    Arxiv::Config cfg;
+    cfg.set_topics({"hep-ph"});
+    Arxiv::AppCore core(
+        cfg, std::move(db), std::make_unique<FetcherMock>(), Arxiv::AppCore::FetchMode::Offline);
+    core.SetFilterIndex(Arxiv::AppCore::FilterView::All);
+    core.ToggleSelection(good.link);
+    core.ToggleSelection(bad.link);
+
+    REQUIRE(core.GetLinksToOpen() == std::vector<std::string>{good.link});
+}
+
+TEST_CASE("Search covers every field asked for", "[appcore][search][regression]") {
+    // SetSearchQuery kept only the first field set: title+authors+abstract
+    // (what the GUI asks for) searched titles only.
+    auto db = std::make_unique<Arxiv::DatabaseManager>(":memory:");
+    for (const auto& a : arxiv_tui::test::fixtures::sample_articles)
+        db->AddArticle(a);
+    Arxiv::Config cfg;
+    cfg.set_topics({"hep-ph"});
+    Arxiv::AppCore core(
+        cfg, std::move(db), std::make_unique<FetcherMock>(), Arxiv::AppCore::FetchMode::Offline);
+    core.SetFilterIndex(Arxiv::AppCore::FilterView::Search);
+
+    core.SetSearchQuery("purposes", true, true, true); // only in an abstract
+
+    REQUIRE(core.GetCurrentArticles().size() == 1);
+}
+
+TEST_CASE("Search falls back to fuzzy matching", "[appcore][search]") {
+    // The docs promised near-miss results; FuzzySearchArticles was never used.
+    auto db = std::make_unique<Arxiv::DatabaseManager>(":memory:");
+    for (const auto& a : arxiv_tui::test::fixtures::sample_articles)
+        db->AddArticle(a);
+    Arxiv::Config cfg;
+    cfg.set_topics({"hep-ph"});
+    Arxiv::AppCore core(
+        cfg, std::move(db), std::make_unique<FetcherMock>(), Arxiv::AppCore::FetchMode::Offline);
+    core.SetFilterIndex(Arxiv::AppCore::FilterView::Search);
+
+    core.SetSearchQuery("Artcle", true, false, false); // typo of "Article"
+
+    REQUIRE_FALSE(core.GetCurrentArticles().empty());
+}
+
+TEST_CASE("Papers a cron --fetch stored stay new until the user opens the TUI",
+          "[appcore][new_articles][regression]") {
+    // A headless --fetch crossing a day moved the New Articles anchor to the
+    // previous fetch's end, as an interactive session does. With a daily
+    // cron, day 2's run moved it past what day 1's run had stored, so those
+    // papers never showed as new.
+    const auto dir =
+        std::filesystem::temp_directory_path() / ("cron_anchor_" + std::to_string(::getpid()));
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
+    const std::string db_file = (dir / "articles.db").string();
+    Arxiv::Config cfg;
+    cfg.set_topics({"hep-ph"});
+    const auto paper = arxiv_tui::test::fixtures::sample_articles[0];
+    {
+        // The user's last session, long ago.
+        Arxiv::DatabaseManager db(db_file);
+        db.SetMetadata("last_fetch_date", "2000-01-01");
+        db.SetMetadata("last_fetch_end_ts", "100");
+        db.SetMetadata("new_articles_anchor_ts", "50");
+    }
+    auto cron_day = [&](std::vector<Arxiv::Article> fetched) {
+        {
+            // Each run is a new day.
+            Arxiv::DatabaseManager db(db_file);
+            db.SetMetadata("last_fetch_date", "2000-01-02");
+        }
+        auto fetcher = std::make_unique<FetcherMock>();
+        ALLOW_CALL(*fetcher, FetchSince(ANY(std::string))).RETURN(fetched);
+        Arxiv::AppCore cron(cfg,
+                            std::make_unique<Arxiv::DatabaseManager>(db_file),
+                            std::move(fetcher),
+                            Arxiv::AppCore::FetchMode::Headless);
+    };
+    // Day 2's paper keeps the view from falling back to its date window
+    // (used only when the anchored window is empty).
+    const auto day2_paper = arxiv_tui::test::fixtures::sample_articles[1];
+    cron_day({paper});                                            // day 1
+    std::this_thread::sleep_for(std::chrono::milliseconds(1100)); // next second
+    cron_day({day2_paper});                                       // day 2
+
+    Arxiv::AppCore tui(cfg,
+                       std::make_unique<Arxiv::DatabaseManager>(db_file),
+                       std::make_unique<FetcherMock>(),
+                       Arxiv::AppCore::FetchMode::Sync);
+    tui.SetFilterIndex(Arxiv::AppCore::FilterView::NewArticles);
+
+    const auto& shown = tui.GetCurrentArticles();
+    REQUIRE(std::any_of(
+        shown.begin(), shown.end(), [&](const Arxiv::Article& a) { return a.link == paper.link; }));
+    std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("Undo brings back a deleted paper's tags in the filter pane",
+          "[appcore][undo][regression]") {
+    auto core = core_with_papers(2);
+    const auto link = core->GetCurrentArticles()[0].link;
+    core->LinkArticleToTag(link, "keep");
+    core->DeleteCurrentOrSelected();
+    core->RemoveTag("keep");
+
+    core->UndoLastDelete();
+
+    const auto& options = core->GetFilterOptions();
+    REQUIRE(std::find(options.begin(), options.end(), "#keep") != options.end());
 }

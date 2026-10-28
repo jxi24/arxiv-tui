@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 #include "Arxiv/App.hh"
+#include "Arxiv/Utf8.hh"
 #include "Arxiv/Views/Colors.hh"
 
 using namespace ftxui;
@@ -166,32 +167,38 @@ bool ArxivApp::HandleSettingsEvent(ftxui::Event event) {
         return 0;
     };
 
+    // Numbers are parsed and checked with config.yml's rules; text that is
+    // not a number, or a value out of range, leaves the setting unchanged.
+    auto parse_int = [&](auto valid, auto set) {
+        try {
+            std::size_t used = 0;
+            const int v = std::stoi(settings_edit_buffer, &used);
+            if (used == settings_edit_buffer.size() && valid(v))
+                set(v);
+        } catch (const std::exception&) {
+        }
+    };
     auto commit_field = [&]() {
         if (settings_section == 0) {
             if (settings_field_index == 0)
                 m_config.set_download_dir(settings_edit_buffer);
-            else if (settings_field_index == 1) {
-                try {
-                    m_config.set_auto_refresh_minutes(std::stoi(settings_edit_buffer));
-                } catch (...) {
-                }
-            } else if (settings_field_index == 2) {
-                try {
-                    m_config.set_scroll_margin(std::stoi(settings_edit_buffer));
-                } catch (...) {
-                }
-            }
+            else if (settings_field_index == 1)
+                parse_int(Config::ValidNonNegative,
+                          [&](int v) { m_config.set_auto_refresh_minutes(v); });
+            else if (settings_field_index == 2)
+                parse_int(Config::ValidNonNegative, [&](int v) { m_config.set_scroll_margin(v); });
         } else if (settings_section == 2) {
             if (settings_field_index == 0) {
                 try {
-                    m_config.set_recommend_threshold(std::stof(settings_edit_buffer));
-                } catch (...) {
+                    std::size_t used = 0;
+                    const float v = std::stof(settings_edit_buffer, &used);
+                    if (used == settings_edit_buffer.size() && Config::ValidRecommendThreshold(v))
+                        m_config.set_recommend_threshold(v);
+                } catch (const std::exception&) {
                 }
             } else if (settings_field_index == 1) {
-                try {
-                    m_config.set_retrain_interval(std::stoi(settings_edit_buffer));
-                } catch (...) {
-                }
+                parse_int(Config::ValidRetrainInterval,
+                          [&](int v) { m_config.set_retrain_interval(v); });
             }
         } else if (settings_section == 3) {
             if (settings_field_index == 0)
@@ -199,22 +206,24 @@ bool ArxivApp::HandleSettingsEvent(ftxui::Event event) {
             else if (settings_field_index == 2 && !settings_edit_buffer.empty())
                 m_config.set_export_dir(settings_edit_buffer);
         } else if (settings_section == 4) {
-            auto bindings = key_bindings.get_all_bindings();
+            // Saved under the config name ("rate_article"): the display
+            // name ("Rate Article") was saved before and silently ignored.
+            const auto actions = key_bindings.actions();
             if (!settings_edit_buffer.empty() &&
-                settings_field_index < static_cast<int>(bindings.size())) {
+                settings_field_index < static_cast<int>(actions.size())) {
+                const std::string action = KeyBindings::get_config_name(
+                    actions[static_cast<size_t>(settings_field_index)]);
                 auto mappings = m_config.get_key_mappings();
                 bool found = false;
                 for (auto& km : mappings) {
-                    if (km.action == bindings[static_cast<size_t>(settings_field_index)].first) {
+                    if (km.action == action) {
                         km.key = settings_edit_buffer;
                         found = true;
                         break;
                     }
                 }
-                if (!found) {
-                    mappings.push_back({bindings[static_cast<size_t>(settings_field_index)].first,
-                                        settings_edit_buffer});
-                }
+                if (!found)
+                    mappings.push_back({action, settings_edit_buffer});
                 m_config.set_key_mappings(mappings);
             }
         }
@@ -344,7 +353,7 @@ bool ArxivApp::HandleSettingsEvent(ftxui::Event event) {
 
     if (event == Event::Backspace && settings_editing) {
         if (!settings_edit_buffer.empty())
-            settings_edit_buffer.pop_back();
+            Utf8::PopBack(settings_edit_buffer);
         return true;
     }
 

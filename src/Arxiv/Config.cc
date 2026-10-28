@@ -35,6 +35,9 @@ void Config::apply_defaults() {
 
 void Config::load_from_file(const std::string& config_file) {
     warnings_.clear();
+    // Every key is optional: one that is missing or rejected keeps its
+    // default (a config without topics used to fetch nothing).
+    apply_defaults();
     if (!std::filesystem::exists(config_file)) {
         // Create default configuration; download_dir is left empty so the
         // caller (main) can fill it in from the resolved XDG/install paths.
@@ -56,13 +59,28 @@ void Config::load_from_file(const std::string& config_file) {
         return;
     }
 
-    const YAML::Node settings_node = config["article_settings"];
+    // Valid YAML of the wrong shape (a bare scalar or a list) has no keys;
+    // indexing it threw YAML::BadSubscript and aborted startup.
+    if (!config.IsNull() && !config.IsMap()) {
+        apply_defaults();
+        warnings_.push_back("config.yml is not a list of settings (key: value); using the "
+                            "defaults for every setting. The file was not changed.");
+        spdlog::error("[Config]: {}", warnings_.back());
+        return;
+    }
+    YAML::Node settings_node = config["article_settings"];
+    if (settings_node && !settings_node.IsMap()) {
+        warnings_.push_back("article_settings: expected download_dir and topics under it; "
+                            "using the defaults.");
+        spdlog::warn("[Config]: {}", warnings_.back());
+        settings_node = YAML::Node();
+    }
 
     // Read one optional key. A value of the wrong type, or one `valid`
     // rejects, keeps the default and is reported in warnings_ (the TUI shows
     // them in a pop-up) instead of aborting startup over a hand-edited config.
     auto read = [&](const YAML::Node& node, const char* key, auto& field, auto valid) {
-        if (!node || !node[key])
+        if (!node || !node.IsMap() || !node[key])
             return;
         using T = std::decay_t<decltype(field)>;
         const std::string name =
@@ -81,13 +99,13 @@ void Config::load_from_file(const std::string& config_file) {
         spdlog::warn("[Config]: {}", warnings_.back());
     };
     auto any = [](const auto&) { return true; };
-    auto positive = [](int v) { return v > 0; };
-    auto non_negative = [](int v) { return v >= 0; };
+    auto positive = [](int v) { return ValidRetrainInterval(v); };
+    auto non_negative = [](int v) { return ValidNonNegative(v); };
 
     read(settings_node, "download_dir", article_settings_.download_dir, any);
     read(settings_node, "topics", article_settings_.topics, any);
     read(config, "recommend_threshold", recommend_threshold_, [](float v) {
-        return v >= 1.0f && v <= 5.0f;
+        return ValidRecommendThreshold(v);
     });
     read(config, "retrain_interval", retrain_interval_, positive);
     read(config, "auto_refresh_minutes", auto_refresh_minutes_, non_negative);
@@ -114,6 +132,12 @@ void Config::load_from_file(const std::string& config_file) {
     if (config["key_mappings"] && config["key_mappings"].IsSequence()) {
         key_mappings_.clear();
         for (const auto& mapping : config["key_mappings"]) {
+            if (!mapping.IsMap()) {
+                warnings_.push_back("key_mappings: an entry is not an action/key pair; "
+                                    "skipped.");
+                spdlog::warn("[Config]: {}", warnings_.back());
+                continue;
+            }
             KeyMapping km;
             read(mapping, "action", km.action, any);
             read(mapping, "key", km.key, any);
@@ -132,8 +156,9 @@ bool Config::save_to_file(const std::string& config_file) const {
     article_settings["topics"] = article_settings_.topics;
     config["article_settings"] = article_settings;
 
-    // Save key mappings
-    YAML::Node key_mappings;
+    // Save key mappings. An explicit sequence: an empty Node is saved as
+    // "~", which loads as "no list" and brings the defaults back.
+    YAML::Node key_mappings(YAML::NodeType::Sequence);
     for (const auto& mapping : key_mappings_) {
         YAML::Node mapping_node;
         mapping_node["action"] = mapping.action;

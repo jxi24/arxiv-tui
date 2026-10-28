@@ -87,6 +87,8 @@ class ArxivApp {
     ReplayRecorder* m_recorder = nullptr; // not owned — initialized in ctor body order
     int focused_pane = 0;
     Dialog dialog_depth = Dialog::None;
+    // Set while ConfirmDelete asks about a project rather than articles.
+    std::string m_pending_project_delete;
     std::string new_project_name;
     std::string parent_for_new_project;
     bool show_detail = false;
@@ -269,6 +271,8 @@ class ArxivApp {
     bool HandleCategoryFilterEvent(ftxui::Event event);
     bool HandleSettingsEvent(ftxui::Event event);
     bool HandleGlobalEvent(ftxui::Event event);
+    // The open dialog's keys; it is modal, so this consumes every key.
+    bool HandleDialogEvent(ftxui::Event event);
     // Clicks and the wheel over the filter pane and the article list.
     bool HandleMouseEvent(ftxui::Event event);
 };

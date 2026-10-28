@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 #include "Arxiv/App.hh"
+#include "Arxiv/Utf8.hh"
 #include "Arxiv/Views/Colors.hh"
 
 #include <algorithm>
@@ -90,7 +91,7 @@ bool ArxivApp::HandleTagsEvent(ftxui::Event event) {
             tag_new_name.clear();
         } else if (event == Event::Backspace) {
             if (!tag_new_name.empty())
-                tag_new_name.pop_back();
+                Utf8::PopBack(tag_new_name);
         } else if (event.is_character()) {
             tag_new_name += event.character();
         }

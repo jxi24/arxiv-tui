@@ -4,6 +4,7 @@
 
 add_library(libarxiv-tui
     Paths.cc
+    Logging.cc
     App.cc
     AppCore.cc
     AuthorMatch.cc

@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 #include "Arxiv/App.hh"
+#include "Arxiv/Utf8.hh"
 #include "Arxiv/Views/Colors.hh"
 
 #include "spdlog/spdlog.h"
@@ -79,7 +80,7 @@ bool ArxivApp::HandleKeywordEditorEvent(ftxui::Event event) {
     }
     if (event == Event::Backspace) {
         if (!keyword_new_entry.empty())
-            keyword_new_entry.pop_back();
+            Utf8::PopBack(keyword_new_entry);
         return true;
     }
     if (event == Event::Escape) {

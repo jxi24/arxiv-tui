@@ -6,6 +6,7 @@
 
 #include "Arxiv/Article.hh"
 #include "Arxiv/HttpClient.hh"
+#include "Arxiv/Logging.hh"
 #include "Arxiv/Version.hh"
 
 #include <nlohmann/json.hpp>
@@ -234,6 +235,8 @@ bool Fetcher::DownloadPaper(const std::string& paper_id, const std::string& outp
 }
 
 std::string Fetcher::NormalizeLink(const std::string& link) {
+    if (link.size() > kMaxLinkLength)
+        return link; // not a paper; IsArxivLink rejects it
     std::string result = link;
 
     // Normalize scheme to https
@@ -260,7 +263,7 @@ std::string Fetcher::NormalizeLink(const std::string& link) {
 
 bool Fetcher::IsArxivLink(const std::string& link) {
     constexpr std::string_view host = "https://arxiv.org/";
-    if (link.compare(0, host.size(), host) != 0)
+    if (link.size() > kMaxLinkLength || link.compare(0, host.size(), host) != 0)
         return false;
     const std::string_view path(link.c_str() + host.size());
     std::string_view id;
@@ -327,7 +330,8 @@ std::vector<Article> Fetcher::ParseFeed(const std::string& xml_content) const {
             article.title = LatexToMarkdown(item.child_value("title"));
             article.link = NormalizeLink(item.child_value("link"));
             if (!IsArxivLink(article.link)) {
-                spdlog::warn("[Fetcher]: Skipping RSS item with invalid link '{}'", article.link);
+                spdlog::warn("[Fetcher]: Skipping RSS item with invalid link '{}'",
+                             ForLog(article.link));
                 continue;
             }
             std::string abstract_text = item.child_value("description");
@@ -768,7 +772,10 @@ std::vector<Article> Fetcher::FetchSince(const std::string& utc_date) {
     int start = 0;
     const int max_results = 200;
 
-    while (true) {
+    for (int page = 0;; ++page) {
+        if (page == kMaxApiPages)
+            throw FetchError("arXiv API: more than " + std::to_string(kMaxApiPages) +
+                             " pages; giving up");
         auto url = fmt::format("{}?search_query={}{}&start={}&max_results={}"
                                "&sortBy=submittedDate&sortOrder=descending",
                                ARXIV_API_URL,
@@ -841,7 +848,7 @@ std::vector<Article> Fetcher::ParseAtomFeed(const std::string& xml_content) cons
         article.link = NormalizeLink(raw_link);
         // The API reports errors as an <entry> whose id is an errors URL.
         if (!IsArxivLink(article.link)) {
-            spdlog::warn("[Fetcher]: Skipping Atom entry with id '{}'", raw_link);
+            spdlog::warn("[Fetcher]: Skipping Atom entry with id '{}'", ForLog(raw_link));
             continue;
         }
 
@@ -914,7 +921,7 @@ std::optional<std::string> Fetcher::InspireSearchUrl(const std::string& paper_id
     // optionally versioned. Anything else could smuggle query syntax.
     static const std::regex arxiv_id(
         R"(^(?:\d{4}\.\d{4,5}|[A-Za-z-]+(?:\.[A-Za-z]{2})?/\d{7})(?:v\d+)?$)");
-    if (!std::regex_match(paper_id, arxiv_id))
+    if (paper_id.size() > kMaxLinkLength || !std::regex_match(paper_id, arxiv_id))
         return std::nullopt;
     std::string encoded;
     for (char c : paper_id)
@@ -953,7 +960,15 @@ std::string Fetcher::FetchBibTeX(const std::string& paper_id) {
                 }
 
                 auto bib_resp = m_http->Get(bibtex_url, std::chrono::milliseconds(5000));
-                if (bib_resp.status == 200 && !bib_resp.body.empty()) {
+                // It goes to the clipboard and into project .bib files: take
+                // only something that looks like one entry.
+                const auto first = bib_resp.body.find_first_not_of(" \t\r\n");
+                const bool plausible = first != std::string::npos && bib_resp.body[first] == '@' &&
+                                       bib_resp.body.size() <= kMaxBibTeXBytes;
+                if (bib_resp.status == 200 && !plausible)
+                    spdlog::warn("[Fetcher]: Ignoring InspireHEP answer that is not BibTeX for {}",
+                                 paper_id);
+                if (bib_resp.status == 200 && plausible) {
                     spdlog::info("[Fetcher]: Got InspireHEP BibTeX for {}", paper_id);
                     return bib_resp.body;
                 }
