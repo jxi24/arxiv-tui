@@ -339,6 +339,18 @@ std::string ObsidianNotes(Fetcher& fetcher,
         const std::string stem = a.file_stem();
         fs::path note_path = note_dir / (stem + ".md");
 
+        // Download the PDF next to the note first, so the note embeds it only
+        // when it is really there. Fetcher writes relative to its own
+        // base_path (the configured download_dir), which is *not* the vault,
+        // so pass an absolute path.
+        bool have_pdf = false;
+        if (download_pdfs) {
+            fs::path pdf_path = note_dir / (stem + ".pdf");
+            have_pdf = fetcher.DownloadPaper(aid, pdf_path.string());
+            if (have_pdf)
+                ++pdf_ok;
+        }
+
         std::ofstream nf(note_path);
         if (!nf.is_open()) {
             spdlog::error("[Export]: Cannot write note {}", note_path.string());
@@ -361,11 +373,12 @@ std::string ObsidianNotes(Fetcher& fetcher,
         nf << "# " << a.title << "\n\n";
         nf << "**Authors:** " << a.authors << "\n\n";
         nf << "**Link:** [" << a.link << "](" << a.link << ")\n\n";
-        if (download_pdfs) {
+        if (have_pdf) {
             // Obsidian PDF embed: ![[file.pdf]] renders inline when colocated.
             nf << "![[" << stem << ".pdf]]\n\n";
         } else {
-            nf << "[PDF on arXiv](https://arxiv.org/pdf/" << aid << ")\n\n";
+            // Link-only mode, or the download failed: never embed a missing file.
+            nf << "[PDF on arXiv](" << fetcher.ConstructPaperUrl(aid, "pdf") << ")\n\n";
         }
         if (!a.abstract.empty()) {
             nf << "## Abstract\n\n" << a.abstract << "\n";
@@ -374,16 +387,6 @@ std::string ObsidianNotes(Fetcher& fetcher,
            << "**Relevance:**\n\n"
            << "**Key ideas:**\n\n"
            << "**Open questions:**\n";
-
-        // Download the PDF next to the note. Fetcher writes relative to
-        // its own base_path (the configured download_dir), which is *not*
-        // the vault. Use an absolute path via the std::filesystem API
-        // instead so the file lands in the vault directory.
-        if (download_pdfs) {
-            fs::path pdf_path = note_dir / (stem + ".pdf");
-            if (fetcher.DownloadPaper(aid, pdf_path.string()))
-                ++pdf_ok;
-        }
         if (progress)
             progress();
     }
