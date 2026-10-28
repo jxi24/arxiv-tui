@@ -139,6 +139,13 @@ The window uses Inter, Noto Sans, Cantarell or DejaVu Sans, whichever is
 installed first; set ``ARXIV_GUI_FONT`` (and ``ARXIV_GUI_FONT_BOLD``) to a
 ``.ttf``/``.otf`` path to choose another.
 
+With a `Nerd Font <https://www.nerdfonts.com>`_ installed (any of them; the
+icon-only *Symbols Nerd Font* is enough) the sidebar, buttons and menus get
+icons. The GUI looks in ``~/.local/share/fonts``, ``~/.fonts``,
+``/usr/local/share/fonts`` and ``/usr/share/fonts`` (following
+``XDG_DATA_HOME`` / ``XDG_DATA_DIRS``). Set ``ARXIV_GUI_ICON_FONT`` to a font
+file to pick one, or to an empty value to turn icons off.
+
 Command line
 ------------
 

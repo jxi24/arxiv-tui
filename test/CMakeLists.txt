@@ -62,6 +62,9 @@ add_executable(unit_tests
     unit/RankingServiceTest.cc
     unit/PrivateFilesTest.cc
     unit/HttpClientTest.cc
+    unit/FontSearchTest.cc
+    # The GUI's font search is plain C++ (no ImGui), so it is tested here.
+    ${CMAKE_SOURCE_DIR}/src/GUI/FontSearch.cc
 )
 
 # Link against Catch2 and our library
@@ -84,6 +87,7 @@ target_include_directories(unit_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/test
     ${CMAKE_SOURCE_DIR}/test/mocks
     ${CMAKE_SOURCE_DIR}/test/fixtures
+    ${CMAKE_SOURCE_DIR}/src/GUI
 )
 
 include(FetchContent)

@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "FontSearch.hh"
 #include "spdlog/spdlog.h"
 
 namespace ArxivGui {
@@ -74,6 +75,36 @@ const ImWchar* glyph_ranges() {
     return ranges.Data;
 }
 
+// Only the icons the GUI draws, not the thousands a Nerd Font carries.
+const ImWchar* icon_ranges() {
+    static ImVector<ImWchar> ranges;
+    if (ranges.empty()) {
+        ImFontGlyphRangesBuilder builder;
+        for (const char* icon :
+             {Icon::kSearch,    Icon::kCheck,           Icon::kStar,     Icon::kDownload,
+              Icon::kInbox,     Icon::kRefresh,         Icon::kTag,      Icon::kBookmark,
+              Icon::kPencil,    Icon::kWarning,         Icon::kCalendar, Icon::kFolder,
+              Icon::kExternal,  Icon::kBookmarkOutline, Icon::kUsers,    Icon::kLink,
+              Icon::kLightbulb, Icon::kEnvelope,        Icon::kBolt,     Icon::kCalendarRange,
+              Icon::kEllipsis})
+            builder.AddText(icon);
+        builder.BuildRanges(&ranges);
+    }
+    return ranges.Data;
+}
+
+// Merge the icons into the font added just before, at the same size,
+// fixed-width and vertically centred on the text.
+void merge_icons(const std::string& icon_font, float size) {
+    ImFontConfig config;
+    config.MergeMode = true;
+    config.PixelSnapH = true;
+    config.GlyphMinAdvanceX = size;
+    config.GlyphOffset.y = size * 0.05f;
+    ImGui::GetIO().Fonts->AddFontFromFileTTF(
+        icon_font.c_str(), size * 0.9f, &config, icon_ranges());
+}
+
 } // namespace
 
 Fonts LoadFonts() {
@@ -93,10 +124,21 @@ Fonts LoadFonts() {
         }
     }
 
+    const auto nerd = NerdFontFor([](const char* name) { return std::getenv(name); });
+    const std::string icon_font = nerd ? nerd->string() : std::string();
+    if (nerd)
+        spdlog::info("[GUI]: Icons from {}", icon_font);
+    else
+        spdlog::info("[GUI]: No Nerd Font found; text labels only");
+
     Fonts fonts;
     if (regular.empty()) {
         spdlog::warn("[GUI]: No system sans font found; using ImGui's built-in font");
         fonts.body = fonts.bold = fonts.title = fonts.small = io.Fonts->AddFontDefault();
+        if (nerd) {
+            merge_icons(icon_font, 13.0f);
+            fonts.icons = true;
+        }
         return fonts;
     }
     spdlog::info("[GUI]: Font {} (bold {})", regular, bold);
@@ -104,14 +146,22 @@ Fonts LoadFonts() {
     config.OversampleH = 2;
     config.OversampleV = 2;
     const ImWchar* ranges = glyph_ranges();
-    fonts.body = io.Fonts->AddFontFromFileTTF(regular.c_str(), 16.0f, &config, ranges);
-    fonts.bold = io.Fonts->AddFontFromFileTTF(bold.c_str(), 16.0f, &config, ranges);
-    fonts.title = io.Fonts->AddFontFromFileTTF(bold.c_str(), 22.0f, &config, ranges);
-    fonts.small = io.Fonts->AddFontFromFileTTF(regular.c_str(), 13.0f, &config, ranges);
+    auto add = [&](const std::string& file, float size) {
+        ImFont* font = io.Fonts->AddFontFromFileTTF(file.c_str(), size, &config, ranges);
+        if (font && nerd)
+            merge_icons(icon_font, size);
+        return font;
+    };
+    fonts.body = add(regular, 16.0f);
+    fonts.bold = add(bold, 16.0f);
+    fonts.title = add(bold, 22.0f);
+    fonts.small = add(regular, 13.0f);
+    fonts.icons = nerd.has_value();
     if (!fonts.body || !fonts.bold || !fonts.title || !fonts.small) {
         spdlog::warn("[GUI]: Could not load {}; using ImGui's built-in font", regular);
         io.Fonts->Clear();
         fonts.body = fonts.bold = fonts.title = fonts.small = io.Fonts->AddFontDefault();
+        fonts.icons = false;
     }
     io.FontDefault = fonts.body;
     return fonts;

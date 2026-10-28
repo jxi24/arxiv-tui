@@ -208,7 +208,9 @@ class ArxivGuiApp {
 
         // Search box and Refresh on the right.
         const float search_w = std::min(420.0f, width * 0.32f);
-        const float refresh_w = 96.0f;
+        const std::string refresh = label(Icon::kRefresh, "Refresh");
+        const float refresh_w =
+            ImGui::CalcTextSize(refresh.c_str()).x + ImGui::GetStyle().FramePadding.x * 2 + 8;
         const float frame_h = ImGui::GetFrameHeight();
         const float y = (height - frame_h) / 2;
         ImGui::SetCursorPos({width - search_w - refresh_w - 36, y});
@@ -217,8 +219,9 @@ class ArxivGuiApp {
             ImGui::SetKeyboardFocusHere();
             m_focus_search = false;
         }
+        const std::string hint = label(Icon::kSearch, "Search titles, authors, abstracts   /");
         if (ImGui::InputTextWithHint("##search",
-                                     "Search titles, authors, abstracts   /",
+                                     hint.c_str(),
                                      m_search_buf,
                                      sizeof(m_search_buf),
                                      ImGuiInputTextFlags_EnterReturnsTrue)) {
@@ -231,9 +234,42 @@ class ArxivGuiApp {
         }
         ImGui::SetCursorPos({width - refresh_w - 20, y});
         ImGui::BeginDisabled(m_core.IsFetching());
-        if (ImGui::Button("Refresh", {refresh_w, 0}))
+        if (ImGui::Button(refresh.c_str(), {refresh_w, 0}))
             m_core.StartRefresh(); // from arXiv, in the background
         ImGui::EndDisabled();
+    }
+
+    // "<icon>  text" when a Nerd Font is loaded, plain text otherwise.
+    std::string label(const char* icon, const std::string& text) const {
+        return m_fonts.icons ? std::string(icon) + "  " + text : text;
+    }
+
+    static const char* view_icon(int index) {
+        using View = Arxiv::AppCore::FilterView;
+        switch (static_cast<View>(index)) {
+        case View::All:
+            return Icon::kInbox;
+        case View::Bookmarks:
+            return Icon::kBookmark;
+        case View::Today:
+            return Icon::kCalendar;
+        case View::Range:
+            return Icon::kCalendarRange;
+        case View::Search:
+            return Icon::kSearch;
+        case View::Recommended:
+            return Icon::kLightbulb;
+        case View::FollowedAuthors:
+            return Icon::kUsers;
+        case View::NewArticles:
+            return Icon::kBolt;
+        case View::Updated:
+            return Icon::kPencil;
+        case View::Unread:
+            return Icon::kEnvelope;
+        default:
+            return Icon::kInbox;
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -246,15 +282,17 @@ class ArxivGuiApp {
 
         section_heading("VIEWS");
         const auto opts = m_core.GetFilterOptions();
+        const char* icon = nullptr; // per section once tags/projects start
         for (int i = 0; i < static_cast<int>(opts.size()); ++i) {
             if (const auto section = m_core.GetFilterSection(i); !section.empty()) {
+                icon = section == "Tags" ? Icon::kTag : Icon::kFolder;
                 ImGui::Dummy({0, 10});
                 std::string upper = section;
                 for (auto& ch : upper)
                     ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
                 section_heading(upper.c_str());
             }
-            nav_item(i, opts[static_cast<std::size_t>(i)], width - 24);
+            nav_item(i, opts[static_cast<std::size_t>(i)], icon ? icon : view_icon(i), width - 24);
         }
         ImGui::EndChild();
         ImGui::PopStyleVar(2);
@@ -270,7 +308,7 @@ class ArxivGuiApp {
         ImGui::Dummy({0, 4});
     }
 
-    void nav_item(int index, const std::string& label, float width) {
+    void nav_item(int index, const std::string& option, const char* icon, float width) {
         const bool selected = m_core.GetFilterIndex() == index;
         const float h = 34.0f;
         ImGui::PushID(index);
@@ -285,8 +323,9 @@ class ArxivGuiApp {
                               selected ? Palette::kAccentSoft : Palette::kCardHover,
                               8.0f);
         // Sub-projects are indented with leading spaces in the option text.
-        const auto indent = label.find_first_not_of(' ');
-        const std::string text = indent == std::string::npos ? label : label.substr(indent);
+        const auto indent = option.find_first_not_of(' ');
+        const std::string text =
+            label(icon, indent == std::string::npos ? option : option.substr(indent));
         const float x =
             pos.x + 10 + static_cast<float>(indent == std::string::npos ? 0 : indent) * 6;
         ImGui::PushFont(selected ? m_fonts.bold : m_fonts.body);
@@ -416,13 +455,14 @@ class ArxivGuiApp {
 
     // Context menu and detail-pane popups: everything one paper can do.
     void article_menu(const Arxiv::Article& a) {
-        if (ImGui::MenuItem(a.bookmarked ? "Remove bookmark" : "Bookmark", "B"))
+        if (ImGui::MenuItem(
+                label(Icon::kBookmark, a.bookmarked ? "Remove bookmark" : "Bookmark").c_str(), "B"))
             m_core.ToggleBookmark(a.link);
-        if (ImGui::MenuItem("Download PDF"))
+        if (ImGui::MenuItem(label(Icon::kDownload, "Download PDF").c_str()))
             download(a);
-        if (ImGui::MenuItem("Open in browser", "O"))
+        if (ImGui::MenuItem(label(Icon::kExternal, "Open in browser").c_str(), "O"))
             open_in_browser();
-        if (ImGui::MenuItem("Copy link"))
+        if (ImGui::MenuItem(label(Icon::kLink, "Copy link").c_str()))
             ImGui::SetClipboardText(a.link.c_str());
         ImGui::Separator();
         tag_menu(a);
@@ -430,7 +470,7 @@ class ArxivGuiApp {
     }
 
     void tag_menu(const Arxiv::Article& a) {
-        if (!ImGui::BeginMenu("Tags"))
+        if (!ImGui::BeginMenu(label(Icon::kTag, "Tags").c_str()))
             return;
         const auto mine = m_core.GetTagsForArticle(a.link);
         const auto all = m_core.GetTags();
@@ -449,7 +489,7 @@ class ArxivGuiApp {
     }
 
     void project_menu(const Arxiv::Article& a) {
-        if (!ImGui::BeginMenu("Projects"))
+        if (!ImGui::BeginMenu(label(Icon::kFolder, "Projects").c_str()))
             return;
         const auto mine = m_core.GetProjectsForArticle(a.link);
         const auto all = m_core.GetProjects();
@@ -597,21 +637,22 @@ class ArxivGuiApp {
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Palette::rgb(146, 180, 250));
         ImGui::PushStyleColor(ImGuiCol_Text, Palette::kBackground);
         ImGui::PushFont(m_fonts.bold);
-        if (ImGui::Button("Download PDF"))
+        if (ImGui::Button(label(Icon::kDownload, "Download PDF").c_str()))
             download(a);
         ImGui::PopFont();
         ImGui::PopStyleColor(3);
         ImGui::SameLine();
-        if (ImGui::Button(a.bookmarked ? "Bookmarked" : "Bookmark"))
+        if (ImGui::Button(a.bookmarked ? label(Icon::kBookmark, "Bookmarked").c_str()
+                                       : label(Icon::kBookmarkOutline, "Bookmark").c_str()))
             m_core.ToggleBookmark(a.link);
         ImGui::SameLine();
-        if (ImGui::Button("Open"))
+        if (ImGui::Button(label(Icon::kExternal, "Open").c_str()))
             open_in_browser();
         ImGui::SameLine();
-        if (ImGui::Button("More..."))
+        if (ImGui::Button(m_fonts.icons ? label(Icon::kEllipsis, "More").c_str() : "More..."))
             ImGui::OpenPopup("##more");
         if (ImGui::BeginPopup("##more")) {
-            if (ImGui::MenuItem("Copy link"))
+            if (ImGui::MenuItem(label(Icon::kLink, "Copy link").c_str()))
                 ImGui::SetClipboardText(a.link.c_str());
             tag_menu(a);
             project_menu(a);

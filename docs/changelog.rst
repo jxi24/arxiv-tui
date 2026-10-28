@@ -27,6 +27,8 @@ Unreleased
   chip), a detail pane with clickable stars and action buttons, and
   keyboard navigation (``j``/``k``, ``/``, ``b``, ``o``). Greek, maths and
   accented characters in titles and author names render instead of ``?``.
+  With a Nerd Font installed, views, buttons and menus also get icons
+  (``ARXIV_GUI_ICON_FONT`` picks the font; empty turns them off).
 
 - **GUI catches up** — ``arxiv-gui`` opens at once and fetches in the
   background (it used to fetch before showing the window), Refresh
