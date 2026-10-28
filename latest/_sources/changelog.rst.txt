@@ -18,7 +18,8 @@ Unreleased
   (``[PDF on arXiv](https://arxiv.org/pdf/<id>)``), keeping git-synced vaults
   small. Set ``obsidian_download_pdfs: true`` (or toggle *Download PDFs* in
   the Settings dialog's Export section) to restore the old behaviour of
-  downloading and embedding them.
+  downloading and embedding them. If a download fails, that note links to
+  arXiv instead of embedding a missing file.
 
 v0.9.4
 ------
