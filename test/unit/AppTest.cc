@@ -2498,3 +2498,16 @@ TEST_CASE("Undo brings back a deleted paper's tags in the filter pane",
     const auto& options = core->GetFilterOptions();
     REQUIRE(std::find(options.begin(), options.end(), "#keep") != options.end());
 }
+
+TEST_CASE("Un-bookmarking in the Bookmarks view removes the paper from it",
+          "[appcore][bookmarks][regression]") {
+    auto core = core_with_papers(3);
+    for (const auto& a : std::vector<Arxiv::Article>(core->GetCurrentArticles()))
+        core->ToggleBookmark(a.link);
+    core->SetFilterIndex(Arxiv::AppCore::FilterView::Bookmarks);
+    REQUIRE(core->GetCurrentArticles().size() == 3);
+
+    core->ToggleBookmark(core->GetCurrentArticles()[1].link);
+
+    REQUIRE(core->GetCurrentArticles().size() == 2);
+}

@@ -454,6 +454,10 @@ void AppCore::ToggleBookmark(const std::string& article_link) {
     if (it != m_current_articles.end()) {
         it->bookmarked = !it->bookmarked;
         m_db->ToggleBookmark(article_link, it->bookmarked);
+        if (GetFilterView() == FilterView::Bookmarks) {
+            FetchArticles(); // an un-bookmarked paper leaves this view
+            return;
+        }
         RefreshTitles();
         NotifyArticleUpdate();
     }
@@ -1221,6 +1225,10 @@ void AppCore::BookmarkSelected(bool bookmarked) {
                                [&](const Article& a) { return a.link == link; });
         if (it != m_current_articles.end())
             it->bookmarked = bookmarked;
+    }
+    if (GetFilterView() == FilterView::Bookmarks) {
+        FetchArticles();
+        return;
     }
     RefreshTitles();
     NotifyArticleUpdate();

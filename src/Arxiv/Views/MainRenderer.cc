@@ -534,6 +534,15 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
         return true;
     }
 
+    // Drop the whole selection (it survives view changes, so it can hold
+    // papers no longer on screen).
+    if (key_bindings.matches(event, KeyBindings::Action::ClearSelection)) {
+        if (m_recorder)
+            m_recorder->RecordClearSelection();
+        core.ClearSelections();
+        return true;
+    }
+
     // Toggle selection of focused article (for Export Selected Digest)
     if (key_bindings.matches(event, KeyBindings::Action::ToggleSelection)) {
         const auto& articles = core.GetCurrentArticles();

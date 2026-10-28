@@ -66,6 +66,7 @@ class ReplayRecorder {
     void RecordExportArticlesBibTeX(const std::string& path);
     void RecordExportProjectBibTeX(const std::string& project, const std::string& path);
     void RecordToggleSelection(const std::string& article_link);
+    void RecordClearSelection();
     void RecordExportSelectedDigest(const std::string& path);
     void RecordExportToObsidian(const std::string& path);
     void RecordExportDailyDigest(const std::string& path);

@@ -48,7 +48,8 @@ class KeyBindings {
         OpenInBrowser,
         RateSelection,
         FollowAuthors,
-        TagArticle
+        TagArticle,
+        ClearSelection
     };
 
     KeyBindings() = default;

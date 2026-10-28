@@ -175,6 +175,7 @@ std::vector<std::pair<std::string, std::string>> ArxivApp::FooterHints() const {
             hints.push_back({A::DeleteProject, "delete project"});
     } else if (core.GetSelectionCount() > 0) {
         hints = {{A::ToggleSelection, "select"},
+                 {A::ClearSelection, "clear"},
                  {A::RateSelection, "rate selection"},
                  {A::TagArticle, "tags"},
                  {A::ExportSelectedDigest, "digest"},

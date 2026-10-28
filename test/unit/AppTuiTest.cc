@@ -1462,3 +1462,17 @@ TEST_CASE("No offline notice after a successful fetch", "[tui][fetch]") {
     REQUIRE(t.app->GetCore().LastFetchError().empty());
     REQUIRE_THAT(footer_of(*t.app), !Catch::Matchers::ContainsSubstring("Offline"));
 }
+
+TEST_CASE("C clears the selection", "[tui][selection]") {
+    // Selections survive view changes, so bulk actions could apply to papers
+    // no longer on screen, and there was no key to drop them.
+    RealDbApp t;
+    auto handler = t.app->GetEventHandler();
+    handler->OnEvent(Event::Character("l"));
+    handler->OnEvent(Event::Character(" "));
+    REQUIRE(t.app->GetCore().GetSelectionCount() == 1);
+
+    handler->OnEvent(Event::Character("C"));
+
+    REQUIRE(t.app->GetCore().GetSelectionCount() == 0);
+}

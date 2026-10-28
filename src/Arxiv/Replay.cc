@@ -69,6 +69,7 @@ constexpr std::string_view ExportProjectBibTeX = "export_project_bibtex";
 constexpr std::string_view ExportArticleBibTeX = "export_article_bibtex";
 constexpr std::string_view ExportArticlesBibTeX = "export_articles_bibtex";
 constexpr std::string_view ToggleSelection = "toggle_selection";
+constexpr std::string_view ClearSelection = "clear_selection";
 constexpr std::string_view ExportSelectedDigest = "export_selected_digest";
 constexpr std::string_view ExportToObsidian = "export_to_obsidian";
 constexpr std::string_view ExportDailyDigest = "export_daily_digest";
@@ -163,6 +164,8 @@ const std::unordered_map<std::string, Handler>& dispatch_table() {
          }},
         {std::string(ActionName::ToggleSelection),
          [](AppCore& c, const json& j) { c.ToggleSelection(j.value("article_link", "")); }},
+        {std::string(ActionName::ClearSelection),
+         [](AppCore& c, const json&) { c.ClearSelections(); }},
         {std::string(ActionName::ExportSelectedDigest),
          [](AppCore& c, const json&) { c.ExportSelectedDigest(); }},
         {std::string(ActionName::ExportToObsidian),
@@ -448,6 +451,10 @@ void ReplayRecorder::RecordExportProjectBibTeX(const std::string& project,
     j["project"] = project;
     j["path"] = path;
     Record(Dump(j));
+}
+
+void ReplayRecorder::RecordClearSelection() {
+    Record(Dump(make_entry(ActionName::ClearSelection, NowMs())));
 }
 
 void ReplayRecorder::RecordToggleSelection(const std::string& article_link) {

@@ -192,6 +192,7 @@ article_columns:
 | Key | Action |
 |-----|--------|
 | `Space` | Toggle selection on current article |
+| `C` | Clear the selection (it is kept when you switch views) |
 | `b` | Bookmark current article (or all selected if a selection is active) |
 | `D` | Delete current article (or all selected), with confirmation |
 | `u` | Undo the last delete (restores article, rating, project memberships, notes, tags, and read state) |

@@ -94,6 +94,9 @@ Selection
    * - ``Space``
      - ``toggle_selection``
      - Select or deselect the article
+   * - ``C``
+     - ``clear_selection``
+     - Deselect everything (the selection is kept across views)
    * - ``W``
      - ``rate_selection``
      - Rate every selected article with one score

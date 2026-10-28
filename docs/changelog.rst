@@ -7,6 +7,14 @@ Changelog
 Unreleased
 ----------
 
+- **Clear the selection** — ``C`` deselects everything. The selection is
+  kept when you switch views, so bulk actions could apply to papers no longer
+  on screen and there was no way to drop it. The footer shows the key while
+  papers are selected.
+
+- **Bookmarks view updates** — un-bookmarking a paper in the Bookmarks view
+  now removes it from the list.
+
 - **Offline notice** — when arXiv cannot be reached (at start-up or on an
   auto refresh) the footer says "Offline: showing stored papers" until a
   fetch succeeds; before, the list just stayed as it was.

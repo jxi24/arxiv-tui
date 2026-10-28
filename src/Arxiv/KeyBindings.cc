@@ -27,7 +27,7 @@ struct ActionInfo {
 
 using Action = KeyBindings::Action;
 
-constexpr std::array<ActionInfo, 33> kActionTable = {{
+constexpr std::array<ActionInfo, 34> kActionTable = {{
     {Action::Next, "next", "j", "Next", "Navigation"},
     {Action::Previous, "previous", "k", "Previous", "Navigation"},
     {Action::Quit, "quit", "q", "Quit", "App"},
@@ -51,6 +51,7 @@ constexpr std::array<ActionInfo, 33> kActionTable = {{
     {Action::ExportDigest, "export_digest", "X", "Export Digest", "Export & share"},
     {Action::FilterCategories, "filter_categories", "t", "Filter Categories", "Navigation"},
     {Action::ToggleSelection, "toggle_selection", " ", "Toggle Selection", "Selection"},
+    {Action::ClearSelection, "clear_selection", "C", "Clear Selection", "Selection"},
     {Action::ExportSelectedDigest,
      "export_selected_digest",
      "g",
