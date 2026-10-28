@@ -44,6 +44,10 @@ class DatabaseManager {
     // Article management
     virtual void AddArticle(const Article& article);
     virtual std::vector<Article> GetRecent(int days);
+    // The latest arXiv mailing: papers dated within the 24 hours up to the
+    // newest stored date that is not in the future. Over a weekend or holiday
+    // that is the last mailing, where GetRecent(1) would be empty.
+    virtual std::vector<Article> GetLatestMailing();
     // One article by link, or nullopt if it is not stored.
     virtual std::optional<Article> GetArticle(const std::string& link);
     virtual std::vector<Article> ListBookmarked();

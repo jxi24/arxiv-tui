@@ -327,7 +327,7 @@ arxiv-tui includes a built-in personalised ranking system that learns from the a
 
 1. **Rate articles** — press `n` on any article to give it a score from 1 to 5 stars. `n` always rates the single focused article regardless of any active selection. To rate an entire selection at once, press `W` instead — this opens a "Rate Selection" dialog and applies the chosen score to all selected articles.
 2. **Automatic learning** — once you have rated at least 3 articles, and every `retrain_interval` new ratings thereafter, the model retrains in the background on a separate thread so the TUI stays responsive. A `[Training…]` badge appears in the article pane header while training is in progress, and a `[N rating(s) pending]` counter shows how many more ratings are needed to trigger the next retrain.
-3. **Recommended filter** — select **Recommended** in the filter pane to see today's articles that score at or above `recommend_threshold`. Articles are sorted by predicted score, and each entry shows a `[X.X★]` badge.
+3. **Recommended filter** — select **Recommended** in the filter pane to see the latest mailing's articles (Friday's over the weekend) that score at or above `recommend_threshold`. Articles are sorted by predicted score, and each entry shows a `[X.X★]` badge.
 4. **Force retrain** — press `R` at any time to immediately trigger a full cold-start retrain (rebuilds the vocabulary and resets the network weights). Use this when the corpus has grown significantly or scores feel stale.
 
 ### Technical details

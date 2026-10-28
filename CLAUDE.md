@@ -544,6 +544,9 @@ A brief record of what has been implemented. Consult `README.md` for user-facing
 - **GUI** — Async AppCore + `TryRefetchIfNeeded` per frame, `AppCore::StartRefresh` for Refresh, downloads via `StartDownloadArticle`, ratings/tags/projects, read dimming, counts, status bar; `imgui.ini` in the state dir.
 - **GUI look** — `src/GUI/Style.hh/.cc`: one `Palette` (never ad-hoc colours in `main.cc`), `LoadFonts()` (system sans, `ARXIV_GUI_FONT`; glyph ranges cover Greek, maths, combining marks), `ApplyStyle()`. `main.cc`'s `ArxivGuiApp` draws header, sidebar, clipped card list, detail pane and status bar.
 
+### Unreleased — bug fixes (claude/today-and-quit)
+- **Today = latest mailing** — Today, Recommended and both daily digests use `DatabaseManager::GetLatestMailing()` (papers in the 24 h up to the newest non-future date, open at the start), not `GetRecent(1)`, which was empty on weekends and holidays. Tests: `TodayViewTest.cc` (`[today]`).
+
 ### Unreleased — TUI polish (claude/next-steps)
 - **Settings cancel** — `q` restores the config snapshot taken on open (`m_settings_on_open`) and the theme; Esc in a field discards the edit.
 - **Tags dialog** — `#` (`TagArticle`): toggle/add/delete tags on the focused article or selection (`AppCore::TagCoverage`, `ToggleTagOnTargets`).

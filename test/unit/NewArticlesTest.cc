@@ -613,7 +613,7 @@ TEST_CASE("AppCore: day-boundary crossing advances the New Articles anchor", "[n
 //
 // A paper whose v2 is announced today and which was not already stored is
 // inserted straight from the RSS feed with today's announcement date, so a
-// years-old paper lands in GetRecent(1). New Articles drops replacements; if
+// years-old paper lands in the latest mailing. New Articles drops replacements; if
 // Recommended does not, the two views disagree and Recommended fills up with
 // re-announcements of papers from previous years.
 // ---------------------------------------------------------------------------
@@ -632,8 +632,7 @@ TEST_CASE("AppCore: Recommended excludes replacements", "[newart][appcore]") {
     replacement.title = "v3 of a 2022 paper";
     replacement.is_replacement = true;
 
-    ALLOW_CALL(*db_raw, GetRecent(trompeloeil::_))
-        .RETURN(std::vector<Arxiv::Article>{fresh, replacement});
+    ALLOW_CALL(*db_raw, GetLatestMailing()).RETURN(std::vector<Arxiv::Article>{fresh, replacement});
 
     Arxiv::Config cfg;
     cfg.set_topics({"cs.AI"});

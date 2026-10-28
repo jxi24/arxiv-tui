@@ -7,6 +7,12 @@ Changelog
 Unreleased
 ----------
 
+- **Today over the weekend** — Today, Recommended and the daily digests
+  (``X``, ``--export-today``, ``--export-yaml``) show the latest arXiv
+  mailing instead of the last 24 hours. arXiv does not announce on weekends
+  or holidays, so they used to be empty from Saturday morning until Monday's
+  mailing; now they show Friday's papers until the next one arrives.
+
 - **GUI restyle** — ``arxiv-gui`` has a dark theme with one accent colour,
   a system sans font (Inter, Noto Sans, Cantarell or DejaVu Sans;
   ``ARXIV_GUI_FONT`` overrides), a header with search and Refresh, a sidebar

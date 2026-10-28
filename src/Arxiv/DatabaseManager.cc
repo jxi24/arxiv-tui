@@ -612,6 +612,24 @@ std::vector<Arxiv::Article> DatabaseManager::GetRecent(int days) {
     return articles;
 }
 
+std::vector<Arxiv::Article> DatabaseManager::GetLatestMailing() {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    const auto now = std::chrono::duration_cast<std::chrono::seconds>(
+                         std::chrono::system_clock::now().time_since_epoch())
+                         .count();
+    // Weekday mailings are stamped exactly 24 h apart, so the window is open
+    // at its start: the previous mailing stays out.
+    const std::string sql = std::string("SELECT ") + ARTICLE_COLUMNS +
+                            " FROM articles WHERE date <= ?1 AND date > "
+                            "(SELECT MAX(date) FROM articles WHERE date <= ?1) - 86400 "
+                            "ORDER BY date DESC";
+    std::vector<Article> articles;
+    Stmt stmt(db, sql.c_str(), "GetLatestMailing");
+    stmt.bind(1, static_cast<sqlite3_int64>(now));
+    stmt.for_each([&](sqlite3_stmt* s) { articles.push_back(RowToArticle(s)); });
+    return articles;
+}
+
 std::optional<Arxiv::Article> DatabaseManager::GetArticle(const std::string& link) {
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
     std::string sql = std::string("SELECT ") + ARTICLE_COLUMNS + " FROM articles WHERE link = ?";

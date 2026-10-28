@@ -321,7 +321,7 @@ void AppCore::FetchArticles() {
         m_current_articles = m_db->ListBookmarked();
         break;
     case FilterView::Today:
-        m_current_articles = m_db->GetRecent(1);
+        m_current_articles = m_db->GetLatestMailing();
         break;
     case FilterView::Range:
         if (m_date_range.active) {
@@ -343,11 +343,11 @@ void AppCore::FetchArticles() {
         }
         break;
     case FilterView::Recommended: {
-        auto today_articles = m_db->GetRecent(1);
+        auto today_articles = m_db->GetLatestMailing();
         // Drop replacements, exactly as New Articles does. A paper whose new
         // version is announced today and which was not already stored is
         // inserted straight from the RSS feed with today's announcement date,
-        // so years-old papers land in GetRecent(1). Recommending a v3 of a 2022
+        // so years-old papers land in the latest mailing. Recommending a v3 of a 2022
         // paper as today's reading is never what the user asked for, and it
         // made the two views disagree about what counts as today's output.
         today_articles.erase(std::remove_if(today_articles.begin(),
@@ -1187,14 +1187,14 @@ std::vector<Article> AppCore::GetArticlesForFollowedAuthors() const {
 // ---------------------------------------------------------------------------
 
 bool AppCore::ExportDailyDigest(const std::string& output_path) const {
-    return Export::DailyDigestMarkdown(output_path, m_db->GetRecent(1)); // last 24 hours
+    return Export::DailyDigestMarkdown(output_path, m_db->GetLatestMailing());
 }
 
 bool AppCore::ExportDailyDigestYAML(const std::string& output_path) const {
     // Highest predicted score first (trained model and/or interest keywords), so
     // consumers such as a pre-commute drive digest can take the top N as-is.
     // Only papers first posted today: a replacement is a new version of an older paper.
-    auto recent = m_db->GetRecent(1);
+    auto recent = m_db->GetLatestMailing();
     recent.erase(std::remove_if(recent.begin(),
                                 recent.end(),
                                 [](const Article& a) { return a.is_replacement; }),
