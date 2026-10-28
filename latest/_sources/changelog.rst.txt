@@ -4,8 +4,15 @@
 Changelog
 =========
 
-Unreleased
-----------
+v1.2.0
+------
+
+- **A corrupt ranker.bin can no longer produce NaN scores** — the model
+  loader refused NaN and infinite values but accepted any finite one, and
+  weights near the float maximum overflowed the scoring arithmetic, so every
+  paper scored NaN. Values beyond 10⁶ (trained values are tiny) are now
+  refused like any other corrupt model, which is retrained from your ratings.
+  Found by the ``ranker_load`` fuzzer.
 
 - **Quitting no longer waits for the network** — closing the app during the
   start-up fetch, a missed-days backfill, an auto-refresh or a PDF download
