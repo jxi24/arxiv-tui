@@ -343,7 +343,8 @@ std::string obsidian_note(const Article& a,
                           const std::string& aid,
                           const std::string& stem,
                           const std::string& date_str,
-                          bool download_pdfs) {
+                          bool have_pdf,
+                          const std::string& pdf_url) {
     std::ostringstream nf;
     nf << "---\n";
     nf << "title: " << yaml_quote(a.title) << "\n";
@@ -360,11 +361,12 @@ std::string obsidian_note(const Article& a,
     nf << "# " << a.title << "\n\n";
     nf << "**Authors:** " << a.authors << "\n\n";
     nf << "**Link:** [" << a.link << "](" << a.link << ")\n\n";
-    if (download_pdfs) {
+    if (have_pdf) {
         // Obsidian PDF embed: ![[file.pdf]] renders inline when colocated.
         nf << "![[" << stem << ".pdf]]\n\n";
     } else {
-        nf << "[PDF on arXiv](https://arxiv.org/pdf/" << aid << ")\n\n";
+        // Link-only mode, or the download failed: never embed a missing file.
+        nf << "[PDF on arXiv](" << pdf_url << ")\n\n";
     }
     if (!a.abstract.empty()) {
         nf << "## Abstract\n\n" << a.abstract << "\n";
@@ -411,26 +413,33 @@ std::string ObsidianNotes(Fetcher& fetcher,
         const std::string stem = a.file_stem();
         fs::path note_path = note_dir / (stem + ".md");
 
+        // Download the PDF next to the note first, so the note embeds it only
+        // when it is really there. Fetcher writes relative to its own
+        // base_path (the configured download_dir), which is *not* the vault,
+        // so pass an absolute path.
+        bool have_pdf = false;
+        if (download_pdfs) {
+            fs::path pdf_path = note_dir / (stem + ".pdf");
+            have_pdf = fetcher.DownloadPaper(aid, pdf_path.string());
+            if (have_pdf)
+                ++pdf_ok;
+        }
+
         // An existing note is the user's: it holds their reading notes.
         std::error_code exists_error;
         if (fs::exists(note_path, exists_error)) {
             spdlog::info("[Export]: Keeping existing note {}", note_path.string());
         } else if (!WriteFileAtomically(note_path,
-                                        obsidian_note(a, aid, stem, date_str, download_pdfs))) {
+                                        obsidian_note(a,
+                                                      aid,
+                                                      stem,
+                                                      date_str,
+                                                      have_pdf,
+                                                      fetcher.ConstructPaperUrl(aid, "pdf")))) {
             spdlog::error("[Export]: Cannot write note {}", note_path.string());
             if (progress)
                 progress();
             continue;
-        }
-
-        // Download the PDF next to the note. Fetcher writes relative to
-        // its own base_path (the configured download_dir), which is *not*
-        // the vault. Use an absolute path via the std::filesystem API
-        // instead so the file lands in the vault directory.
-        if (download_pdfs) {
-            fs::path pdf_path = note_dir / (stem + ".pdf");
-            if (fetcher.DownloadPaper(aid, pdf_path.string()))
-                ++pdf_ok;
         }
         if (progress)
             progress();
