@@ -224,6 +224,9 @@ AppCore::AppCore(const Config& config,
 
 AppCore::~AppCore() {
     Record("appcore/dtor_begin", std::string("fetching=") + (m_fetching.load() ? "1" : "0"));
+    // Abandon the network first: the threads joined below may be mid-backfill
+    // or mid-download, which could otherwise hold the exit for minutes.
+    m_fetcher->Cancel();
     StopAutoRefresh();
     WaitForRefresh();
     WaitForInitialFetch();

@@ -95,6 +95,7 @@ Fetcher::Fetcher(const std::vector<std::string>& topics,
 }
 
 std::vector<Article> Fetcher::Fetch() {
+    ThrowIfCancelled();
     auto response = FetchFeeds();
     if (!response)
         throw FetchError("arXiv RSS feed could not be fetched");
@@ -188,22 +189,49 @@ Arxiv::RequestPacer::RequestPacer(Clock::duration interval, SleepFn sleep, NowFn
     , m_now(std::move(now)) {}
 
 void Arxiv::RequestPacer::Wait() {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::unique_lock<std::mutex> lock(m_mutex);
+    if (m_cancelled)
+        return;
     if (m_last) {
         auto elapsed = m_now() - *m_last;
-        if (elapsed < m_interval)
-            m_sleep(m_interval - elapsed);
+        if (elapsed < m_interval) {
+            if (m_sleep)
+                m_sleep(m_interval - elapsed);
+            else
+                m_cv.wait_for(lock, m_interval - elapsed, [this] { return m_cancelled; });
+        }
     }
     m_last = m_now();
 }
 
+void Arxiv::RequestPacer::Cancel() {
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_cancelled = true;
+    }
+    m_cv.notify_all();
+}
+
 Fetcher::~Fetcher() = default;
+
+void Fetcher::Cancel() {
+    m_cancelled = true;
+    m_api_pacer->Cancel();
+    m_http->Cancel();
+}
+
+void Fetcher::ThrowIfCancelled() const {
+    if (m_cancelled)
+        throw FetchError("cancelled");
+}
 
 std::string Fetcher::UserAgent() {
     return fmt::format("arxiv-tui/{} (+https://github.com/jxi24/arxiv-tui)", kVersion);
 }
 
 bool Fetcher::DownloadPaper(const std::string& paper_id, const std::string& output_path) {
+    if (m_cancelled)
+        return false;
     if (base_path.empty() && std::filesystem::path(output_path).is_relative()) {
         spdlog::error("[Fetcher]: No download directory for {}", output_path);
         return false;
@@ -729,6 +757,7 @@ std::vector<Article> Fetcher::FetchSince(const std::string& utc_date) {
     // (and thus first visible) a day or more after their submission date, so a
     // window anchored exactly at the last fetch would miss papers submitted just
     // before it but announced after. AddArticle's upsert absorbs the overlap.
+    ThrowIfCancelled();
     const std::string window_start = FetchSinceWindowStart(utc_date);
     std::tm from_tm{};
     parse_ymd_prefix(window_start, from_tm);
@@ -790,6 +819,7 @@ std::vector<Article> Fetcher::FetchSince(const std::string& utc_date) {
         HttpResponse resp;
         try {
             m_api_pacer->Wait();
+            ThrowIfCancelled();
             resp = m_http->Get(url, std::chrono::milliseconds(15000));
         } catch (const std::exception& e) {
             throw FetchError(std::string("arXiv API network error: ") + e.what());
