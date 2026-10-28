@@ -131,6 +131,9 @@ Unreleased
   run in the background. A badge in the bottom-right corner shows progress
   (``Exporting to Obsidian 1/3…``) and then the outcome; you can keep
   browsing meanwhile. One export runs at a time.
+- **Obsidian notes never embed a missing PDF** — with *Download PDFs* on,
+  a note whose PDF failed to download links to the PDF on arXiv instead of
+  embedding a file that is not there.
 - **Settings apply immediately** — saving the Settings dialog now applies
   the new values (and key bindings) to the running session, and reopening it
   shows what you saved. Topics still take effect on the next start. Letters
@@ -206,7 +209,8 @@ Unreleased
   (``[PDF on arXiv](https://arxiv.org/pdf/<id>)``), keeping git-synced vaults
   small. Set ``obsidian_download_pdfs: true`` (or toggle *Download PDFs* in
   the Settings dialog's Export section) to restore the old behaviour of
-  downloading and embedding them.
+  downloading and embedding them. If a download fails, that note links to
+  arXiv instead of embedding a missing file.
 
 v0.9.4
 ------
