@@ -284,12 +284,22 @@ TEST_CASE("Ranker persistence", "[ranker]") {
 // ---------------------------------------------------------------------------
 namespace {
 
+// Values written for each array of a version-1 ranker.bin.
+struct ModelFill {
+    float idf = 1.0f;
+    float w1 = 0.0f;
+    float b1 = 0.0f;
+    float w2 = 0.0f;
+    float b2 = 0.0f;
+};
+
 // Write a ranker.bin in the version-1 format with a single vocabulary entry.
-std::string write_model_with_vocab(int32_t vocab_size, int32_t idx) {
-    auto path = (std::filesystem::temp_directory_path() /
-                 ("arxiv_regression_ranker_" + std::to_string(vocab_size) + "_" +
-                  std::to_string(idx) + ".bin"))
-                    .string();
+std::string write_model_with_vocab(int32_t vocab_size, int32_t idx, const ModelFill& fill = {}) {
+    auto path =
+        (std::filesystem::temp_directory_path() /
+         ("arxiv_regression_ranker_" + std::to_string(vocab_size) + "_" + std::to_string(idx) +
+          "_" + std::to_string(fill.idf) + "_" + std::to_string(fill.w1) + ".bin"))
+            .string();
     std::ofstream f(path, std::ios::binary | std::ios::trunc);
     auto i32 = [&](int32_t v) { f.write(reinterpret_cast<const char*>(&v), sizeof(v)); };
     auto f32 = [&](float v) { f.write(reinterpret_cast<const char*>(&v), sizeof(v)); };
@@ -303,15 +313,15 @@ std::string write_model_with_vocab(int32_t vocab_size, int32_t idx) {
         i32(idx);
     }
     for (int i = 0; i < Ranker::MAX_FEATURES; ++i)
-        f32(1.0f); // idf
+        f32(fill.idf);
     for (int i = 0; i < Ranker::HIDDEN_SIZE * Ranker::MAX_FEATURES; ++i)
-        f32(0.0f); // W1
+        f32(fill.w1);
     for (int i = 0; i < Ranker::HIDDEN_SIZE; ++i)
-        f32(0.0f); // b1
+        f32(fill.b1);
     for (int i = 0; i < Ranker::HIDDEN_SIZE; ++i)
-        f32(0.0f); // W2
-    f32(0.0f);     // b2
-    i32(1);        // trained
+        f32(fill.w2);
+    f32(fill.b2);
+    i32(1); // trained
     return path;
 }
 
@@ -333,5 +343,52 @@ TEST_CASE("Ranker regression: Load rejects a negative vocabulary size without th
     bool loaded = true;
     REQUIRE_NOTHROW(loaded = ranker.Load(path));
     REQUIRE_FALSE(loaded);
+    std::filesystem::remove(path);
+}
+
+// Found by fuzz_ranker_load: finite but enormous values overflow the forward
+// pass (inf / inf normalising the features, inf - inf in the sums), so every
+// score became NaN. Trained values are tiny (IDF ~ log N, logits within
+// +-4.6); Load refuses anything beyond Ranker::kMaxModelValue.
+TEST_CASE("Ranker regression: Load rejects IDF values large enough to overflow",
+          "[ranker][regression]") {
+    ModelFill fill;
+    fill.idf = 3e38f;
+    auto path = write_model_with_vocab(1, 0, fill);
+    Ranker ranker;
+    REQUIRE_FALSE(ranker.Load(path));
+    std::filesystem::remove(path);
+}
+
+TEST_CASE("Ranker regression: Load rejects weights large enough to overflow",
+          "[ranker][regression]") {
+    ModelFill fill;
+    fill.w1 = 1e30f;
+    fill.w2 = -1e30f;
+    fill.b2 = 3e38f;
+    auto path = write_model_with_vocab(1, 0, fill);
+    Ranker ranker;
+    REQUIRE_FALSE(ranker.Load(path));
+    std::filesystem::remove(path);
+}
+
+TEST_CASE("Ranker: a model at the value bound still scores finitely", "[ranker]") {
+    // The bound must be low enough that no accepted model can overflow.
+    ModelFill fill;
+    fill.idf = Ranker::kMaxModelValue;
+    fill.w1 = Ranker::kMaxModelValue;
+    fill.b1 = Ranker::kMaxModelValue;
+    fill.w2 = -Ranker::kMaxModelValue;
+    fill.b2 = Ranker::kMaxModelValue;
+    auto path = write_model_with_vocab(1, 0, fill);
+    Ranker ranker;
+    REQUIRE(ranker.Load(path));
+    Arxiv::Article a("quark quark quark gluon",
+                     "https://arxiv.org/abs/2401.00001",
+                     "quark quark lattice quark",
+                     "A. Author",
+                     std::chrono::system_clock::now(),
+                     "hep-ph");
+    REQUIRE(std::isfinite(ranker.Predict(a)));
     std::filesystem::remove(path);
 }

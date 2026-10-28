@@ -336,10 +336,12 @@ static void write_f32(std::ostream& f, float v) {
 static bool read_i32(std::ifstream& f, int32_t& v) {
     return static_cast<bool>(f.read(reinterpret_cast<char*>(&v), sizeof(v)));
 }
-// Rejects NaN/inf as well as short reads: a corrupt weight would poison every
+// Rejects NaN/inf, values too large to be trained weights, and short reads: a
+// corrupt or enormous weight would overflow the forward pass and poison every
 // prediction.
 static bool read_f32(std::ifstream& f, float& v) {
-    return static_cast<bool>(f.read(reinterpret_cast<char*>(&v), sizeof(v))) && std::isfinite(v);
+    return static_cast<bool>(f.read(reinterpret_cast<char*>(&v), sizeof(v))) && std::isfinite(v) &&
+           std::fabs(v) <= Ranker::kMaxModelValue;
 }
 
 bool Ranker::Save(const std::string& path) const {
