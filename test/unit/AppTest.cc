@@ -1097,6 +1097,69 @@ TEST_CASE("Obsidian export on the same day keeps earlier papers in the index",
     std::filesystem::remove_all(vault);
 }
 
+// Settings edited in the dialog must reach AppCore without a restart.
+TEST_CASE("AppCore::ApplyConfig", "[app][config]") {
+    Config config("test/fixtures/test_config.yml");
+    config.set_obsidian_vault("");
+    config.set_retrain_interval(1);
+    config.set_ranker_file("/tmp/arxiv_tui_applyconfig_" + std::to_string(::getpid()) + ".bin");
+    std::remove(config.get_ranker_file().c_str());
+
+    auto vault = std::filesystem::temp_directory_path() /
+                 ("arxiv_obsidian_applyconfig_" + std::to_string(::getpid()));
+    std::filesystem::remove_all(vault);
+
+    auto db = std::make_unique<DatabaseManagerMock>();
+    auto fetcher = std::make_unique<FetcherMock>();
+    auto* db_ptr = db.get();
+    auto* fetcher_ptr = fetcher.get();
+
+    ALLOW_CALL(*db_ptr, GetRecent(ANY(int))).RETURN(sample_articles);
+    ALLOW_CALL(*db_ptr, GetProjects()).RETURN(std::vector<std::string>{});
+
+    AppCore core(config, std::move(db), std::move(fetcher));
+    Config updated = config;
+
+    SECTION("Obsidian export uses a vault set after construction") {
+        updated.set_obsidian_vault(vault.string());
+        core.ApplyConfig(updated);
+        core.ToggleSelection(sample_articles[0].link);
+
+        REQUIRE_FALSE(core.ExportSelectedToObsidian().empty());
+    }
+
+    SECTION("Obsidian export downloads PDFs once the option is switched on") {
+        updated.set_obsidian_vault(vault.string());
+        updated.set_obsidian_download_pdfs(true);
+        core.ApplyConfig(updated);
+        core.ToggleSelection(sample_articles[0].link);
+
+        REQUIRE_CALL(*fetcher_ptr, DownloadPaper(ANY(std::string), ANY(std::string))).RETURN(true);
+        core.ExportSelectedToObsidian();
+    }
+
+    SECTION("Recommend threshold follows the applied config") {
+        updated.set_recommend_threshold(4.5f);
+        core.ApplyConfig(updated);
+
+        REQUIRE(core.GetRecommendThreshold() == 4.5f);
+    }
+
+    SECTION("Retrain interval follows the applied config") {
+        updated.set_retrain_interval(100);
+        core.ApplyConfig(updated);
+
+        ALLOW_CALL(*db_ptr, SetRating(ANY(std::string), ANY(int)));
+        ALLOW_CALL(*db_ptr, GetRatedArticles()).RETURN(Arxiv::DatabaseManager::RatedArticleList{});
+        core.RateArticle(sample_articles[0].link, 4);
+
+        REQUIRE(core.PendingRatings() == 1);
+    }
+
+    std::filesystem::remove_all(vault);
+    std::remove(config.get_ranker_file().c_str());
+}
+
 TEST_CASE("AppCore::ExportSelectedToObsidian", "[app][export]") {
     SECTION("Returns empty string when no vault configured") {
         Config config("test/fixtures/test_config.yml");
@@ -1165,8 +1228,6 @@ TEST_CASE("AppCore::ExportSelectedToObsidian", "[app][export]") {
         REQUIRE_THAT(content.str(),
                      ContainsSubstring("[PDF on arXiv](https://arxiv.org/pdf/" + id + ")"));
         REQUIRE_THAT(content.str(), !ContainsSubstring("![[" + id + ".pdf]]"));
-        REQUIRE_FALSE(
-            std::filesystem::exists(std::filesystem::path(path).parent_path() / (id + ".pdf")));
 
         std::filesystem::remove_all(vault);
     }
@@ -1202,7 +1263,7 @@ TEST_CASE("AppCore::ExportSelectedToObsidian", "[app][export]") {
         std::filesystem::remove_all(vault);
     }
 
-    SECTION("Still writes the note when the PDF download fails") {
+    SECTION("Falls back to the arXiv link when the PDF download fails") {
         auto vault = std::filesystem::temp_directory_path() / "arxiv_obsidian_download_fail";
         std::filesystem::remove_all(vault);
 
@@ -1225,7 +1286,12 @@ TEST_CASE("AppCore::ExportSelectedToObsidian", "[app][export]") {
         REQUIRE_FALSE(path.empty());
 
         const std::string id = sample_articles[0].id();
-        REQUIRE(std::filesystem::exists(std::filesystem::path(path).parent_path() / (id + ".md")));
+        std::ifstream note(std::filesystem::path(path).parent_path() / (id + ".md"));
+        std::stringstream content;
+        content << note.rdbuf();
+        REQUIRE_THAT(content.str(),
+                     ContainsSubstring("[PDF on arXiv](https://arxiv.org/pdf/" + id + ")"));
+        REQUIRE_THAT(content.str(), !ContainsSubstring("![[" + id + ".pdf]]"));
 
         std::filesystem::remove_all(vault);
     }
