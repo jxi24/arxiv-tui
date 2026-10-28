@@ -439,3 +439,19 @@ TEST_CASE("Config regression: valid YAML of the wrong shape loads the defaults",
             std::vector<std::string>{"hep-ph", "hep-ex", "hep-lat", "hep-th"});
     REQUIRE_FALSE(loaded->get_warnings().empty());
 }
+
+TEST_CASE("Config regression: an empty key_mappings list survives save and load",
+          "[config][regression]") {
+    // Found by fuzz_config: an empty list was saved as "key_mappings: ~",
+    // which the next load read as "no list" and filled with the defaults.
+    TempConfig tmp;
+    std::ofstream(tmp.path) << "key_mappings: []\n";
+    Config cfg(tmp.path);
+    REQUIRE(cfg.get_key_mappings().empty());
+
+    TempConfig saved;
+    REQUIRE(cfg.save_to_file(saved.path));
+    Config again(saved.path);
+
+    REQUIRE(again.get_key_mappings().empty());
+}

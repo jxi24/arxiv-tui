@@ -156,8 +156,9 @@ bool Config::save_to_file(const std::string& config_file) const {
     article_settings["topics"] = article_settings_.topics;
     config["article_settings"] = article_settings;
 
-    // Save key mappings
-    YAML::Node key_mappings;
+    // Save key mappings. An explicit sequence: an empty Node is saved as
+    // "~", which loads as "no list" and brings the defaults back.
+    YAML::Node key_mappings(YAML::NodeType::Sequence);
     for (const auto& mapping : key_mappings_) {
         YAML::Node mapping_node;
         mapping_node["action"] = mapping.action;

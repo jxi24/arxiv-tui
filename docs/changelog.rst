@@ -106,7 +106,8 @@ Unreleased
   a non-map ``article_settings``, or a key mapping that is not an
   action/key pair threw and aborted. These now load the defaults with a
   warning, like any other bad value. A key that is missing from the file
-  (e.g. ``topics``) now keeps its default instead of being left empty.
+  (e.g. ``topics``) now keeps its default instead of being left empty. An
+  empty ``key_mappings`` list is saved as ``[]`` so it stays empty.
 
 - **Invalid UTF-8 no longer crashes the app** — Backspace in every text field
   removed one byte, so "é" then Backspace left half a character behind; the
