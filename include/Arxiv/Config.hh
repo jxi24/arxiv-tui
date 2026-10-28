@@ -42,6 +42,9 @@ class Config {
     const std::string& get_keywords_file() const { return keywords_file_; }
     const std::string& get_ranker_file() const { return ranker_file_; }
     const std::string& get_obsidian_vault() const { return obsidian_vault_; }
+    /// Where exports started from the TUI (BibTeX fallback, digest, project
+    /// exports) are written. main.cc defaults it to <data_dir>/exports.
+    const std::string& get_export_dir() const { return export_dir_; }
     bool get_obsidian_download_pdfs() const { return obsidian_download_pdfs_; }
     const std::string& get_clipboard_backend() const { return clipboard_backend_; }
     const std::string& get_theme() const { return theme_; }
@@ -65,6 +68,7 @@ class Config {
     void set_keywords_file(const std::string& path) { keywords_file_ = path; }
     void set_ranker_file(const std::string& path) { ranker_file_ = path; }
     void set_obsidian_vault(const std::string& path) { obsidian_vault_ = path; }
+    void set_export_dir(const std::string& path) { export_dir_ = path; }
     void set_obsidian_download_pdfs(bool on) { obsidian_download_pdfs_ = on; }
     void set_clipboard_backend(const std::string& b) { clipboard_backend_ = b; }
     void set_theme(const std::string& t) { theme_ = t; }
@@ -88,8 +92,9 @@ class Config {
     int retrain_interval_{5};
     std::string db_file_{"articles.db"};
     std::string keywords_file_;
-    std::string ranker_file_{"ranker.bin"};
+    std::string ranker_file_; // empty: no model file (main.cc sets one)
     std::string obsidian_vault_;
+    std::string export_dir_;
     bool obsidian_download_pdfs_{false}; // false: notes link to the PDF on arXiv instead
     int auto_refresh_minutes_{0};
     int scroll_margin_{3};

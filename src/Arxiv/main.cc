@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 #include "Arxiv/App.hh"
+#include "Arxiv/Cli.hh"
 #include "Arxiv/Config.hh"
 #include "Arxiv/CrashHandler.hh"
 #include "Arxiv/DatabaseManager.hh"
@@ -11,7 +12,6 @@
 #include "Arxiv/Replay.hh"
 
 #include <chrono>
-#include <cstring>
 #include <ctime>
 #include <filesystem>
 #include <iostream>
@@ -48,25 +48,25 @@ void CreateLogger(bool trace_mode, const std::filesystem::path& log_path) {
 }
 
 int main(int argc, char* argv[]) {
-    // Parse CLI flags before creating the logger so --trace takes effect
-    std::string replay_file;
-    std::string export_today_path;
-    std::string export_yaml_path;
-    bool trace_mode = false;
-    bool fetch_only = false;
-    for (int i = 1; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--replay") == 0 && i + 1 < argc) {
-            replay_file = argv[++i];
-        } else if (std::strcmp(argv[i], "--export-today") == 0 && i + 1 < argc) {
-            export_today_path = argv[++i];
-        } else if (std::strcmp(argv[i], "--export-yaml") == 0 && i + 1 < argc) {
-            export_yaml_path = argv[++i];
-        } else if (std::strcmp(argv[i], "--trace") == 0) {
-            trace_mode = true;
-        } else if (std::strcmp(argv[i], "--fetch") == 0) {
-            fetch_only = true;
-        }
+    // Parse CLI flags before creating the logger so --trace takes effect.
+    const Arxiv::Cli::Options cli = Arxiv::Cli::Parse(argc, argv);
+    if (!cli.error.empty()) {
+        std::cerr << "arxiv-tui: " << cli.error << "\nTry 'arxiv-tui --help'.\n";
+        return 2;
     }
+    if (cli.mode == Arxiv::Cli::Options::Mode::Help) {
+        std::cout << Arxiv::Cli::Usage();
+        return 0;
+    }
+    if (cli.mode == Arxiv::Cli::Options::Mode::Version) {
+        std::cout << Arxiv::Cli::VersionText();
+        return 0;
+    }
+    const std::string& replay_file = cli.replay_file;
+    const std::string& export_today_path = cli.export_today;
+    const std::string& export_yaml_path = cli.export_yaml;
+    const bool trace_mode = cli.trace;
+    const bool fetch_only = cli.mode == Arxiv::Cli::Options::Mode::Fetch;
 
     // Resolve all runtime paths from XDG / install prefix before anything else.
     const Arxiv::Paths paths = Arxiv::Paths::Resolve();
@@ -91,6 +91,8 @@ int main(int argc, char* argv[]) {
         config.set_download_dir((paths.data_dir / "downloads").string());
     config.set_db_file((paths.data_dir / "articles.db").string());
     config.set_ranker_file((paths.data_dir / "ranker.bin").string());
+    if (config.get_export_dir().empty())
+        config.set_export_dir((paths.data_dir / "exports").string());
     if (config.get_keywords_file().empty())
         config.set_keywords_file((paths.data_dir / "keywords.txt").string());
 

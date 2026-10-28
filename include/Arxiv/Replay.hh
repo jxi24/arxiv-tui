@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <deque>
 #include <fstream>
 #include <mutex>
@@ -82,6 +83,10 @@ class ReplayRecorder {
     // The in-memory copy (for crash reports) keeps only the newest entries;
     // the replay file keeps everything.
     static constexpr int kMaxEntries = 2000;
+
+    /// A replay file larger than this when the recorder opens it is moved to
+    /// "<file>.1" (replacing an older one) and a new file is started.
+    static constexpr std::uintmax_t kMaxFileBytes = std::uintmax_t{5} << 20;
 
     std::string GetJSONL() const;
 

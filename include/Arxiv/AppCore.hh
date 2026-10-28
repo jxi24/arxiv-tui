@@ -9,7 +9,7 @@
 #include "Arxiv/Config.hh"
 #include "Arxiv/DatabaseManager.hh"
 #include "Arxiv/Fetcher.hh"
-#include "Arxiv/Ranker.hh"
+#include "Arxiv/RankingService.hh"
 
 #include <atomic>
 #include <chrono>
@@ -71,13 +71,18 @@ class AppCore {
         // last session is reachable from exactly one view.
         Updated = 8,
         Unread = 9,
-        // Filter indices [TagBase, m_project_start_index) are tags.
-        // Filter indices [m_project_start_index, ...) are projects.
-        // GetFilterView() uses those runtime boundaries — TagBase and Project
-        // are used only as return-value tags in switch statements.
-        TagBase = 10,
-        Project = 100, // sentinel returned by GetFilterView() for project indices
+        // The values above are also the filter indices of the fixed views.
+        // Tag and Project are kinds, not indices: tags occupy indices
+        // [kFirstTagIndex, m_project_start_index), projects the rest. Use
+        // CurrentTag() / CurrentProject() for the selected name.
+        Tag = 100,
+        Project = 101,
     };
+    static constexpr int kFirstTagIndex = 10; // right after Unread
+
+    /// Name of the selected tag / project, or "" when another view is shown.
+    std::string CurrentTag() const;
+    std::string CurrentProject() const;
 
     // Article management
     void FetchArticles();
@@ -86,7 +91,7 @@ class AppCore {
     bool DownloadArticle(const std::string& article_id);
     std::string GetBibtex(const Article& article);
     const std::vector<Article>& GetCurrentArticles() const;
-    std::vector<std::string>& GetCurrentTitles();
+    const std::vector<std::string>& GetCurrentTitles() const;
 
     // Rating and ranking
     void RateArticle(const std::string& article_link, int rating);
@@ -96,7 +101,7 @@ class AppCore {
     int GetArticleRating(const std::string& article_link) const;
     float GetPredictedScore(const Article& article) const;
     bool IsRankerTrained() const;
-    bool IsTraining() const { return m_training.load(); }
+    bool IsTraining() const { return m_ranking.IsTraining(); }
     int PendingRatings() const { return m_ratings_since_train; }
     // Called from the UI refresh loop to re-fetch articles after background
     // training completes. Must be called on the main thread.
@@ -105,6 +110,12 @@ class AppCore {
     // Force a full cold-start retrain (new vocabulary, reset weights) regardless
     // of the pending-ratings counter.
     void ForceRetrain();
+
+    /// Full path for an export file named `file_name` in the configured
+    /// export directory (download_dir when export_dir is not set), which is
+    /// created if needed (pass create = false to only compute the path, e.g.
+    /// for display). The name is reduced to a single safe path component.
+    std::string ExportPath(const std::string& file_name, bool create = true) const;
     void SetRecommendThreshold(float threshold);
     float GetRecommendThreshold() const { return m_recommend_threshold; }
 
@@ -160,17 +171,15 @@ class AppCore {
     std::string GetProjectNameForFilter(int index) const;
 
     // Filter management
-    std::vector<std::string>& GetFilterOptions();
+    const std::vector<std::string>& GetFilterOptions() const;
     void SetFilterIndex(int index);
     void SetFilterIndex(FilterView view);
     int GetFilterIndex() const;
-    int& GetFilterIndex();
     FilterView GetFilterView() const;
 
     // State management
     void SetArticleIndex(int index);
     int GetArticleIndex() const;
-    int& GetArticleIndex();
     bool IsArticleBookmarked(const std::string& article_link) const;
 
     // Callbacks for UI updates
@@ -344,15 +353,11 @@ class AppCore {
     std::vector<std::string> m_topics;
     std::unique_ptr<DatabaseManager> m_db;
     std::unique_ptr<Fetcher> m_fetcher;
-    Ranker m_ranker;
-    mutable std::mutex m_ranker_mutex;
-    std::thread m_train_thread;
-    std::atomic<bool> m_training{false};
+    RankingService m_ranking; // model, training thread, keywords
     std::atomic<bool> m_needs_refetch{false};
     int m_ratings_since_train{0};
     int m_retrain_interval{5};
     float m_recommend_threshold{3.5f};
-    std::string m_ranker_path{"ranker.bin"};
 
     // Snapshot training data and spawn a background thread.
     // warm_start=true: keep existing vocab and weights as starting point.
@@ -387,7 +392,7 @@ class AppCore {
     std::vector<std::string> m_current_titles;
     std::vector<std::string> m_filter_options;
     std::vector<std::string> m_filter_tag_names;
-    int m_project_start_index{static_cast<int>(FilterView::TagBase)};
+    int m_project_start_index{kFirstTagIndex};
     // Actual project names parallel to filter_options[6+] (display may be indented for
     // sub-projects)
     std::vector<std::string> m_filter_project_names;
@@ -458,9 +463,6 @@ class AppCore {
     // Article links the user has tagged for the next digest export.
     // Session-scoped only.
     std::set<std::string> m_selected_links;
-
-    // Keyword cold-start
-    std::vector<std::string> m_keywords;
 
     // New-articles tracking: UTC date ("YYYY-MM-DD") that seeds the NewArticles view.
     // Set from the previous session's last_fetch_date on construction.

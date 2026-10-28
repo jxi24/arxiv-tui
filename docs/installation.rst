@@ -110,6 +110,30 @@ Building with tests
    cmake --build build -j$(nproc)
    ctest --test-dir build --output-on-failure
 
+Command line
+------------
+
+.. code-block:: text
+
+   Usage: arxiv-tui [--trace] [MODE]
+
+   Modes (one at a time):
+     --fetch               fetch new papers into the database and exit (for cron)
+     --export-today FILE   write today's papers as a Markdown digest
+     --export-yaml FILE    write today's papers, ranked, as YAML
+                           (--export-today and --export-yaml may be combined)
+     --replay FILE         replay a replay.jsonl log or a crash report on a copy
+                           of the database
+
+   Options:
+     --trace               log at trace level
+     -h, --help            show this help and exit
+     -V, --version         show the version and exit
+
+An unknown option, a missing file name or two modes at once is an error
+(exit status 2) rather than being ignored. To fetch and then export, run
+``arxiv-tui --fetch && arxiv-tui --export-yaml digest.yml``.
+
 Headless fetch and cron
 -----------------------
 

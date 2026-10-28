@@ -60,7 +60,7 @@ arxiv-tui/
 | fmt | 11.0.0 | String formatting |
 | spdlog | v1.14.1 | Structured logging |
 | cpr | 1.10.4 | HTTP client (arXiv API) |
-| FTXUI | main | Terminal UI framework |
+| FTXUI | v7.0.3 | Terminal UI framework |
 | pugixml | 1.15.0 | XML/RSS feed parsing |
 | yaml-cpp | 0.7.0 | YAML config parsing |
 | SQLite3 | system | Article persistence |
@@ -146,6 +146,9 @@ Plain data struct: `link`, `title`, `authors`, `abstract`, `date` (Unix timestam
 **Background tasks** (`AppCore::Start*`)
 Obsidian export, selected digest (and archive) and PDF download run on one worker thread (`StartTask`). Inputs are captured on the UI thread; the worker only uses the fetcher, the filesystem and the DB, and reports via `GetBackgroundTaskStatus()`, which the main renderer shows as a badge. Worker threads (fetch, auto-refresh, training, tasks) never touch `m_current_articles` or invoke the update callback — they set `m_needs_refetch` / `m_pending_read` for the UI thread's `TryRefetchIfNeeded()`.
 
+**`RankingService`** (`RankingService.hh/cc`)
+First piece split out of `AppCore`: owns the `Ranker`, its lock, the training thread, the model file (`LoadOrTrain`, `StartTraining(snapshot, warm_start, on_done)`) and the interest keywords, which it refits onto every model it installs. `Score`/`ScoreAll`/`Rank` are the only way views score papers. `AppCore` keeps the policy (retrain after `retrain_interval` ratings, the Recommended threshold) and must `WaitForTraining()` in its destructor because `on_done` touches it.
+
 **`Export`** (`Export.hh/cc`)
 File formats for every export (project Markdown/text/JSON, daily digest Markdown/YAML, selected digest, Obsidian notes, BibTeX file, tar archive). Pure functions over articles passed in — no DB, selection or UI state; `AppCore` gathers the data and delegates. Writes are checked after the fact (a full disk reports failure).
 
@@ -188,11 +191,22 @@ CREATE TABLE projects (
 );
 
 CREATE TABLE project_articles (
-    project_name TEXT REFERENCES projects(name),
-    article_link TEXT REFERENCES articles(link),
+    project_name TEXT REFERENCES projects(name) ON DELETE CASCADE ON UPDATE CASCADE,
+    article_link TEXT REFERENCES articles(link) ON DELETE CASCADE ON UPDATE CASCADE,
     PRIMARY KEY (project_name, article_link)
 );
+-- article_ratings, project_notes and article_tags cascade the same way
+-- (kLinkTables in DatabaseManager.cc).
 ```
+
+`PRAGMA foreign_keys` is on for every connection, and `PRAGMA user_version`
+holds `DatabaseManager::kSchemaVersion`. `MigrateSchema` runs the numbered
+migrations once each (1: rebuild the link tables with cascading keys,
+dropping orphan rows); a database with a higher version is refused. Inserts
+into link tables are guarded (`WHERE EXISTS`), so linking/rating/noting a
+paper or project that is not stored is a no-op rather than a constraint
+error. Add a new migration as the next version, not as another
+`AddColumnIfMissing` call.
 
 ### UI Layout
 
@@ -242,8 +256,9 @@ precedence over the compiled-in values at runtime.
 | `$XDG_DATA_HOME/arxiv-tui/articles.db` | SQLite article database | `XDG_DATA_HOME` |
 | `$XDG_DATA_HOME/arxiv-tui/ranker.bin` | Trained ranking model | `XDG_DATA_HOME` |
 | `$XDG_DATA_HOME/arxiv-tui/downloads/` | Default PDF download dir | `XDG_DATA_HOME` |
+| `$XDG_DATA_HOME/arxiv-tui/exports/` | Default `export_dir` (TUI exports, via `AppCore::ExportPath`) | `XDG_DATA_HOME` |
 | `$XDG_STATE_HOME/arxiv-tui/arxiv_tui.log` | Rotating spdlog output | `XDG_STATE_HOME` |
-| `$XDG_STATE_HOME/arxiv-tui/replay.jsonl` | UI action replay log | `XDG_STATE_HOME` |
+| `$XDG_STATE_HOME/arxiv-tui/replay.jsonl` | UI action replay log (rotated to `.1` at start-up when over 5 MiB) | `XDG_STATE_HOME` |
 | `$XDG_STATE_HOME/arxiv-tui/crash_*.txt` | Crash reports | `XDG_STATE_HOME` |
 
 XDG defaults (when variables are unset): `~/.config`, `~/.local/share`,
@@ -251,7 +266,10 @@ XDG defaults (when variables are unset): `~/.config`, `~/.local/share`,
 compiled-in data/state paths exactly with the XDG defaults.
 
 The `download_dir` config key overrides the default download path. If absent
-from the YAML, `main.cc` sets it to `<data_dir>/downloads/`.
+from the YAML, `main.cc` sets it to `<data_dir>/downloads/` (and `export_dir`
+to `<data_dir>/exports/`). Nothing is written to the working directory: the
+`Config` ranker file and the `Fetcher` download directory default to empty
+(no model file / absolute paths only).
 
 ## Configuration File
 
@@ -302,6 +320,7 @@ object programmatically.
 | `test/unit/BackgroundTaskTest.cc` | Non-blocking exports/downloads: `AppCore` background task API and TUI progress |
 | `test/unit/ProcessTest.cc` | `Process::RunAndWait` / `SpawnDetached` (no-shell process launching) |
 | `test/unit/PathsTest.cc` | `Paths::Resolve` fallback when the install prefix is not writable |
+| `test/unit/CliTest.cc` | `Cli::Parse` (modes, errors for unknown options / missing values / combined modes), `--help`, `--version` |
 | `test/unit/AtomicFileTest.cc` | Atomic writes: a write failing half way (RLIMIT_FSIZE in a forked child) keeps the old config / ranker / keywords |
 | `test/unit/CrashHandlerTest.cc` | Crash handler in forked children: report, no hang on a busy recorder, terminal restored, SIGTERM untouched |
 
@@ -401,6 +420,7 @@ Inside test bodies, plain `ALLOW_CALL` is fine because the generated local varia
 - UI components are built in `ArxivApp::SetupUI()`.
 - A background `std::thread` drives periodic UI refresh via `screen.PostEvent(Event::Custom)`.
 - Key events are dispatched through the `event_handler` component which checks `KeyBindings` before falling through to child components.
+- AppCore exposes no writable state: menus bind UI-owned indices (`filter_menu_index`, `article_menu_index`) and every change goes through `ArxivApp::SelectFilter` / `SelectArticle`. The selected project/tag name is `AppCore::CurrentProject()` / `CurrentTag()`; `FilterView::Tag`/`Project` are kinds, not indices (`kFirstTagIndex`).
 - `TESTING` preprocessor macro is defined when building tests; use it to skip UI-only code paths if needed.
 
 ---

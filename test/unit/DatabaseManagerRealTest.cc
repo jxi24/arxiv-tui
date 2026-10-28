@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <ctime>
 #include <filesystem>
+#include <fixtures/TimeZone.hh>
 #include <fixtures/test_data.hh>
 #include <future>
 #include <sqlite3.h>
@@ -1031,6 +1032,7 @@ TEST_CASE("Real DB regression: PruneArticles keeps articles that carry a note",
     Article old_article = sample_articles[0];
     old_article.date = std::chrono::system_clock::from_time_t(1000);
     db.AddArticle(old_article);
+    db.AddProject("reading");
     db.SetProjectNote("reading", old_article.link, "check eq. 3");
 
     db.PruneArticles(30);
@@ -1103,6 +1105,7 @@ TEST_CASE("Real DB: list queries return the newest articles first", "[database][
     newer.bookmarked = true;
     db.AddArticle(older); // inserted first: rowid order would put it first
     db.AddArticle(newer);
+    db.AddProject("p");
     db.LinkArticleToProject(older.link, "p");
     db.LinkArticleToProject(newer.link, "p");
     db.LinkArticleToTag(older.link, "t");
@@ -1213,4 +1216,191 @@ TEST_CASE("DatabaseManager::InMemoryCopyOf", "[database][real][replay]") {
     std::filesystem::remove(path);
     std::filesystem::remove(path + "-wal");
     std::filesystem::remove(path + "-shm");
+}
+
+// ---------------------------------------------------------------------------
+// Article dates are arXiv calendar days, stored as UTC instants (the RSS
+// announcement is midnight US Eastern = 04:00 UTC). A date range is a range
+// of those days, whatever the user's time zone or DST.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Date range covers whole UTC days in any time zone", "[database][real][regression]") {
+    arxiv_tui::test::ScopedTimeZone tz("America/Los_Angeles"); // UTC-7 in July (DST)
+    DatabaseManager db(":memory:");
+    Article on_day = sample_articles[0];
+    on_day.date = arxiv_tui::test::utc_time(2026, 7, 4, 4);
+    Article next_day = sample_articles[1];
+    next_day.date = arxiv_tui::test::utc_time(2026, 7, 5, 4);
+    db.AddArticle(on_day);
+    db.AddArticle(next_day);
+
+    auto got = db.GetArticlesForDateRange("2026-07-04", "2026-07-04");
+    auto has = [&](const Article& a) {
+        return std::any_of(
+            got.begin(), got.end(), [&](const Article& g) { return g.link == a.link; });
+    };
+
+    SECTION("includes the day's paper") { REQUIRE(has(on_day)); }
+    SECTION("excludes the next day's paper") { REQUIRE_FALSE(has(next_day)); }
+}
+
+// ---------------------------------------------------------------------------
+// Schema version and foreign keys: link tables cascade when an article or
+// project goes away, and the schema carries a version (PRAGMA user_version)
+// so migrations run once, in order.
+// ---------------------------------------------------------------------------
+
+namespace {
+std::string fresh_db_path(const std::string& stem) {
+    auto path =
+        (std::filesystem::temp_directory_path() / (stem + "_" + std::to_string(::getpid()) + ".db"))
+            .string();
+    for (const char* suffix : {"", "-wal", "-shm"})
+        std::filesystem::remove(path + suffix);
+    return path;
+}
+
+// Run one SQL statement on a raw connection and return the first column of
+// the first row ("" if none).
+std::string query(sqlite3* raw, const std::string& sql) {
+    sqlite3_stmt* st = nullptr;
+    REQUIRE(sqlite3_prepare_v2(raw, sql.c_str(), -1, &st, nullptr) == SQLITE_OK);
+    std::string out;
+    if (sqlite3_step(st) == SQLITE_ROW && sqlite3_column_text(st, 0))
+        out = reinterpret_cast<const char*>(sqlite3_column_text(st, 0));
+    sqlite3_finalize(st);
+    return out;
+}
+} // namespace
+
+TEST_CASE("Database schema is versioned and cascades", "[database][real][schema]") {
+    auto path = fresh_db_path("arxiv_schema");
+    {
+        DatabaseManager db(path);
+        db.AddArticle(sample_articles[0]);
+        db.AddProject("P");
+        db.LinkArticleToProject(sample_articles[0].link, "P");
+        db.SetRating(sample_articles[0].link, 4);
+    }
+    sqlite3* raw = nullptr;
+    REQUIRE(sqlite3_open(path.c_str(), &raw) == SQLITE_OK);
+
+    SECTION("user_version is the current schema version") {
+        REQUIRE(query(raw, "PRAGMA user_version") ==
+                std::to_string(DatabaseManager::kSchemaVersion));
+    }
+    SECTION("deleting an article removes its links") {
+        sqlite3_exec(raw, "PRAGMA foreign_keys=ON", nullptr, nullptr, nullptr);
+        sqlite3_exec(raw,
+                     ("DELETE FROM articles WHERE link='" + sample_articles[0].link + "'").c_str(),
+                     nullptr,
+                     nullptr,
+                     nullptr);
+        REQUIRE(query(raw, "SELECT COUNT(*) FROM project_articles") == "0");
+        REQUIRE(query(raw, "SELECT COUNT(*) FROM article_ratings") == "0");
+    }
+    sqlite3_close(raw);
+}
+
+TEST_CASE("Opening a version-0 database migrates it", "[database][real][schema][regression]") {
+    // The schema as every release so far created it: foreign keys declared
+    // but never enforced, so orphan rows could pile up.
+    auto path = fresh_db_path("arxiv_schema_v0");
+    {
+        sqlite3* raw = nullptr;
+        REQUIRE(sqlite3_open(path.c_str(), &raw) == SQLITE_OK);
+        const char* legacy = R"(
+            CREATE TABLE articles (link TEXT PRIMARY KEY, title TEXT, authors TEXT,
+                abstract TEXT, date INTEGER, bookmarked INTEGER DEFAULT 0);
+            CREATE TABLE projects (name TEXT PRIMARY KEY);
+            CREATE TABLE project_articles (project_name TEXT, article_link TEXT,
+                FOREIGN KEY(project_name) REFERENCES projects(name),
+                FOREIGN KEY(article_link) REFERENCES articles(link)
+                PRIMARY KEY (project_name, article_link));
+            CREATE TABLE article_ratings (article_link TEXT PRIMARY KEY,
+                rating INTEGER NOT NULL,
+                FOREIGN KEY(article_link) REFERENCES articles(link));
+            INSERT INTO articles (link, title, date) VALUES ('https://arxiv.org/abs/2401.00001', 'Kept', 1);
+            INSERT INTO projects VALUES ('P');
+            INSERT INTO project_articles VALUES ('P', 'https://arxiv.org/abs/2401.00001');
+            INSERT INTO project_articles VALUES ('P', 'https://arxiv.org/abs/2401.99999');
+            INSERT INTO article_ratings VALUES ('https://arxiv.org/abs/2401.00001', 5);
+            INSERT INTO article_ratings VALUES ('https://arxiv.org/abs/2401.99999', 1);
+        )";
+        REQUIRE(sqlite3_exec(raw, legacy, nullptr, nullptr, nullptr) == SQLITE_OK);
+        sqlite3_close(raw);
+    }
+
+    {
+        DatabaseManager db(path);
+    }
+
+    sqlite3* raw = nullptr;
+    REQUIRE(sqlite3_open(path.c_str(), &raw) == SQLITE_OK);
+    SECTION("version is current") {
+        REQUIRE(query(raw, "PRAGMA user_version") ==
+                std::to_string(DatabaseManager::kSchemaVersion));
+    }
+    SECTION("valid links survive") {
+        REQUIRE(query(raw,
+                      "SELECT rating FROM article_ratings WHERE article_link="
+                      "'https://arxiv.org/abs/2401.00001'") == "5");
+        REQUIRE(query(raw,
+                      "SELECT COUNT(*) FROM project_articles WHERE article_link="
+                      "'https://arxiv.org/abs/2401.00001'") == "1");
+    }
+    SECTION("orphan rows are dropped") {
+        REQUIRE(query(raw,
+                      "SELECT COUNT(*) FROM project_articles WHERE article_link="
+                      "'https://arxiv.org/abs/2401.99999'") == "0");
+        REQUIRE(query(raw,
+                      "SELECT COUNT(*) FROM article_ratings WHERE article_link="
+                      "'https://arxiv.org/abs/2401.99999'") == "0");
+    }
+    SECTION("link tables now cascade") {
+        REQUIRE_THAT(query(raw, "SELECT sql FROM sqlite_master WHERE name='project_articles'"),
+                     ContainsSubstring("ON DELETE CASCADE"));
+    }
+    sqlite3_close(raw);
+}
+
+TEST_CASE("A database from a newer version is refused", "[database][real][schema]") {
+    // Opening it would run old migrations over a schema they do not know.
+    auto path = fresh_db_path("arxiv_schema_future");
+    {
+        sqlite3* raw = nullptr;
+        REQUIRE(sqlite3_open(path.c_str(), &raw) == SQLITE_OK);
+        sqlite3_exec(
+            raw,
+            ("PRAGMA user_version=" + std::to_string(DatabaseManager::kSchemaVersion + 1)).c_str(),
+            nullptr,
+            nullptr,
+            nullptr);
+        sqlite3_close(raw);
+    }
+    REQUIRE_THROWS(DatabaseManager(path));
+}
+
+TEST_CASE("Links to a paper or project that does not exist are ignored, not errors",
+          "[database][real][schema]") {
+    // With foreign keys enforced these would be constraint errors; a replay
+    // log or an old import can name a paper that was since deleted.
+    DatabaseManager db(":memory:");
+    db.AddProject("P");
+    const std::string missing = "https://arxiv.org/abs/2401.99999";
+
+    SECTION("project link") {
+        REQUIRE_NOTHROW(db.LinkArticleToProject(missing, "P"));
+        REQUIRE(db.GetArticlesForProject("P").empty());
+    }
+    SECTION("rating") {
+        REQUIRE_NOTHROW(db.SetRating(missing, 4));
+        REQUIRE(db.GetRating(missing) == 0);
+    }
+    SECTION("note") { REQUIRE_NOTHROW(db.SetProjectNote("P", missing, "n")); }
+    SECTION("tag") { REQUIRE_NOTHROW(db.LinkArticleToTag(missing, "t")); }
+    SECTION("unknown project") {
+        db.AddArticle(sample_articles[0]);
+        REQUIRE_NOTHROW(db.LinkArticleToProject(sample_articles[0].link, "No such project"));
+    }
 }

@@ -16,6 +16,7 @@
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/screen.hpp>
 
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <chrono>
@@ -23,6 +24,7 @@
 #include <fstream>
 #include <unistd.h>
 
+#include "fixtures/TimeZone.hh"
 #include "fixtures/test_data.hh"
 #include "mocks/DatabaseManagerMock.hh"
 #include "mocks/FetcherMock.hh"
@@ -624,4 +626,154 @@ TEST_CASE("d removes a followed author from the list", "[tui][follow]") {
     handler->OnEvent(Event::Character("d"));
 
     REQUIRE(app->GetCore().GetFollowedAuthors().empty());
+}
+
+TEST_CASE("TUI shows an article's arXiv day in any time zone", "[tui][regression]") {
+    // Stored as 04:00 UTC (midnight US Eastern, the RSS announcement); in Los
+    // Angeles that is the evening before.
+    arxiv_tui::test::ScopedTimeZone tz("America/Los_Angeles");
+    auto article = arxiv_tui::test::fixtures::sample_articles[0];
+    article.date = arxiv_tui::test::utc_time(2026, 7, 4, 4);
+    auto db = std::make_unique<DatabaseManagerMock>();
+    db->setArticles({article});
+    db->setBookmarkedArticles({});
+    db->setProjects({});
+    db->setUnreadArticles({article});
+    KeyBindings kb{std::vector<Config::KeyMapping>{}};
+    ArxivApp app(make_test_config(), std::move(db), std::make_unique<FetcherMock>(), std::move(kb));
+
+    auto screen = render(app);
+
+    REQUIRE_THAT(screen, Catch::Matchers::ContainsSubstring("2026-07-04"));
+    REQUIRE_THAT(screen, !Catch::Matchers::ContainsSubstring("2026-07-03"));
+}
+
+TEST_CASE("Keyword editor takes every letter as text", "[tui][keywords][regression]") {
+    // j/k (next/previous) and d (delete) used to be handled before text, so
+    // "dark jets" could not be typed.
+    auto file = std::filesystem::temp_directory_path() /
+                ("arxiv_kw_editor_" + std::to_string(::getpid()) + ".txt");
+    std::filesystem::remove(file);
+    Config cfg = make_test_config();
+    cfg.set_keywords_file(file.string());
+    auto app = make_app_with_articles(cfg).app;
+    auto handler = app->GetEventHandler();
+    auto type = [&](const std::string& text) {
+        for (char c : text)
+            handler->OnEvent(Event::Character(std::string(1, c)));
+    };
+
+    handler->OnEvent(Event::Character("K"));
+    type("dark jets");
+    handler->OnEvent(Event::Return);
+    type("kaon");
+    handler->OnEvent(Event::Return);
+
+    SECTION("both keywords are saved as typed") {
+        handler->OnEvent(Event::Escape);
+        REQUIRE(app->GetCore().GetKeywords() == std::vector<std::string>{"dark jets", "kaon"});
+    }
+    SECTION("arrows select and Delete removes") {
+        handler->OnEvent(Event::ArrowUp);
+        handler->OnEvent(Event::Delete);
+        handler->OnEvent(Event::Escape);
+        REQUIRE(app->GetCore().GetKeywords() == std::vector<std::string>{"kaon"});
+    }
+    std::filesystem::remove(file);
+}
+
+TEST_CASE("TUI exports go to export_dir, not the working directory", "[tui][export][regression]") {
+    auto dir = std::filesystem::temp_directory_path() /
+               ("arxiv_tui_exports_" + std::to_string(::getpid()));
+    std::filesystem::remove_all(dir);
+    Config cfg = make_test_config();
+    cfg.set_export_dir(dir.string());
+    cfg.set_clipboard_backend("arxiv-tui-no-such-clipboard"); // force the file fallback
+    auto db = std::make_unique<DatabaseManagerMock>();
+    auto* db_ptr = db.get();
+    db_ptr->setArticles(arxiv_tui::test::fixtures::sample_articles);
+    db_ptr->setBookmarkedArticles({});
+    db_ptr->setProjects({});
+    db_ptr->setUnreadArticles(arxiv_tui::test::fixtures::sample_articles);
+    auto fetcher = std::make_unique<FetcherMock>();
+    ALLOW_CALL(*fetcher, FetchBibTeX(ANY(std::string))).RETURN(std::string{});
+    KeyBindings kb{std::vector<Config::KeyMapping>{}};
+    ArxivApp app(std::move(cfg), std::move(db), std::move(fetcher), std::move(kb));
+    auto handler = app.GetEventHandler();
+    const auto cwd_before = std::distance(std::filesystem::directory_iterator("."),
+                                          std::filesystem::directory_iterator());
+
+    SECTION("BibTeX fallback file") {
+        ALLOW_CALL(*db_ptr, GetRating(ANY(std::string))).RETURN(0);
+        handler->OnEvent(Event::Character("l")); // focus the article list
+        handler->OnEvent(Event::Character("c"));
+        REQUIRE(std::filesystem::exists(
+            dir / (arxiv_tui::test::fixtures::sample_articles[0].id() + ".bib")));
+    }
+    SECTION("daily digest") {
+        handler->OnEvent(Event::Character("X"));
+        bool found = false;
+        if (std::filesystem::exists(dir))
+            for (const auto& e : std::filesystem::directory_iterator(dir))
+                found = found || e.path().filename().string().rfind("digest-", 0) == 0;
+        REQUIRE(found);
+    }
+    REQUIRE(std::distance(std::filesystem::directory_iterator("."),
+                          std::filesystem::directory_iterator()) == cwd_before);
+    std::filesystem::remove_all(dir);
+}
+
+// ---------------------------------------------------------------------------
+// The filter and article menus used to write AppCore's indices directly, so
+// a selection changed by the menu itself (arrow keys, mouse) skipped
+// SetFilterIndex / SetArticleIndex.
+// ---------------------------------------------------------------------------
+
+namespace {
+struct RealDbApp {
+    Arxiv::DatabaseManager* db = nullptr;
+    std::unique_ptr<ArxivApp> app;
+    RealDbApp() {
+        auto owned = std::make_unique<Arxiv::DatabaseManager>(":memory:");
+        db = owned.get();
+        for (const auto& a : arxiv_tui::test::fixtures::sample_articles)
+            db->AddArticle(a);
+        KeyBindings kb{std::vector<Config::KeyMapping>{}};
+        app = std::make_unique<ArxivApp>(
+            make_test_config(), std::move(owned), std::make_unique<FetcherMock>(), std::move(kb));
+        app->GetCore().SetFilterIndex(Arxiv::AppCore::FilterView::All);
+    }
+};
+} // namespace
+
+TEST_CASE("Moving the filter menu with the arrow keys loads that view", "[tui][regression]") {
+    RealDbApp expected;
+    expected.app->GetCore().SetFilterIndex(Arxiv::AppCore::FilterView::Bookmarks);
+    RealDbApp t;
+    REQUIRE(t.app->GetCore().GetCurrentArticles().size() !=
+            expected.app->GetCore().GetCurrentArticles().size());
+
+    t.app->GetEventHandler()->OnEvent(Event::ArrowDown); // All -> Bookmarks (filter pane)
+
+    REQUIRE(t.app->GetCore().GetFilterView() == Arxiv::AppCore::FilterView::Bookmarks);
+    REQUIRE(t.app->GetCore().GetCurrentArticles().size() ==
+            expected.app->GetCore().GetCurrentArticles().size());
+}
+
+TEST_CASE("Moving the article menu with the arrow keys marks the article read",
+          "[tui][regression]") {
+    RealDbApp t;
+    auto handler = t.app->GetEventHandler();
+    handler->OnEvent(Event::Character("l")); // focus the article list
+    handler->OnEvent(Event::Character("a")); // open the detail pane
+    const int before = t.app->GetCore().GetArticleIndex();
+
+    handler->OnEvent(Event::ArrowDown);
+
+    const auto& articles = t.app->GetCore().GetCurrentArticles();
+    REQUIRE(t.app->GetCore().GetArticleIndex() == before + 1);
+    const auto& now = articles[static_cast<size_t>(before + 1)];
+    auto unread = t.db->GetUnreadArticles();
+    REQUIRE(std::none_of(
+        unread.begin(), unread.end(), [&](const Article& a) { return a.link == now.link; }));
 }

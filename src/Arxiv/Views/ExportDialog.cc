@@ -23,7 +23,8 @@ void ArxivApp::SetupExportDialog() {
         }
 
         static const char* exts[] = {"md", "txt", "json", "bib"};
-        std::string filename = export_project_name + "." + exts[export_format_index];
+        std::string filename =
+            core.ExportPath(export_project_name + "." + exts[export_format_index], false);
 
         return vbox({
                    text("Export Project: " + export_project_name) | bold |
@@ -44,7 +45,7 @@ void ArxivApp::SetupExportDialog() {
 bool ArxivApp::HandleExportEvent(ftxui::Event event) {
     if (event == Event::Return) {
         static const char* exts[] = {"md", "txt", "json", "bib"};
-        std::string path = export_project_name + "." + exts[export_format_index];
+        std::string path = core.ExportPath(export_project_name + "." + exts[export_format_index]);
         bool ok = false;
         if (export_format_index == 0) {
             ok = core.ExportProjectMarkdown(export_project_name, path);

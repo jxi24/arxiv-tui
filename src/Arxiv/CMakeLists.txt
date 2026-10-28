@@ -12,6 +12,8 @@ add_library(libarxiv-tui
     Clipboard.cc
     Process.cc
     AtomicFile.cc
+    Cli.cc
+    RankingService.cc
     Fetcher.cc
     DatabaseManager.cc
     Config.cc

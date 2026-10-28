@@ -11,11 +11,13 @@
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <cstdio>
 #include <filesystem>
+#include <fixtures/TimeZone.hh>
 #include <fixtures/test_data.hh>
 #include <fstream>
 #include <mocks/DatabaseManagerMock.hh>
 #include <mocks/FetcherMock.hh>
 #include <sstream>
+#include <thread>
 #include <unistd.h>
 
 using namespace Arxiv;
@@ -2059,4 +2061,183 @@ TEST_CASE("AppCore: following an author updates the Followed Authors view at onc
         core->UnfollowAuthor("W. Li");
         REQUIRE(core->GetCurrentArticles().empty());
     }
+}
+
+TEST_CASE("Exports show an article's arXiv day in any time zone", "[app][export][regression]") {
+    arxiv_tui::test::ScopedTimeZone tz("America/Los_Angeles");
+    auto article = make_article("2607.00001", "J. Doe", "hep-ph");
+    article.date = arxiv_tui::test::utc_time(2026, 7, 4, 4); // announced 4 July
+    auto core = make_memory_core({article});
+    core->AddProject("p");
+    core->LinkArticleToProject(article.link, "p");
+    auto path = std::filesystem::temp_directory_path() /
+                ("arxiv_export_tz_" + std::to_string(::getpid()) + ".md");
+
+    REQUIRE(core->ExportProjectMarkdown("p", path.string()));
+    std::ifstream f(path);
+    std::stringstream content;
+    content << f.rdbuf();
+    std::filesystem::remove(path);
+
+    REQUIRE_THAT(content.str(), ContainsSubstring("2026-07-04"));
+}
+
+// ---------------------------------------------------------------------------
+// Keyword boosts are the cold-start signal: before any star ratings they are
+// all the ranker has, so the TUI's ranked views must use them.
+// ---------------------------------------------------------------------------
+
+namespace {
+struct KeywordCore {
+    Article match = make_article("2607.00010", "A. Author", "hep-ph");
+    Article other = make_article("2607.00011", "B. Author", "hep-ph");
+    std::unique_ptr<AppCore> core;
+
+    KeywordCore() {
+        match.title = "Sterile neutrino oscillations at short baselines";
+        other.title = "Lattice study of glueballs";
+        Config cfg = regression_config();
+        cfg.set_keywords_file((std::filesystem::temp_directory_path() /
+                               ("arxiv_kw_view_" + std::to_string(::getpid()) + ".txt"))
+                                  .string());
+        core = make_memory_core({other, match}, cfg);
+        REQUIRE(core->SaveKeywords({"neutrino"}));
+    }
+};
+} // namespace
+
+TEST_CASE("Keyword boosts rank the TUI views before any ratings", "[app][keywords][regression]") {
+    KeywordCore t;
+
+    SECTION("Recommended shows the matching paper") {
+        t.core->SetFilterIndex(AppCore::FilterView::Recommended);
+        auto shown = t.core->GetCurrentArticles();
+        REQUIRE(shown.size() == 1);
+        REQUIRE(shown[0].link == t.match.link);
+    }
+    SECTION("New Articles puts the matching paper first") {
+        t.core->SetFilterIndex(AppCore::FilterView::NewArticles);
+        auto shown = t.core->GetCurrentArticles();
+        REQUIRE(shown.size() == 2);
+        REQUIRE(shown[0].link == t.match.link);
+    }
+    SECTION("the score column shows the keyword score") {
+        REQUIRE(t.core->GetPredictedScore(t.match) > t.core->GetPredictedScore(t.other));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Nothing is written to the working directory: exports started from the TUI
+// go to export_dir, and the ranker / fetcher have no relative defaults.
+// ---------------------------------------------------------------------------
+
+namespace {
+// Runs the test body with the working directory set to a fresh temp dir.
+struct InTempCwd {
+    std::filesystem::path old = std::filesystem::current_path();
+    std::filesystem::path dir =
+        std::filesystem::temp_directory_path() / ("arxiv_cwd_" + std::to_string(::getpid()));
+    InTempCwd() {
+        std::filesystem::remove_all(dir);
+        std::filesystem::create_directories(dir);
+        std::filesystem::current_path(dir);
+    }
+    ~InTempCwd() {
+        std::filesystem::current_path(old);
+        std::filesystem::remove_all(dir);
+    }
+    bool Empty() const { return std::filesystem::is_empty(dir); }
+};
+} // namespace
+
+TEST_CASE("AppCore::ExportPath", "[app][export]") {
+    auto dir =
+        std::filesystem::temp_directory_path() / ("arxiv_export_dir_" + std::to_string(::getpid()));
+    std::filesystem::remove_all(dir);
+    Config cfg = regression_config();
+    cfg.set_export_dir(dir.string());
+    auto core = make_memory_core({}, cfg);
+
+    SECTION("puts the file in export_dir and creates it") {
+        auto path = core->ExportPath("digest.md");
+        REQUIRE(std::filesystem::path(path) == dir / "digest.md");
+        REQUIRE(std::filesystem::is_directory(dir));
+    }
+    SECTION("a project name cannot leave export_dir") {
+        auto path = std::filesystem::path(core->ExportPath("../Sub/Project.md"));
+        REQUIRE(path.parent_path() == dir);
+        REQUIRE(path.filename().string().find('/') == std::string::npos);
+    }
+    SECTION("falls back to download_dir when export_dir is not set") {
+        Config plain = regression_config();
+        plain.set_download_dir(dir.string());
+        auto other = make_memory_core({}, plain);
+        REQUIRE(std::filesystem::path(other->ExportPath("x.bib")).parent_path() == dir);
+    }
+    std::filesystem::remove_all(dir);
+}
+
+TEST_CASE("Nothing is written to the working directory by default", "[app][regression]") {
+    InTempCwd cwd;
+
+    SECTION("a Fetcher without a download directory creates none") {
+        Arxiv::Fetcher fetcher({"hep-ph"});
+        REQUIRE(cwd.Empty());
+    }
+    SECTION("an AppCore without a ranker file saves no ranker") {
+        Config cfg;
+        cfg.set_topics({"hep-ph"});
+        {
+            AppCore core(cfg,
+                         std::make_unique<Arxiv::DatabaseManager>(":memory:"),
+                         std::make_unique<FetcherMock>(),
+                         AppCore::FetchMode::Offline);
+            core.ForceRetrain();
+        } // joins the training thread
+        REQUIRE(cwd.Empty());
+    }
+}
+
+TEST_CASE("AppCore::CurrentProject / CurrentTag name the selected view", "[app][filter]") {
+    auto article = make_article("2607.00020", "J. Doe", "hep-ph");
+    auto core = make_memory_core({article});
+    core->AddProject("Thesis");
+    core->AddTag("flavour");
+    core->LinkArticleToTag(article.link, "flavour");
+    const auto& options = core->GetFilterOptions();
+    auto index_of = [&](const std::string& label) {
+        return static_cast<int>(
+            std::distance(options.begin(), std::find(options.begin(), options.end(), label)));
+    };
+
+    SECTION("a fixed view has neither") {
+        core->SetFilterIndex(AppCore::FilterView::All);
+        REQUIRE(core->CurrentProject().empty());
+        REQUIRE(core->CurrentTag().empty());
+    }
+    SECTION("a project view names the project") {
+        core->SetFilterIndex(index_of("Thesis"));
+        REQUIRE(core->GetFilterView() == AppCore::FilterView::Project);
+        REQUIRE(core->CurrentProject() == "Thesis");
+        REQUIRE(core->CurrentTag().empty());
+    }
+    SECTION("a tag view names the tag") {
+        core->SetFilterIndex(index_of("#flavour"));
+        REQUIRE(core->GetFilterView() == AppCore::FilterView::Tag);
+        REQUIRE(core->CurrentTag() == "flavour");
+        REQUIRE(core->CurrentProject().empty());
+    }
+}
+
+TEST_CASE("A full retrain keeps the interest keywords", "[app][keywords][regression]") {
+    // ForceRetrain swapped in a fresh Ranker, dropping the fitted keywords.
+    KeywordCore t;
+    REQUIRE(t.core->GetPredictedScore(t.match) > t.core->GetPredictedScore(t.other));
+
+    t.core->ForceRetrain();
+    for (int i = 0; i < 500 && t.core->IsTraining(); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    REQUIRE_FALSE(t.core->IsTraining());
+
+    REQUIRE(t.core->GetPredictedScore(t.match) > t.core->GetPredictedScore(t.other));
 }

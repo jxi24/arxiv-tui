@@ -30,10 +30,11 @@ namespace Arxiv::Export {
 
 namespace {
 
+// An article's arXiv day (dates are stored as UTC instants).
 std::string format_date(const std::chrono::system_clock::time_point& tp) {
     auto tt = std::chrono::system_clock::to_time_t(tp);
     std::tm tm = {};
-    localtime_r(&tt, &tm);
+    gmtime_r(&tt, &tm);
     char buf[32];
     std::strftime(buf, sizeof(buf), "%Y-%m-%d", &tm);
     return buf;

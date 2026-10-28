@@ -7,6 +7,43 @@ Changelog
 Unreleased
 ----------
 
+- **Dates are arXiv days everywhere** — the article list and exports showed
+  dates in local time, so west of UTC a paper announced on 4 July showed as
+  3 July; the date-range filter (``r``) used local midnights with DST off,
+  missing papers on the first day and including some from the day after the
+  range. Dates are now shown and filtered as UTC days.
+- **Keyword boosts work in the TUI** — *Recommended*, the *New Articles*
+  order and the score column used only the rating model, so keywords had no
+  effect until you had rated papers (only ``--export-yaml`` used them). They
+  now use the blended score, and saving keywords re-ranks the current view.
+  In the keyword editor (``K``) every letter is text — ``d``, ``j`` and
+  ``k`` used to delete or move the selection — and ``↑``/``↓`` select.
+- **Exports no longer land in the current directory** — project exports, the
+  daily digest and the BibTeX fallback file were written wherever arxiv-tui
+  was started. They now go to the new ``export_dir`` (default
+  ``~/.local/share/arxiv-tui/exports``, editable in Settings), and project
+  names containing ``/`` no longer break the file name.
+- **Database integrity** — the database now has a schema version and enforces
+  its foreign keys: deleting a paper or project removes its memberships,
+  ratings, notes and tags in the database itself. On first start the link
+  tables are rebuilt once and leftover rows for papers that no longer exist
+  are dropped. A database written by a newer arxiv-tui is refused instead of
+  being modified.
+- **Arrow keys in the filter and article lists** — moving the filter list
+  with ``↑``/``↓`` changed the highlighted view without loading it (the old
+  view's papers stayed on screen), and moving the article list that way did
+  not mark papers read with the detail pane open or record the move for
+  replay. Both lists now behave exactly like ``j``/``k``.
+- **Retraining keeps keywords** — a full retrain (``R``) dropped the interest
+  keywords until the next start, so keyword boosts silently stopped working.
+- **``--help`` and ``--version``** — and unknown options, a missing file name
+  or two modes at once (``--fetch`` with an export, say) are now errors
+  instead of being silently ignored.
+- **Reproducible builds** — FTXUI is pinned to the v7.0.3 release instead of
+  tracking its ``main`` branch.
+- **``replay.jsonl`` no longer grows forever** — when it is over 5 MiB at
+  start-up it is moved to ``replay.jsonl.1`` and a new log is started.
+
 - **Polite to arXiv** — every request identifies itself
   (``arxiv-tui/<version> (+https://github.com/jxi24/arxiv-tui)``), and the
   backfill after missed days waits 3 s between arXiv API pages, as the API

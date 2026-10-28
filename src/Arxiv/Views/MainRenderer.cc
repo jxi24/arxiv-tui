@@ -77,11 +77,11 @@ void ArxivApp::SetupMainRenderer() {
         case AppCore::FilterView::Unread:
             filter_label = "Unread";
             break;
-        case AppCore::FilterView::TagBase:
-            filter_label = "#" + core.GetTagNameForFilter(core.GetFilterIndex());
+        case AppCore::FilterView::Tag:
+            filter_label = "#" + core.CurrentTag();
             break;
         case AppCore::FilterView::Project:
-            filter_label = core.GetProjectNameForFilter(core.GetFilterIndex());
+            filter_label = core.CurrentProject();
             break;
         }
 
@@ -369,7 +369,7 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
         if (core.GetFilterView() == AppCore::FilterView::Project) {
             const auto& articles = core.GetCurrentArticles();
             if (!articles.empty()) {
-                note_project_name = core.GetProjectNameForFilter(core.GetFilterIndex());
+                note_project_name = core.CurrentProject();
                 note_article_link = articles[static_cast<size_t>(core.GetArticleIndex())].link;
                 note_edit_text = core.GetProjectNote(note_project_name, note_article_link);
                 dialog_depth = Dialog::Notes;
@@ -390,7 +390,7 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
                 success_msg = "BibTeX copied to clipboard";
                 dialog_depth = Dialog::Success;
             } else {
-                std::string path = art.id() + ".bib";
+                std::string path = core.ExportPath(art.file_stem() + ".bib");
                 bool ok = core.ExportArticleBibTeX(art, path);
                 if (m_recorder)
                     m_recorder->RecordExportArticleBibTeX(art.link, path);
@@ -503,15 +503,16 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
         localtime_r(&t, &tm_val);
         char buf[32];
         std::strftime(buf, sizeof(buf), "digest-%Y-%m-%d.md", &tm_val);
-        if (core.ExportDailyDigest(buf)) {
+        const std::string path = core.ExportPath(buf);
+        if (core.ExportDailyDigest(path)) {
             if (m_recorder)
-                m_recorder->RecordExportDailyDigest(buf);
-            spdlog::info("export_daily_digest path={}", buf);
-            success_msg = std::string("Digest exported to ") + buf;
+                m_recorder->RecordExportDailyDigest(path);
+            spdlog::info("export_daily_digest path={}", path);
+            success_msg = "Digest exported to " + path;
             dialog_depth = Dialog::Success;
         } else {
-            spdlog::warn("export_daily_digest failed path={}", buf);
-            err_msg = std::string("Digest export failed: ") + buf;
+            spdlog::warn("export_daily_digest failed path={}", path);
+            err_msg = "Digest export failed: " + path;
             dialog_depth = Dialog::Error;
         }
         return true;
@@ -520,7 +521,7 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
     // Open export dialog (only when viewing a project)
     if (key_bindings.matches(event, KeyBindings::Action::ExportProject)) {
         if (core.GetFilterView() == AppCore::FilterView::Project) {
-            export_project_name = core.GetProjectNameForFilter(core.GetFilterIndex());
+            export_project_name = core.CurrentProject();
             export_format_index = 0;
             dialog_depth = Dialog::Export;
         }

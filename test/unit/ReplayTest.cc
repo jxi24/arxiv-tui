@@ -660,3 +660,47 @@ TEST_CASE("ReplayPlayer replays the log inside a crash report", "[replay][crashh
     REQUIRE(std::find(projects.begin(), projects.end(), "FromCrash") != projects.end());
     fs::remove_all(dir);
 }
+
+TEST_CASE("ReplayRecorder rotates a large replay file when it opens it",
+          "[replay][recorder][regression]") {
+    // replay.jsonl was appended to forever (about one event per second).
+    fs::path dir = fs::temp_directory_path() / ("replay_rotate_" + std::to_string(::getpid()));
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+    auto file = dir / "replay.jsonl";
+    {
+        std::ofstream big(file);
+        big << std::string(Arxiv::ReplayRecorder::kMaxFileBytes, 'x') << "\n";
+    }
+
+    {
+        Arxiv::ReplayRecorder recorder(file.string());
+        recorder.RecordEvent("after_rotation");
+    }
+
+    SECTION("the old log is kept as replay.jsonl.1") {
+        REQUIRE(fs::file_size(dir / "replay.jsonl.1") > Arxiv::ReplayRecorder::kMaxFileBytes);
+    }
+    SECTION("the new log starts empty") {
+        REQUIRE(fs::file_size(file) < 1024);
+        REQUIRE_THAT(read_file(file.string()), ContainsSubstring("after_rotation"));
+    }
+    fs::remove_all(dir);
+}
+
+TEST_CASE("ReplayRecorder keeps appending to a small replay file", "[replay][recorder]") {
+    fs::path dir = fs::temp_directory_path() / ("replay_append_" + std::to_string(::getpid()));
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+    auto file = dir / "replay.jsonl";
+    {
+        Arxiv::ReplayRecorder(file.string()).RecordEvent("first");
+    }
+    {
+        Arxiv::ReplayRecorder(file.string()).RecordEvent("second");
+    }
+
+    REQUIRE_THAT(read_file(file.string()), ContainsSubstring("first"));
+    REQUIRE_FALSE(fs::exists(dir / "replay.jsonl.1"));
+    fs::remove_all(dir);
+}

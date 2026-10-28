@@ -46,42 +46,39 @@ std::string ArxivApp::EmptyViewMessage() const {
     case AppCore::FilterView::Project:
         return "This project is empty — press " + key(KeyBindings::Action::CreateProject) +
                " on an article to add it";
-    case AppCore::FilterView::TagBase:
+    case AppCore::FilterView::Tag:
         return "No articles with this tag";
     default:
         return "No articles here — try another view";
     }
 }
 
+void ArxivApp::SelectArticle(int index) {
+    core.SetArticleIndex(index); // clamps
+    const int idx = core.GetArticleIndex();
+    article_menu_index = idx;
+    if (m_recorder)
+        m_recorder->RecordSetArticleIndex(idx);
+    title_start_position = 0;
+    // Reading with the detail pane open counts as reading the article.
+    const auto& articles = core.GetCurrentArticles();
+    if (show_detail && !articles.empty())
+        core.MarkArticleRead(articles[static_cast<size_t>(idx)].link);
+}
+
 void ArxivApp::SetupArticlePane() {
+    MenuOption option;
+    option.on_change = [&] { SelectArticle(article_menu_index); };
     article_list =
-        Menu(&core.GetCurrentTitles(), &core.GetArticleIndex()) | vscroll_indicator | frame |
+        Menu(&core.GetCurrentTitles(), &article_menu_index, option) | vscroll_indicator | frame |
         CatchEvent([&](Event event) {
+            article_menu_index = core.GetArticleIndex(); // may have changed elsewhere
             if (key_bindings.matches(event, KeyBindings::Action::Next)) {
-                int idx = std::min(core.GetArticleIndex() + 1,
-                                   static_cast<int>(core.GetCurrentArticles().size()) - 1);
-                core.SetArticleIndex(idx);
-                if (m_recorder)
-                    m_recorder->RecordSetArticleIndex(idx);
-                title_start_position = 0;
-                if (show_detail) {
-                    const auto& articles = core.GetCurrentArticles();
-                    if (!articles.empty())
-                        core.MarkArticleRead(articles[static_cast<size_t>(idx)].link);
-                }
+                SelectArticle(core.GetArticleIndex() + 1);
                 return true;
             }
             if (key_bindings.matches(event, KeyBindings::Action::Previous)) {
-                int idx = std::max(core.GetArticleIndex() - 1, 0);
-                core.SetArticleIndex(idx);
-                if (m_recorder)
-                    m_recorder->RecordSetArticleIndex(idx);
-                title_start_position = 0;
-                if (show_detail) {
-                    const auto& articles = core.GetCurrentArticles();
-                    if (!articles.empty())
-                        core.MarkArticleRead(articles[static_cast<size_t>(idx)].link);
-                }
+                SelectArticle(std::max(core.GetArticleIndex() - 1, 0));
                 return true;
             }
             if (key_bindings.matches(event, KeyBindings::Action::Bookmark)) {
@@ -223,7 +220,7 @@ void ArxivApp::SetupArticlePane() {
         auto fmt_date = [](const Article& a) -> std::string {
             auto t = std::chrono::system_clock::to_time_t(a.date);
             std::tm tm_val{};
-            localtime_r(&t, &tm_val);
+            gmtime_r(&t, &tm_val); // the arXiv day, not the local one
             char buf[16];
             std::strftime(buf, sizeof(buf), "%Y-%m-%d", &tm_val);
             return buf;

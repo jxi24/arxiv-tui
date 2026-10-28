@@ -90,6 +90,9 @@ cpr::Session session_for(const std::string& url, std::chrono::milliseconds timeo
 Fetcher::Fetcher(const std::vector<std::string>& topics, const std::string& _base_path)
     : m_topics{topics} {
     base_path = _base_path;
+    // Without a download directory, DownloadPaper needs absolute paths.
+    if (base_path.empty())
+        return;
     if (!std::filesystem::exists(base_path)) {
         std::filesystem::create_directory(base_path);
     } else if (!std::filesystem::is_directory(base_path)) {
@@ -206,6 +209,10 @@ std::string Fetcher::UserAgent() {
 }
 
 bool Fetcher::DownloadPaper(const std::string& paper_id, const std::string& output_path) {
+    if (base_path.empty() && std::filesystem::path(output_path).is_relative()) {
+        spdlog::error("[Fetcher]: No download directory for {}", output_path);
+        return false;
+    }
     try {
         auto url = ConstructPaperUrl(paper_id, "pdf");
         // Stream to disk instead of holding the whole PDF in memory.

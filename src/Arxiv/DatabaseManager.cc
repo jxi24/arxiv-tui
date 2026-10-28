@@ -151,12 +151,62 @@ std::unique_ptr<DatabaseManager> DatabaseManager::InMemoryCopyOf(const std::stri
     return copy;
 }
 
+namespace {
+
+// Link tables. Every row belongs to an article (and a project or tag): the
+// keys cascade, so deleting or renaming the parent takes its rows with it.
+// "%s" is the table name (the version-1 migration builds them under a
+// temporary name first).
+constexpr const char* kLinkTables[][2] = {
+    {"project_articles",
+     R"(CREATE TABLE IF NOT EXISTS %s (
+            project_name TEXT REFERENCES projects(name) ON DELETE CASCADE ON UPDATE CASCADE,
+            article_link TEXT REFERENCES articles(link) ON DELETE CASCADE ON UPDATE CASCADE,
+            PRIMARY KEY (project_name, article_link)))"},
+    {"article_ratings",
+     R"(CREATE TABLE IF NOT EXISTS %s (
+            article_link TEXT PRIMARY KEY
+                REFERENCES articles(link) ON DELETE CASCADE ON UPDATE CASCADE,
+            rating INTEGER NOT NULL))"},
+    {"project_notes",
+     R"(CREATE TABLE IF NOT EXISTS %s (
+            project_name TEXT REFERENCES projects(name) ON DELETE CASCADE ON UPDATE CASCADE,
+            article_link TEXT REFERENCES articles(link) ON DELETE CASCADE ON UPDATE CASCADE,
+            note TEXT,
+            PRIMARY KEY (project_name, article_link)))"},
+    {"article_tags",
+     R"(CREATE TABLE IF NOT EXISTS %s (
+            article_link TEXT REFERENCES articles(link) ON DELETE CASCADE ON UPDATE CASCADE,
+            tag_name TEXT REFERENCES tags(name) ON DELETE CASCADE ON UPDATE CASCADE,
+            PRIMARY KEY (article_link, tag_name)))"},
+};
+
+std::string link_table_sql(const char* create, const std::string& name) {
+    std::string sql = create;
+    sql.replace(sql.find("%s"), 2, name);
+    return sql;
+}
+
+// Rows whose parents all exist (the copy step of the version-1 rebuild).
+const char* link_table_filter(const std::string& table) {
+    if (table == "project_articles" || table == "project_notes")
+        return "project_name IN (SELECT name FROM projects) AND "
+               "article_link IN (SELECT link FROM articles)";
+    if (table == "article_tags")
+        return "article_link IN (SELECT link FROM articles) AND "
+               "tag_name IN (SELECT name FROM tags)";
+    return "article_link IN (SELECT link FROM articles)";
+}
+
+} // namespace
+
 void DatabaseManager::Initialise() {
     sqlite3_trace_v2(db, SQLITE_TRACE_STMT, DatabaseManager::TraceCallback, nullptr);
     // The TUI and a headless --fetch (cron) may use the file at the same
     // time: WAL lets readers proceed during a write, and the busy timeout
     // makes a writer wait for the other's lock instead of failing at once.
     sqlite3_busy_timeout(db, 5000);
+    CheckSchemaVersion();
     ExecuteSQL("PRAGMA journal_mode=WAL");
 
     // Create articles table if it doesn't exist
@@ -173,28 +223,10 @@ void DatabaseManager::Initialise() {
     ExecuteSQL(R"(CREATE TABLE IF NOT EXISTS projects (
                name TEXT PRIMARY KEY))");
 
-    // Create project-article link table
-    ExecuteSQL(R"(CREATE TABLE IF NOT EXISTS project_articles (
-               project_name TEXT,
-               article_link TEXT,
-               FOREIGN KEY(project_name) REFERENCES projects(name),
-               FOREIGN KEY(article_link) REFERENCES articles(link)
-               PRIMARY KEY (project_name, article_link)))");
-
-    // Create article ratings table
-    ExecuteSQL(R"(CREATE TABLE IF NOT EXISTS article_ratings (
-               article_link TEXT PRIMARY KEY,
-               rating INTEGER NOT NULL,
-               FOREIGN KEY(article_link) REFERENCES articles(link)))");
-
-    // Create project notes table
-    ExecuteSQL(R"(CREATE TABLE IF NOT EXISTS project_notes (
-               project_name TEXT,
-               article_link TEXT,
-               note TEXT,
-               PRIMARY KEY (project_name, article_link),
-               FOREIGN KEY(project_name) REFERENCES projects(name),
-               FOREIGN KEY(article_link) REFERENCES articles(link)))");
+    // Link tables (project membership, ratings, notes; tags below).
+    for (const auto& [name, create] : kLinkTables)
+        if (std::string(name) != "article_tags")
+            ExecuteSQL(link_table_sql(create, name));
 
     AddColumnIfMissing("projects", "parent", "TEXT DEFAULT ''");
 
@@ -222,6 +254,55 @@ void DatabaseManager::Initialise() {
     CreateTagTables();
     MigrateAddFTS5();
     MigrateFTSUpdateTrigger();
+    MigrateSchema();
+}
+
+void DatabaseManager::CheckSchemaVersion() {
+    Stmt stmt(db, "PRAGMA user_version", "CheckSchemaVersion");
+    const int version = stmt.step() == SQLITE_ROW ? sqlite3_column_int(stmt.raw(), 0) : 0;
+    if (version > kSchemaVersion)
+        throw std::runtime_error(
+            "[Database]: The database was written by a newer arxiv-tui (schema version " +
+            std::to_string(version) + ", this build knows " + std::to_string(kSchemaVersion) +
+            "); refusing to open it");
+}
+
+void DatabaseManager::MigrateSchema() {
+    int version = 0;
+    {
+        Stmt stmt(db, "PRAGMA user_version", "MigrateSchema/version");
+        if (stmt.step() == SQLITE_ROW)
+            version = sqlite3_column_int(stmt.raw(), 0);
+    }
+    // Rebuilding tables needs the keys off (SQLite's documented procedure);
+    // they are switched on for good afterwards.
+    if (version < 1)
+        MigrateToCascadingLinks();
+    ExecuteSQL("PRAGMA user_version = " + std::to_string(kSchemaVersion));
+    ExecuteSQL("PRAGMA foreign_keys = ON");
+}
+
+void DatabaseManager::MigrateToCascadingLinks() {
+    ExecuteSQL("BEGIN TRANSACTION");
+    try {
+        for (const auto& [name, create] : kLinkTables) {
+            const std::string table = name;
+            const std::string staged = table + "_v1";
+            ExecuteSQL("DROP TABLE IF EXISTS " + staged);
+            ExecuteSQL(link_table_sql(create, staged));
+            // Orphans (parents long gone; keys were never enforced) cannot
+            // satisfy the new keys and were invisible anyway: leave them out.
+            ExecuteSQL("INSERT INTO " + staged + " SELECT * FROM " + table + " WHERE " +
+                       link_table_filter(table));
+            ExecuteSQL("DROP TABLE " + table);
+            ExecuteSQL("ALTER TABLE " + staged + " RENAME TO " + table);
+        }
+        ExecuteSQL("COMMIT");
+    } catch (...) {
+        ExecuteSQL("ROLLBACK");
+        throw;
+    }
+    spdlog::info("[Database]: Schema version 1: link tables now cascade");
 }
 
 void DatabaseManager::MigrateNormalizeLinks() {
@@ -520,14 +601,7 @@ void DatabaseManager::ToggleBookmark(const std::string& link, bool bookmarked) {
 void DatabaseManager::DeleteArticle(const std::string& link) {
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
     spdlog::debug("[Database]: Deleting article {}", link);
-    Stmt pn(db, "DELETE FROM project_notes WHERE article_link = ?", "DeleteArticle/notes");
-    pn.bind(1, link).step_done();
-    Stmt pa(db, "DELETE FROM project_articles WHERE article_link = ?", "DeleteArticle/projects");
-    pa.bind(1, link).step_done();
-    Stmt ar(db, "DELETE FROM article_ratings WHERE article_link = ?", "DeleteArticle/ratings");
-    ar.bind(1, link).step_done();
-    Stmt at(db, "DELETE FROM article_tags WHERE article_link = ?", "DeleteArticle/tags");
-    at.bind(1, link).step_done();
+    // Memberships, ratings, notes and tags cascade.
     Stmt a(db, "DELETE FROM articles WHERE link = ?", "DeleteArticle");
     a.bind(1, link).step_done();
 }
@@ -555,12 +629,7 @@ void DatabaseManager::MigrateAddUpdatedAt() {
 void DatabaseManager::CreateTagTables() {
     ExecuteSQL(R"(CREATE TABLE IF NOT EXISTS tags (
                name TEXT PRIMARY KEY))");
-    ExecuteSQL(R"(CREATE TABLE IF NOT EXISTS article_tags (
-               article_link TEXT,
-               tag_name TEXT,
-               PRIMARY KEY (article_link, tag_name),
-               FOREIGN KEY (article_link) REFERENCES articles(link),
-               FOREIGN KEY (tag_name) REFERENCES tags(name)))");
+    ExecuteSQL(link_table_sql(kLinkTables[3][1], "article_tags"));
 }
 
 void DatabaseManager::AddTag(const std::string& name) {
@@ -608,8 +677,10 @@ void DatabaseManager::LinkArticleToTag(const std::string& link, const std::strin
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
     // Ensure the tag exists before linking.
     AddTag(tag);
+    // A paper that is not stored is skipped (the keys would reject it).
     Stmt stmt(db,
-              "INSERT OR IGNORE INTO article_tags (article_link, tag_name) VALUES (?, ?)",
+              "INSERT OR IGNORE INTO article_tags (article_link, tag_name) "
+              "SELECT ?1, ?2 WHERE EXISTS (SELECT 1 FROM articles WHERE link = ?1)",
               "LinkArticleToTag");
     stmt.bind(1, link).bind(2, tag).step_done();
 }
@@ -772,11 +843,8 @@ void DatabaseManager::RemoveProject(const std::string& project_name) {
             throw;
         }
     };
+    // Memberships and notes cascade.
     bind_and_step("DELETE FROM projects WHERE name = ?", "RemoveProject:projects");
-    bind_and_step("DELETE FROM project_articles WHERE project_name = ?",
-                  "RemoveProject:project_articles");
-    bind_and_step("DELETE FROM project_notes WHERE project_name = ?",
-                  "RemoveProject:project_notes");
     bind_and_step("UPDATE projects SET parent = '' WHERE parent = ?", "RemoveProject:reparent");
     ExecuteSQL("COMMIT");
 }
@@ -796,8 +864,11 @@ void DatabaseManager::LinkArticleToProject(const std::string& article_link,
                                            const std::string& project_name) {
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
     spdlog::debug("[Database]: Linking article {} to project {}", article_link, project_name);
+    // Skipped unless both the project and the paper are stored.
     Stmt stmt(db,
-              "INSERT OR IGNORE INTO project_articles (project_name, article_link) VALUES (?, ?)",
+              "INSERT OR IGNORE INTO project_articles (project_name, article_link) "
+              "SELECT ?1, ?2 WHERE EXISTS (SELECT 1 FROM projects WHERE name = ?1) "
+              "AND EXISTS (SELECT 1 FROM articles WHERE link = ?2)",
               "LinkArticleToProject");
     stmt.bind(1, project_name).bind(2, article_link).step_done();
 }
@@ -907,8 +978,12 @@ std::vector<Arxiv::Article> DatabaseManager::GetArticlesForDateRange(const std::
         return articles;
     }
 
-    time_t start_time = mktime(&start_tm);
-    time_t end_time = mktime(&end_tm) + 24 * 60 * 60;
+    // Article dates are arXiv days stored as UTC instants: the range is
+    // [start 00:00 UTC, the day after end 00:00 UTC), whatever the local
+    // time zone (mktime here shifted it by the UTC offset and by DST).
+    end_tm.tm_mday += 1;
+    time_t start_time = timegm(&start_tm);
+    time_t end_time = timegm(&end_tm);
 
     spdlog::debug("[Database]: Fetching articles between {} and {}", start_date, end_date);
 
@@ -927,7 +1002,8 @@ void DatabaseManager::SetRating(const std::string& link, int rating) {
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
     spdlog::debug("[Database]: Setting rating {} for {}", rating, link);
     Stmt stmt(db,
-              "INSERT OR REPLACE INTO article_ratings (article_link, rating) VALUES (?, ?)",
+              "INSERT OR REPLACE INTO article_ratings (article_link, rating) "
+              "SELECT ?1, ?2 WHERE EXISTS (SELECT 1 FROM articles WHERE link = ?1)",
               "SetRating");
     stmt.bind(1, link).bind(2, rating).step_done();
 }
@@ -983,10 +1059,11 @@ void DatabaseManager::SetProjectNote(const std::string& project_name,
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
     spdlog::debug(
         "[Database]: Setting note for article {} in project {}", article_link, project_name);
-    Stmt stmt(
-        db,
-        "INSERT OR REPLACE INTO project_notes (project_name, article_link, note) VALUES (?, ?, ?)",
-        "SetProjectNote");
+    Stmt stmt(db,
+              "INSERT OR REPLACE INTO project_notes (project_name, article_link, note) "
+              "SELECT ?1, ?2, ?3 WHERE EXISTS (SELECT 1 FROM projects WHERE name = ?1) "
+              "AND EXISTS (SELECT 1 FROM articles WHERE link = ?2)",
+              "SetProjectNote");
     stmt.bind(1, project_name).bind(2, article_link).bind(3, note).step_done();
 }
 
