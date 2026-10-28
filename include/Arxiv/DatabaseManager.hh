@@ -6,6 +6,7 @@
 #define ARXIV_DATABASE_MANAGER
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -24,6 +25,14 @@ class DatabaseManager {
     /// Schema version written to PRAGMA user_version (see MigrateSchema).
     /// 1: link tables cascade on delete/update and foreign keys are enforced.
     static constexpr int kSchemaVersion = 1;
+
+    /// How many papers each filter view holds (for the filter pane).
+    struct FilterCounts {
+        int bookmarked = 0;
+        int unread = 0;
+        std::map<std::string, int> tags;     // every tag, empty ones too
+        std::map<std::string, int> projects; // every project, empty ones too
+    };
 
     explicit DatabaseManager(const std::string& path);
     /// An in-memory database holding a copy of the file at `path` (opened
@@ -100,6 +109,8 @@ class DatabaseManager {
     virtual void LinkArticleToTag(const std::string& article_link, const std::string& tag_name);
     virtual void UnlinkArticleFromTag(const std::string& article_link, const std::string& tag_name);
     virtual std::vector<Article> GetArticlesForTag(const std::string& tag_name);
+
+    virtual FilterCounts CountFilters();
 
     // Articles submitted on or after the given UTC date ("YYYY-MM-DD")
     virtual std::vector<Article> GetArticlesSince(const std::string& utc_date);

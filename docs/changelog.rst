@@ -7,6 +7,58 @@ Changelog
 Unreleased
 ----------
 
+- **GUI uses the TUI's files** — ``arxiv-gui`` read ``.arxiv-tui.yml`` and
+  ``articles.db`` from the working directory (and logged there), so it never
+  saw the TUI's papers. It now resolves config, database, ranker, keywords and
+  log exactly like the TUI (``Paths::ApplyTo``), and CI builds it.
+
+- **Mouse support** — click a view or an article to select it, and scroll
+  views or articles with the wheel. The article list draws its own rows, so
+  clicks there never selected anything, and clicks only reached the focused
+  pane.
+
+- **Richer detail pane** — under the link the detail pane shows the arXiv id,
+  category and your star rating, and the paper's tags and projects when it
+  has any.
+
+- **Filter pane counts and sections** — Bookmarks, Unread, every tag and
+  every project show how many papers they hold, and tags and projects sit
+  under **Tags** / **Projects** headings instead of running on from the
+  fixed views.
+
+- **Footer hints** — the footer lists the keys that apply where you are: view
+  and project keys in the filter pane, article actions in the list, selection
+  actions when papers are selected — with your own key bindings.
+
+- **Success messages no longer block** — "BibTeX copied", "Exported to …"
+  and similar now appear for a few seconds in the bottom-right corner instead
+  of a dialog that had to be dismissed (and swallowed the next key). Errors
+  still open a dialog.
+
+- **Status column** — selection (``+``) and bookmark (``★``) markers have
+  their own column in the article list instead of being prefixed to titles,
+  where the double-width ``⭐`` pushed titles out of line.
+
+- **Layout follows the window** — pane widths and the number of article rows
+  come from the area the TUI is drawn in rather than a separate terminal-size
+  query, and the article list no longer lays out two rows more than fit (the
+  cursor could sit on a hidden row at the bottom).
+
+- **Bulk project assignment updates the project's BibTeX file** — assigning a
+  selection to a project skipped the auto-update of an exported ``.bib`` that
+  single assignment does, and single assignment only found papers shown in
+  the current view.
+
+- **Tagging from the TUI** — ``#`` opens a Tags dialog for the focused
+  article or the selection: toggle tags, add new ones, delete one from every
+  paper. Tags existed in the database and filter pane, but nothing in the TUI
+  could create or apply them; a newly created tag now also appears in the
+  filter pane at once.
+
+- **Settings can be cancelled** — ``q`` closes the Settings dialog without
+  saving (and undoes a theme preview); ``Esc`` while editing a field now
+  abandons that edit instead of keeping it. ``Esc`` still saves and closes.
+
 - **Dates are arXiv days everywhere** — the article list and exports showed
   dates in local time, so west of UTC a paper announced on 4 July showed as
   3 July; the date-range filter (``r``) used local midnights with DST off,

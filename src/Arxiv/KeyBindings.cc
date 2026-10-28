@@ -27,7 +27,7 @@ struct ActionInfo {
 
 using Action = KeyBindings::Action;
 
-constexpr std::array<ActionInfo, 32> kActionTable = {{
+constexpr std::array<ActionInfo, 33> kActionTable = {{
     {Action::Next, "next", "j", "Next", "Navigation"},
     {Action::Previous, "previous", "k", "Previous", "Navigation"},
     {Action::Quit, "quit", "q", "Quit", "App"},
@@ -68,6 +68,7 @@ constexpr std::array<ActionInfo, 32> kActionTable = {{
     {Action::OpenInBrowser, "open_in_browser", "O", "Open in Browser", "Navigation"},
     {Action::RateSelection, "rate_selection", "W", "Rate Selection", "Selection"},
     {Action::FollowAuthors, "follow_authors", "f", "Follow Authors", "Articles"},
+    {Action::TagArticle, "tag_article", "#", "Tags", "Articles"},
 }};
 
 const ActionInfo* find_by_config_name(std::string_view name) {

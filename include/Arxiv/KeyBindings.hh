@@ -47,7 +47,8 @@ class KeyBindings {
         ExportDigestArchive,
         OpenInBrowser,
         RateSelection,
-        FollowAuthors
+        FollowAuthors,
+        TagArticle
     };
 
     KeyBindings() = default;

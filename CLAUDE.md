@@ -129,13 +129,13 @@ Business logic. Receives `DatabaseManager` and `Fetcher` via `unique_ptr` (depen
 SQLite3 persistence layer. All virtual methods — mock-friendly for testing. File databases use WAL with a 5 s busy timeout (TUI and cron `--fetch` share the file). Every public method holds a recursive mutex (one connection is shared with the background fetch). Statement errors throw (`Stmt::for_each` no longer stops silently); schema additions use `AddColumnIfMissing`; strings are bound and read by length (NUL-safe).
 
 **`Fetcher`** (`Fetcher.hh/cc`)
-Parses arXiv RSS/XML feeds via `cpr` + `pugixml`. Downloads PDFs. All virtual methods. Every request goes through `session_for` (User-Agent `Fetcher::UserAgent()`, timeout); `FetchSince` API pages are spaced 3 s apart by `RequestPacer`. The version comes from the generated `Version.hh` (`Version.hh.in`).
+Parses arXiv RSS/XML feeds via `pugixml`. Downloads PDFs. All virtual methods. Every request goes through an injected `HttpClient` (`HttpClient.hh`; `MakeCprHttpClient()` by default, which sets the User-Agent `Fetcher::UserAgent()` and timeouts); `FetchSince` API pages are spaced 3 s apart by `RequestPacer` (`SetApiPacer` in tests). Network behaviour is tested with a scripted client in `FetcherNetTest.cc`. The version comes from the generated `Version.hh` (`Version.hh.in`).
 
 **`Config`** (`Config.hh/cc`)
 Loads `config.yml` from the XDG config path on startup; creates defaults if missing. Stores topics, download directory, key bindings, and runtime file paths (`db_file_`, `ranker_file_`). The db and ranker paths are not written to YAML — they are set programmatically by `main.cc` from `Paths::Resolve()` before the app is constructed.
 
 **`Paths`** (`Paths.hh/cc`)
-Resolves all runtime file locations at startup following the XDG Base Directory Specification. Config is always `XDG_CONFIG_HOME/arxiv-tui/config.yml`. Data (database, ranker, downloads) and state (log, replay, crash reports) default to the compile-time install prefix (`InstallPaths.hh`, generated from `InstallPaths.hh.in` by CMake) when this user can write there, otherwise to the XDG defaults under `$HOME`; `XDG_DATA_HOME` / `XDG_STATE_HOME` override both. `Paths::Resolve(getenv, install_data, install_state, usable)` is the testable core.
+Resolves all runtime file locations at startup following the XDG Base Directory Specification. Config is always `XDG_CONFIG_HOME/arxiv-tui/config.yml`. Data (database, ranker, downloads) and state (log, replay, crash reports) default to the compile-time install prefix (`InstallPaths.hh`, generated from `InstallPaths.hh.in` by CMake) when this user can write there, otherwise to the XDG defaults under `$HOME`; `XDG_DATA_HOME` / `XDG_STATE_HOME` override both. `Paths::Resolve(getenv, install_data, install_state, usable)` is the testable core; `Paths::ApplyTo(config)` sets the db/ranker files and the unset download/export/keywords paths (used by both `main.cc` and the GUI, `src/GUI/main.cc`, built with `-DARXIV_TUI_BUILD_GUI=ON` and by CI's `build-gui` job).
 
 **`KeyBindings`** (`KeyBindings.hh/cc`)
 Maps string action names to `ftxui::Event` instances from the config.
@@ -148,6 +148,9 @@ Obsidian export, selected digest (and archive) and PDF download run on one worke
 
 **`RankingService`** (`RankingService.hh/cc`)
 First piece split out of `AppCore`: owns the `Ranker`, its lock, the training thread, the model file (`LoadOrTrain`, `StartTraining(snapshot, warm_start, on_done)`) and the interest keywords, which it refits onto every model it installs. `Score`/`ScoreAll`/`Rank` are the only way views score papers. `AppCore` keeps the policy (retrain after `retrain_interval` ratings, the Recommended threshold) and must `WaitForTraining()` in its destructor because `on_done` touches it.
+
+**`ProjectService`** (`ProjectService.hh/cc`)
+Second piece split out of `AppCore`: projects as data — create (trimmed), remove, parent, membership (`Link` appends new papers to a previously exported project `.bib`), notes, Markdown/text/JSON/BibTeX export and JSON import (size cap, untrusted entries skipped, stored papers keep their metadata). No view state: `AppCore` wraps each call with the filter-list refresh and callbacks.
 
 **`Export`** (`Export.hh/cc`)
 File formats for every export (project Markdown/text/JSON, daily digest Markdown/YAML, selected digest, Obsidian notes, BibTeX file, tar archive). Pure functions over articles passed in — no DB, selection or UI state; `AppCore` gathers the data and delegates. Writes are checked after the fact (a full disk reports failure).
@@ -320,6 +323,7 @@ object programmatically.
 | `test/unit/BackgroundTaskTest.cc` | Non-blocking exports/downloads: `AppCore` background task API and TUI progress |
 | `test/unit/ProcessTest.cc` | `Process::RunAndWait` / `SpawnDetached` (no-shell process launching) |
 | `test/unit/PathsTest.cc` | `Paths::Resolve` fallback when the install prefix is not writable |
+| `test/unit/FetcherNetTest.cc` | Fetcher over a scripted `HttpClient`: API paging and pacing, failures, streamed PDF download, InspireHEP |
 | `test/unit/CliTest.cc` | `Cli::Parse` (modes, errors for unknown options / missing values / combined modes), `--help`, `--version` |
 | `test/unit/AtomicFileTest.cc` | Atomic writes: a write failing half way (RLIMIT_FSIZE in a forked child) keeps the old config / ranker / keywords |
 | `test/unit/CrashHandlerTest.cc` | Crash handler in forked children: report, no hang on a busy recorder, terminal restored, SIGTERM untouched |
@@ -514,6 +518,15 @@ A brief record of what has been implemented. Consult `README.md` for user-facing
   is written immediately after the bulk insert, so the tail of every fetch shares the
   anchor's second; with `>=` those papers (dozens to hundreds per day) were replayed as
   new the following day.
+
+### Unreleased — TUI polish (claude/next-steps)
+- **Settings cancel** — `q` restores the config snapshot taken on open (`m_settings_on_open`) and the theme; Esc in a field discards the edit.
+- **Tags dialog** — `#` (`TagArticle`): toggle/add/delete tags on the focused article or selection (`AppCore::TagCoverage`, `ToggleTagOnTargets`).
+- **Layout** — pane widths/rows from `reflect`ed boxes (`m_screen_box`, `m_article_box`, `m_filter_box`), not `Terminal::Size()`; status column (`+` selected, `★` bookmarked).
+- **Toasts** — `ShowToast` replaces the blocking success dialog; footer hints (`FooterHints()`) follow the focused pane.
+- **Filter pane** — counts from `DatabaseManager::CountFilters` (cached in `AppCore`, `GetFilterCount`), `Tags`/`Projects` headings (`GetFilterSection`) drawn in the menu transform, so navigation skips them.
+- **Detail pane** — arXiv id, category, star rating, tags, projects.
+- **Mouse** — `HandleMouseEvent`: clicks/wheel on the filter pane (forwarded to the menu) and article list (row from `m_article_box`); ignored while a dialog is open.
 
 ### v1.0 — Settings dialog, category filter, Obsidian export, keyword boosts
 - **Settings dialog** — `S` opens a five-section in-app settings editor (General, Topics, Ranker, Export, Keys); all config values editable without touching YAML; Escape saves to `config.yml` and closes. Implemented in `src/Arxiv/Views/SettingsDialog.cc`.

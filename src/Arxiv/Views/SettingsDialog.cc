@@ -138,7 +138,10 @@ void ArxivApp::SetupSettingsDialog() {
             text("Del") | bold | color(TextColors::primary()),
             text(": remove (Topics)  ") | color(TextColors::subtext()),
             text("Esc") | bold | color(TextColors::primary()),
-            text(": save & close") | color(TextColors::subtext()),
+            text(": save & close  ") | color(TextColors::subtext()),
+            text(KeyBindings::DisplayKey(key_bindings.get_key(KeyBindings::Action::Quit))) | bold |
+                color(TextColors::primary()),
+            text(": cancel") | color(TextColors::subtext()),
         }));
 
         return vbox(std::move(rows)) | borderStyled(ROUNDED, TextColors::border()) |
@@ -219,7 +222,7 @@ bool ArxivApp::HandleSettingsEvent(ftxui::Event event) {
 
     if (event == Event::Escape) {
         if (settings_editing) {
-            commit_field();
+            // Abandon this field's edit (Enter commits it).
             settings_editing = false;
             settings_edit_buffer.clear();
         } else {
@@ -230,6 +233,15 @@ bool ArxivApp::HandleSettingsEvent(ftxui::Event event) {
             key_bindings = KeyBindings(m_config.get_key_mappings());
             dialog_depth = Dialog::None;
         }
+        return true;
+    }
+
+    // Quit key: close without saving anything changed since the dialog
+    // opened, including a theme being previewed.
+    if (!settings_editing && key_bindings.matches(event, KeyBindings::Action::Quit)) {
+        m_config = m_settings_on_open;
+        Arxiv::SetTheme(m_config.get_theme(), m_config.get_theme_colors());
+        dialog_depth = Dialog::None;
         return true;
     }
 

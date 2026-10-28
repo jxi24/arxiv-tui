@@ -658,6 +658,37 @@ std::vector<std::string> DatabaseManager::GetTags() {
     return tags;
 }
 
+DatabaseManager::FilterCounts DatabaseManager::CountFilters() {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    FilterCounts counts;
+    Stmt totals(db,
+                "SELECT COALESCE(SUM(bookmarked = 1), 0), COALESCE(SUM(read_at IS NULL), 0) "
+                "FROM articles",
+                "CountFilters/totals");
+    totals.for_each([&](sqlite3_stmt* s) {
+        counts.bookmarked = sqlite3_column_int(s, 0);
+        counts.unread = sqlite3_column_int(s, 1);
+    });
+    auto per_name = [&](const char* sql, const char* what, std::map<std::string, int>& out) {
+        Stmt stmt(db, sql, what);
+        stmt.for_each([&](sqlite3_stmt* s) {
+            const char* name = reinterpret_cast<const char*>(sqlite3_column_text(s, 0));
+            if (name)
+                out[std::string(name, static_cast<std::size_t>(sqlite3_column_bytes(s, 0)))] =
+                    sqlite3_column_int(s, 1);
+        });
+    };
+    per_name("SELECT t.name, COUNT(at.article_link) FROM tags t"
+             " LEFT JOIN article_tags at ON at.tag_name = t.name GROUP BY t.name",
+             "CountFilters/tags",
+             counts.tags);
+    per_name("SELECT p.name, COUNT(pa.article_link) FROM projects p"
+             " LEFT JOIN project_articles pa ON pa.project_name = p.name GROUP BY p.name",
+             "CountFilters/projects",
+             counts.projects);
+    return counts;
+}
+
 std::vector<std::string> DatabaseManager::GetTagsForArticle(const std::string& link) {
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
     std::vector<std::string> tags;

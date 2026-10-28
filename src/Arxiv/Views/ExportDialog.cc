@@ -65,8 +65,8 @@ bool ArxivApp::HandleExportEvent(ftxui::Event event) {
                 m_recorder->RecordExportProjectBibTeX(export_project_name, path);
         }
         if (ok) {
-            dialog_depth = Dialog::Success;
-            success_msg = "Exported to " + path;
+            ShowToast("Exported to " + path);
+            dialog_depth = Dialog::None;
         } else {
             dialog_depth = Dialog::Error;
             err_msg = "Export failed: " + path;

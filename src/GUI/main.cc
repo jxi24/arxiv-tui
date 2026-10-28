@@ -6,10 +6,12 @@
 #include "Arxiv/Config.hh"
 #include "Arxiv/DatabaseManager.hh"
 #include "Arxiv/Fetcher.hh"
+#include "Arxiv/Paths.hh"
 
 #include <GLFW/glfw3.h>
 #include <chrono>
 #include <ctime>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <vector>
@@ -327,25 +329,30 @@ class ArxivGuiApp {
 // ---------------------------------------------------------------------------
 
 int main(int /*argc*/, char** /*argv*/) {
-    // Logging
+    // Same files as the TUI: config.yml, database, ranker and keywords from
+    // the XDG / install-prefix layout, never the working directory.
+    const Arxiv::Paths paths = Arxiv::Paths::Resolve();
+    std::filesystem::create_directories(paths.config_file.parent_path());
+    std::filesystem::create_directories(paths.data_dir);
+    std::filesystem::create_directories(paths.state_dir);
+
     try {
-        auto logger = spdlog::basic_logger_mt("arxiv_gui", "arxiv_gui.log");
+        auto logger =
+            spdlog::basic_logger_mt("arxiv_gui", (paths.state_dir / "arxiv_gui.log").string());
         spdlog::set_default_logger(logger);
     } catch (...) {
     }
     spdlog::set_level(spdlog::level::info);
 
-    // AppCore setup
-    Arxiv::Config config;
-    try {
-        config = Arxiv::Config(".arxiv-tui.yml");
-    } catch (...) {
-        spdlog::warn("Config file not found, using defaults");
-    }
+    Arxiv::Config config(paths.config_file.string());
+    for (const auto& warning : config.get_warnings())
+        spdlog::warn("config: {}", warning);
+    paths.ApplyTo(config);
 
-    auto db = std::make_unique<Arxiv::DatabaseManager>("articles.db");
+    auto db = std::make_unique<Arxiv::DatabaseManager>(config.get_db_file());
     auto fetcher = std::make_unique<Arxiv::Fetcher>(config.get_topics(), config.get_download_dir());
     Arxiv::AppCore core(config, std::move(db), std::move(fetcher));
+    core.ReloadKeywords();
 
     // GLFW / OpenGL
     glfwSetErrorCallback(glfw_error_callback);

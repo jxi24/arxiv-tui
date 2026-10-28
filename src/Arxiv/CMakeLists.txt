@@ -14,7 +14,9 @@ add_library(libarxiv-tui
     AtomicFile.cc
     Cli.cc
     RankingService.cc
+    ProjectService.cc
     Fetcher.cc
+    HttpClient.cc
     DatabaseManager.cc
     Config.cc
     KeyBindings.cc
@@ -35,6 +37,7 @@ add_library(libarxiv-tui
     Views/ImportDialog.cc
     Views/KeywordEditorDialog.cc
     Views/FollowAuthorsDialog.cc
+    Views/TagsDialog.cc
     Views/CategoryFilterDialog.cc
     Views/SettingsDialog.cc
     Views/NewProjectDialog.cc

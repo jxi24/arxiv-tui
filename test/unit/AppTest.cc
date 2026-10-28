@@ -2241,3 +2241,98 @@ TEST_CASE("A full retrain keeps the interest keywords", "[app][keywords][regress
 
     REQUIRE(t.core->GetPredictedScore(t.match) > t.core->GetPredictedScore(t.other));
 }
+
+// ---------------------------------------------------------------------------
+// Tagging from the TUI: ToggleTagOnTargets acts on the selection, or the
+// focused article when nothing is selected.
+// ---------------------------------------------------------------------------
+
+namespace {
+struct TagCore {
+    Article a = make_article("2607.00030", "A. Author", "hep-ph");
+    Article b = make_article("2607.00031", "B. Author", "hep-ph");
+    std::unique_ptr<AppCore> core = make_memory_core({a, b});
+    TagCore() { core->SetFilterIndex(AppCore::FilterView::All); }
+    bool Has(const Article& art, const std::string& tag) const {
+        auto tags = core->GetTagsForArticle(art.link);
+        return std::find(tags.begin(), tags.end(), tag) != tags.end();
+    }
+    const Article& Focused() const {
+        return core->GetCurrentArticles()[static_cast<size_t>(core->GetArticleIndex())];
+    }
+};
+} // namespace
+
+TEST_CASE("AppCore::ToggleTagOnTargets", "[app][tags]") {
+    TagCore t;
+
+    SECTION("tags the focused article") {
+        t.core->ToggleTagOnTargets("flavour");
+        REQUIRE(t.Has(t.Focused(), "flavour"));
+    }
+    SECTION("a new tag appears in the filter list at once") {
+        t.core->ToggleTagOnTargets("flavour");
+        const auto& options = t.core->GetFilterOptions();
+        REQUIRE(std::find(options.begin(), options.end(), "#flavour") != options.end());
+    }
+    SECTION("toggling again removes it") {
+        t.core->ToggleTagOnTargets("flavour");
+        t.core->ToggleTagOnTargets("flavour");
+        REQUIRE_FALSE(t.Has(t.Focused(), "flavour"));
+    }
+    SECTION("a selection where only some have the tag gets it on all") {
+        t.core->LinkArticleToTag(t.a.link, "flavour");
+        t.core->ToggleSelection(t.a.link);
+        t.core->ToggleSelection(t.b.link);
+        REQUIRE(t.core->TagCoverage("flavour") == AppCore::Coverage::Some);
+        t.core->ToggleTagOnTargets("flavour");
+        REQUIRE(t.Has(t.a, "flavour"));
+        REQUIRE(t.Has(t.b, "flavour"));
+        REQUIRE(t.core->TagCoverage("flavour") == AppCore::Coverage::All);
+    }
+    SECTION("untagging in the tag's own view takes the article off the list") {
+        t.core->ToggleTagOnTargets("flavour");
+        const auto& options = t.core->GetFilterOptions();
+        t.core->SetFilterIndex(static_cast<int>(
+            std::distance(options.begin(), std::find(options.begin(), options.end(), "#flavour"))));
+        REQUIRE(t.core->GetCurrentArticles().size() == 1);
+        t.core->ToggleTagOnTargets("flavour");
+        REQUIRE(t.core->GetCurrentArticles().empty());
+    }
+}
+
+TEST_CASE("AppCore::LinkArticleToTag lists a new tag in the filters", "[app][tags][regression]") {
+    // Linking created the tag in the database but the filter list was only
+    // rebuilt on the next start.
+    TagCore t;
+    t.core->LinkArticleToTag(t.a.link, "lattice");
+    const auto& options = t.core->GetFilterOptions();
+    REQUIRE(std::find(options.begin(), options.end(), "#lattice") != options.end());
+}
+
+TEST_CASE("AppCore: adding a selection to a project updates the project's .bib",
+          "[app][bibtex][regression]") {
+    // Single assignment appended to the exported .bib; bulk assignment did not.
+    auto a = make_article("2401.00051", "J. Doe", "hep-ph");
+    auto b = make_article("2401.00052", "R. Roe", "hep-ph");
+    auto db = std::make_unique<DatabaseManager>(":memory:");
+    db->AddArticle(a);
+    db->AddArticle(b);
+    auto fetcher = std::make_unique<FetcherMock>();
+    ALLOW_CALL(*fetcher, FetchBibTeX(ANY(std::string))).RETURN(std::string{});
+    AppCore core(regression_config(), std::move(db), std::move(fetcher));
+    core.AddProject("p");
+    auto bib = std::filesystem::temp_directory_path() /
+               ("arxiv_bulk_bib_" + std::to_string(::getpid()) + ".bib");
+    REQUIRE(core.ExportProjectBibTeX("p", bib.string()));
+
+    core.ToggleSelection(a.link);
+    core.ToggleSelection(b.link);
+    core.AddSelectedToProject("p");
+
+    std::ifstream in(bib);
+    std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    std::filesystem::remove(bib);
+    REQUIRE_THAT(content, ContainsSubstring(a.id()));
+    REQUIRE_THAT(content, ContainsSubstring(b.id()));
+}

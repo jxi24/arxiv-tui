@@ -5,9 +5,12 @@
 #ifndef ARXIV_FETCHER
 #define ARXIV_FETCHER
 
+#include "Arxiv/HttpClient.hh"
+
 #include <chrono>
 #include <filesystem>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <stdexcept>
@@ -90,8 +93,15 @@ class RequestPacer {
 
 class Fetcher {
   public:
-    explicit Fetcher(const std::vector<std::string>& topics, const std::string& base_path = "");
-    virtual ~Fetcher() = default;
+    /// `http` defaults to the real (cpr) client; tests pass a scripted one.
+    explicit Fetcher(const std::vector<std::string>& topics,
+                     const std::string& base_path = "",
+                     std::unique_ptr<HttpClient> http = nullptr);
+    virtual ~Fetcher();
+
+    /// Replace the pacing of arXiv API requests (tests record it instead of
+    /// sleeping).
+    void SetApiPacer(std::unique_ptr<RequestPacer> pacer) { m_api_pacer = std::move(pacer); }
     /// Today's RSS announcement. Throws FetchError if the feed is unreachable.
     virtual std::vector<Article> Fetch();
     /// Fetch all articles submitted since utc_date ("YYYY-MM-DD", inclusive
@@ -171,7 +181,9 @@ class Fetcher {
     std::filesystem::path base_path;
     // FetchSince pages through export.arxiv.org; its terms of use ask for
     // at most one request every three seconds.
-    RequestPacer m_api_pacer{std::chrono::seconds(3)};
+    std::unique_ptr<RequestPacer> m_api_pacer =
+        std::make_unique<RequestPacer>(std::chrono::seconds(3));
+    std::unique_ptr<HttpClient> m_http;
 };
 
 } // namespace Arxiv

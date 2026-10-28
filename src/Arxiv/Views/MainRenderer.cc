@@ -18,19 +18,19 @@ using namespace Arxiv;
 
 void ArxivApp::SetupMainRenderer() {
     main_renderer = Renderer(main_container, [&] {
-        int filter_width = FilterPaneWidth();
-        int remaining_width = Terminal::Size().dimx - filter_width - border_size;
-
-        int articles_width = show_detail ? remaining_width / 2 : remaining_width;
-        int detail_width = show_detail ? remaining_width / 2 : 0;
-
+        // The filter pane is as wide as its longest entry; the article and
+        // detail panes split the rest of the area this is drawn in (measured
+        // last frame). Explicit widths, not flex: the article rows are sized
+        // from the pane, so a flexible pane would grow a little every frame.
+        const int filter_width = FilterPaneWidth();
+        const int remaining = std::max(2, ScreenWidth() - filter_width);
+        const int articles_width = show_detail ? remaining / 2 : remaining;
         std::vector<Element> panes = {
             filter_pane->Render() | size(WIDTH, EQUAL, filter_width),
             article_pane->Render() | size(WIDTH, EQUAL, articles_width),
         };
-        if (show_detail) {
-            panes.push_back(detail_view->Render() | size(WIDTH, EQUAL, detail_width));
-        }
+        if (show_detail)
+            panes.push_back(detail_view->Render() | size(WIDTH, EQUAL, remaining - articles_width));
         Element body = hbox(std::move(panes)) | bgcolor(TextColors::base());
 
         auto fmt_key = [](std::string k) { return k == " " ? std::string("<space>") : k; };
@@ -115,16 +115,25 @@ void ArxivApp::SetupMainRenderer() {
             topics_str += topics[i];
         }
 
-        Elements footer_els = {
-            text(" "),
-            text(quit_key) | bold | color(TextColors::primary()),
-            text(" quit  ") | color(TextColors::subtext()),
-            text(help_key) | bold | color(TextColors::primary()),
-            text(" keybindings ") | color(TextColors::subtext()),
-            text("│") | color(TextColors::border()),
-            text(" filter: ") | color(TextColors::subtext()),
-            text(filter_label) | bold | color(TextColors::primary()),
-        };
+        Elements footer_els = {text(" "),
+                               text(quit_key) | bold | color(TextColors::primary()),
+                               text(" quit  ") | color(TextColors::subtext()),
+                               text(help_key) | bold | color(TextColors::primary()),
+                               text(" keybindings ") | color(TextColors::subtext()),
+                               text("│") | color(TextColors::border()),
+                               text(" ")};
+        std::size_t hints_width = 1;
+        for (const auto& [key, label] : FooterHints()) {
+            footer_els.push_back(text(key) | bold | color(TextColors::primary()));
+            footer_els.push_back(text(" " + label + "  ") | color(TextColors::subtext()));
+            hints_width += key.size() + label.size() + 3;
+        }
+        footer_els.insert(footer_els.end(),
+                          {
+                              text("│") | color(TextColors::border()),
+                              text(" filter: ") | color(TextColors::subtext()),
+                              text(filter_label) | bold | color(TextColors::primary()),
+                          });
         if (!filter_detail.empty()) {
             footer_els.push_back(text("  ") | color(TextColors::subtext()));
             footer_els.push_back(text(filter_detail) | color(TextColors::text()));
@@ -136,15 +145,15 @@ void ArxivApp::SetupMainRenderer() {
         // than let it run into the position counter on a narrow terminal.
         const std::size_t left_width = quit_key.size() + help_key.size() + filter_label.size() +
                                        (filter_detail.empty() ? 0 : filter_detail.size() + 2) +
-                                       position.size() + 34;
-        if (left_width + topics_str.size() + 2 <= static_cast<std::size_t>(Terminal::Size().dimx))
+                                       position.size() + hints_width + 34;
+        if (left_width + topics_str.size() + 2 <= static_cast<std::size_t>(ScreenWidth()))
             footer_els.push_back(text(topics_str) | color(TextColors::subtext()));
         footer_els.push_back(text(" "));
 
         auto footer =
             hbox(std::move(footer_els)) | bgcolor(TextColors::surface()) | size(HEIGHT, EQUAL, 1);
 
-        Element document = vbox({body | flex, footer});
+        Element document = vbox({body | flex, footer}) | reflect(m_screen_box);
 
         if (dialog_depth == Dialog::NewProject) {
             document = dbox({document, RenderNewProjectDialog()});
@@ -177,17 +186,6 @@ void ArxivApp::SetupMainRenderer() {
                                   borderStyled(ROUNDED, TextColors::error()) |
                                   bgcolor(TextColors::surface()) | clear_under | center;
             document = dbox({document, warning_dialog});
-        } else if (dialog_depth == Dialog::Success) {
-            auto success_dialog =
-                vbox({
-                    text("OK") | bold | center | color(TextColors::primary()),
-                    separator() | color(TextColors::primary()),
-                    text(success_msg) | color(TextColors::text()),
-                    text("Press Enter or Esc to dismiss") | color(TextColors::subtext()),
-                }) |
-                borderStyled(ROUNDED, TextColors::primary()) | bgcolor(TextColors::surface()) |
-                clear_under | center;
-            document = dbox({document, success_dialog});
         } else if (dialog_depth == Dialog::DateRange) {
             document = dbox({document, date_range_dialog->Render()});
         } else if (dialog_depth == Dialog::Search) {
@@ -204,6 +202,8 @@ void ArxivApp::SetupMainRenderer() {
             document = dbox({document, keyword_dialog->Render()});
         } else if (dialog_depth == Dialog::FollowAuthors) {
             document = dbox({document, follow_dialog->Render()});
+        } else if (dialog_depth == Dialog::Tags) {
+            document = dbox({document, tags_dialog->Render()});
         } else if (dialog_depth == Dialog::CategoryFilter) {
             document = dbox({document, category_dialog->Render()});
         } else if (dialog_depth == Dialog::Settings) {
@@ -230,6 +230,16 @@ void ArxivApp::SetupMainRenderer() {
 
         if (show_help) {
             document = dbox({document, help_dialog->Render()});
+        }
+
+        if (ToastVisible()) {
+            auto toast = text(" ✓ " + m_toast + " ") | color(TextColors::primary()) |
+                         bgcolor(TextColors::surface());
+            document = dbox({document,
+                             vbox({filler(),
+                                   hbox({filler(), toast}),
+                                   text(""), // above the task badge row
+                                   text("")})});
         }
 
         auto task = core.GetBackgroundTaskStatus();
@@ -282,6 +292,11 @@ void ArxivApp::SetupMainRenderer() {
 
 void ArxivApp::SetupEventHandler() {
     event_handler = CatchEvent(main_renderer, [&](Event event) {
+        // The mouse only reaches the panes: a dialog or the help overlay
+        // takes keys, and a click behind it must not change the view.
+        if (event.is_mouse())
+            return show_help || dialog_depth != Dialog::None || HandleMouseEvent(event);
+
         // Help overlay takes priority: block or close
         if (show_help)
             return HandleHelpEvent(event);
@@ -328,15 +343,6 @@ void ArxivApp::SetupEventHandler() {
             return true;
         }
 
-        // Success dialog dismiss
-        if (dialog_depth == Dialog::Success) {
-            if (event == Event::Return || event == Event::Escape) {
-                dialog_depth = Dialog::None;
-                success_msg = "";
-            }
-            return true;
-        }
-
         // Delete confirmation: y = confirm, anything else = cancel
         if (dialog_depth == Dialog::ConfirmDelete) {
             if (event == Event::Character('y') || event == Event::Character('Y')) {
@@ -356,11 +362,45 @@ void ArxivApp::SetupEventHandler() {
             return HandleKeywordEditorEvent(event);
         if (dialog_depth == Dialog::FollowAuthors)
             return HandleFollowAuthorsEvent(event);
+        if (dialog_depth == Dialog::Tags)
+            return HandleTagsEvent(event);
         if (dialog_depth == Dialog::Settings)
             return HandleSettingsEvent(event);
 
         return HandleGlobalEvent(event);
     });
+}
+
+bool ArxivApp::HandleMouseEvent(ftxui::Event event) {
+    const auto& m = event.mouse();
+    const bool wheel = m.button == Mouse::WheelUp || m.button == Mouse::WheelDown;
+    const bool press = m.button == Mouse::Left && m.motion == Mouse::Pressed;
+    if (m_filter_box.Contain(m.x, m.y)) {
+        if (press)
+            focused_pane = 0;
+        // The menu maps the click (or wheel) to an entry and calls SelectFilter.
+        filter_menu->OnEvent(event);
+        return true;
+    }
+    if (m_article_box.Contain(m.x, m.y)) {
+        if (wheel) {
+            const int step = m.button == Mouse::WheelDown ? 1 : -1;
+            SelectArticle(std::max(core.GetArticleIndex() + step, 0));
+            return true;
+        }
+        if (!press)
+            return true;
+        focused_pane = 1;
+        // Rows start below the border, pane header, separator, column
+        // header and separator (see SetupArticlePane).
+        const int row = m.y - m_article_box.y_min - 5;
+        const int index = top_article_index + row;
+        if (row >= 0 && row < visible_rows &&
+            index < static_cast<int>(core.GetCurrentArticles().size()))
+            SelectArticle(index);
+        return true;
+    }
+    return false;
 }
 
 bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
@@ -387,16 +427,14 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
             std::string backend = Clipboard::DetectBackend(m_config.get_clipboard_backend());
             if (!backend.empty() && Clipboard::Copy(bibtex, backend)) {
                 spdlog::info("bibtex_to_clipboard link={} backend={}", art.link, backend);
-                success_msg = "BibTeX copied to clipboard";
-                dialog_depth = Dialog::Success;
+                ShowToast("BibTeX copied to clipboard");
             } else {
                 std::string path = core.ExportPath(art.file_stem() + ".bib");
                 bool ok = core.ExportArticleBibTeX(art, path);
                 if (m_recorder)
                     m_recorder->RecordExportArticleBibTeX(art.link, path);
                 if (ok) {
-                    success_msg = "BibTeX saved to " + path;
-                    dialog_depth = Dialog::Success;
+                    ShowToast("BibTeX saved to " + path);
                 } else {
                     err_msg = "BibTeX export failed: " + path;
                     dialog_depth = Dialog::Error;
@@ -425,6 +463,18 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
         return true;
     }
 
+    // Open the tags dialog for the selection or the focused article
+    if (key_bindings.matches(event, KeyBindings::Action::TagArticle)) {
+        if (!core.GetCurrentArticles().empty()) {
+            tag_selected_index = 0;
+            tag_adding = false;
+            tag_new_name.clear();
+            tag_pending_delete.clear();
+            dialog_depth = Dialog::Tags;
+        }
+        return true;
+    }
+
     // Open arXiv category filter
     if (key_bindings.matches(event, KeyBindings::Action::FilterCategories)) {
         category_selected_index = 0;
@@ -440,6 +490,7 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
         settings_edit_buffer.clear();
         // m_config already holds the last saved settings; resetting it from
         // the core's startup copy used to discard them.
+        m_settings_on_open = m_config;
         dialog_depth = Dialog::Settings;
         return true;
     }
@@ -508,8 +559,7 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
             if (m_recorder)
                 m_recorder->RecordExportDailyDigest(path);
             spdlog::info("export_daily_digest path={}", path);
-            success_msg = "Digest exported to " + path;
-            dialog_depth = Dialog::Success;
+            ShowToast("Digest exported to " + path);
         } else {
             spdlog::warn("export_daily_digest failed path={}", path);
             err_msg = "Digest export failed: " + path;
@@ -579,10 +629,9 @@ bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {
             spdlog::info("open_in_browser url={}", url);
         }
         if (!links.empty()) {
-            success_msg = links.size() == 1
-                              ? "Opening in browser: " + links[0]
-                              : "Opening " + std::to_string(links.size()) + " articles in browser";
-            dialog_depth = Dialog::Success;
+            ShowToast(links.size() == 1
+                          ? "Opening in browser: " + links[0]
+                          : "Opening " + std::to_string(links.size()) + " articles in browser");
         }
         return true;
     }

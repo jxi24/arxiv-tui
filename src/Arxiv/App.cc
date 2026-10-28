@@ -115,6 +115,7 @@ void ArxivApp::SetupUI() {
     SetupImportDialog();
     SetupKeywordEditorDialog();
     SetupFollowAuthorsDialog();
+    SetupTagsDialog();
     SetupCategoryFilterDialog();
     SetupSettingsDialog();
     SetupMainRenderer();
@@ -148,7 +149,11 @@ void ArxivApp::SetupUI() {
                     task.running ||
                     (!task.label.empty() &&
                      std::chrono::steady_clock::now() - task.finished_at < std::chrono::seconds(9));
-                if (dirty || badge_visible || core.IsFetching())
+                // Keep repainting a moment past a toast's end so it is cleared.
+                const bool toast_visible =
+                    !m_toast.empty() &&
+                    std::chrono::steady_clock::now() < m_toast_until + std::chrono::seconds(1);
+                if (dirty || badge_visible || toast_visible || core.IsFetching())
                     screen.PostEvent(Event::Custom);
             });
             if (m_recorder && (tick++ % 20) == 0) {
@@ -161,10 +166,59 @@ void ArxivApp::SetupUI() {
 
 void ArxivApp::RefreshUI() { screen.PostEvent(Event::Custom); }
 
+std::vector<std::pair<std::string, std::string>> ArxivApp::FooterHints() const {
+    using A = KeyBindings::Action;
+    std::vector<std::pair<A, const char*>> hints;
+    if (focused_pane == 0) {
+        hints = {{A::MoveRight, "articles"}, {A::CreateProject, "new project"}};
+        if (!core.CurrentProject().empty())
+            hints.push_back({A::DeleteProject, "delete project"});
+    } else if (core.GetSelectionCount() > 0) {
+        hints = {{A::ToggleSelection, "select"},
+                 {A::RateSelection, "rate selection"},
+                 {A::TagArticle, "tags"},
+                 {A::ExportSelectedDigest, "digest"},
+                 {A::ExportToObsidian, "obsidian"}};
+    } else {
+        hints = {{A::ShowDetail, "detail"},
+                 {A::Bookmark, "bookmark"},
+                 {A::RateArticle, "rate"},
+                 {A::TagArticle, "tags"},
+                 {A::ToggleSelection, "select"}};
+    }
+    std::vector<std::pair<std::string, std::string>> out;
+    for (const auto& [action, label] : hints)
+        out.emplace_back(KeyBindings::DisplayKey(key_bindings.get_key(action)), label);
+    return out;
+}
+
+void ArxivApp::ShowToast(std::string message) {
+    m_toast = std::move(message);
+    m_toast_until = std::chrono::steady_clock::now() + kToastDuration;
+}
+
+bool ArxivApp::ToastVisible() const {
+    return !m_toast.empty() && std::chrono::steady_clock::now() < m_toast_until;
+}
+
+int ArxivApp::ScreenWidth() const {
+    return m_screen_box.x_max > m_screen_box.x_min ? m_screen_box.x_max - m_screen_box.x_min + 1
+                                                   : Terminal::Size().dimx;
+}
+
+int ArxivApp::ScreenHeight() const {
+    return m_screen_box.y_max > m_screen_box.y_min ? m_screen_box.y_max - m_screen_box.y_min + 1
+                                                   : Terminal::Size().dimy;
+}
+
 int ArxivApp::FilterPaneWidth() {
     int max_length = 0;
-    for (const auto& option : core.GetFilterOptions()) {
-        max_length = std::max(max_length, static_cast<int>(option.size()));
+    const auto& options = core.GetFilterOptions();
+    for (int i = 0; i < static_cast<int>(options.size()); ++i) {
+        int length = static_cast<int>(options[static_cast<std::size_t>(i)].size());
+        if (auto count = core.GetFilterCount(i))
+            length += static_cast<int>(std::to_string(*count).size()) + 2;
+        max_length = std::max(max_length, length);
     }
     return max_length + padding + arrow_size;
 }

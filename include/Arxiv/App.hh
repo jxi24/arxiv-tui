@@ -42,12 +42,12 @@ enum class Dialog {
     Import = 9,
     KeywordEditor = 10,
     CategoryFilter = 11,
-    Success = 12,
     Settings = 13,
     CitationBibtex = 14,
     ConfirmDelete = 15,
     ConfigWarning = 16,
     FollowAuthors = 17,
+    Tags = 18,
 };
 
 class ArxivApp {
@@ -80,6 +80,7 @@ class ArxivApp {
     KeyBindings key_bindings;
     std::string m_config_path;
     Config m_config;
+    Config m_settings_on_open; // what q in the Settings dialog restores
 
     // UI handling
     ftxui::ScreenInteractive screen;
@@ -99,11 +100,18 @@ class ArxivApp {
     std::atomic<bool> refresh_ui_continue = true;
     std::thread refresh_ui;
     std::string err_msg = "";
-    std::string success_msg = "";
+    // A short notice in the bottom-right corner that goes away by itself
+    // and never takes a key (success messages; errors stay dialogs).
+    void ShowToast(std::string message);
+    // (key, what it does) pairs for the footer, for where the focus is.
+    std::vector<std::pair<std::string, std::string>> FooterHints() const;
+    bool ToastVisible() const;
+    std::string m_toast;
+    std::chrono::steady_clock::time_point m_toast_until{};
+    static constexpr std::chrono::seconds kToastDuration{5};
     std::string bibtex_content;
     static constexpr int arrow_size = 2;
     static constexpr int padding = 4;
-    static constexpr int border_size = 3;
     static constexpr float scroll_speed = 4.0f; // Scroll speed in characters per second
 
     // Date range dialog
@@ -159,6 +167,11 @@ class ArxivApp {
     std::string follow_new_name;     // the name being typed
     std::string follow_pending_name; // awaiting confirmation (no first initial)
     Component follow_dialog;
+    int tag_selected_index = 0;
+    bool tag_adding = false;        // typing a new tag
+    std::string tag_new_name;       // the tag being typed
+    std::string tag_pending_delete; // awaiting confirmation
+    Component tags_dialog;
 
     // Category filter dialog
     int category_selected_index = 0;
@@ -172,7 +185,16 @@ class ArxivApp {
     Component settings_dialog;
 
     // Article pane scrolling
-    int visible_rows = 0;      // Number of rows visible in the article pane
+    int visible_rows = 0; // Number of rows visible in the article pane
+    // Where the article pane and the whole screen were drawn last frame
+    // (FTXUI reflect): layout follows the real drawing area, which is not
+    // Terminal::Size() when rendering to a smaller or test screen.
+    ftxui::Box m_article_box;
+    ftxui::Box m_filter_box;
+    ftxui::Box m_screen_box;
+    // Size of the drawing area last frame (the terminal before the first).
+    int ScreenWidth() const;
+    int ScreenHeight() const;
     int top_article_index = 0; // Index of the article at the top of the visible area
 
     // Components
@@ -219,6 +241,7 @@ class ArxivApp {
     void SetupImportDialog();
     void SetupKeywordEditorDialog();
     void SetupFollowAuthorsDialog();
+    void SetupTagsDialog();
     void SetupCategoryFilterDialog();
     void SetupSettingsDialog();
     void SetupMainRenderer();
@@ -242,9 +265,12 @@ class ArxivApp {
     bool HandleImportEvent(ftxui::Event event);
     bool HandleKeywordEditorEvent(ftxui::Event event);
     bool HandleFollowAuthorsEvent(ftxui::Event event);
+    bool HandleTagsEvent(ftxui::Event event);
     bool HandleCategoryFilterEvent(ftxui::Event event);
     bool HandleSettingsEvent(ftxui::Event event);
     bool HandleGlobalEvent(ftxui::Event event);
+    // Clicks and the wheel over the filter pane and the article list.
+    bool HandleMouseEvent(ftxui::Event event);
 };
 
 } // namespace Arxiv

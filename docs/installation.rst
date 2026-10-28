@@ -110,6 +110,23 @@ Building with tests
    cmake --build build -j$(nproc)
    ctest --test-dir build --output-on-failure
 
+Experimental GUI
+----------------
+
+An ImGui/GLFW window (``arxiv-gui``) over the same library, database and
+config is built on request. It needs OpenGL and X11 development headers
+(on Debian/Ubuntu: ``libgl-dev libx11-dev libxrandr-dev libxinerama-dev
+libxcursor-dev libxi-dev libxkbcommon-dev``):
+
+.. code-block:: bash
+
+   cmake -B build -DARXIV_TUI_BUILD_GUI=ON
+   cmake --build build --target arxiv-gui
+   ./build/src/GUI/arxiv-gui
+
+It reads ``config.yml`` and ``articles.db`` from the locations above and logs
+to ``arxiv_gui.log`` in the state directory.
+
 Command line
 ------------
 

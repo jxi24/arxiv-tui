@@ -22,6 +22,8 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <regex>
+#include <sstream>
 #include <unistd.h>
 
 #include "fixtures/TimeZone.hh"
@@ -776,4 +778,474 @@ TEST_CASE("Moving the article menu with the arrow keys marks the article read",
     auto unread = t.db->GetUnreadArticles();
     REQUIRE(std::none_of(
         unread.begin(), unread.end(), [&](const Article& a) { return a.link == now.link; }));
+}
+
+// ---------------------------------------------------------------------------
+// Settings can be left without saving: q discards, Esc in a field discards
+// that edit, Esc otherwise saves (as before).
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Settings: q closes without saving", "[tui][settings]") {
+    auto app = make_app(); // download_dir "/tmp"
+    auto handler = app->GetEventHandler();
+    handler->OnEvent(Event::Character("S"));
+    handler->OnEvent(Event::Return);         // edit "Download dir"
+    handler->OnEvent(Event::Character("X")); // "/tmpX"
+    handler->OnEvent(Event::Return);         // commit the field
+
+    handler->OnEvent(Event::Character("q")); // discard and close
+
+    SECTION("nothing applied") { REQUIRE(app->GetCore().GetConfig().get_download_dir() == "/tmp"); }
+    SECTION("reopening shows the old value") {
+        handler->OnEvent(Event::Character("S"));
+        REQUIRE_THAT(render(*app), !Catch::Matchers::ContainsSubstring("/tmpX"));
+    }
+}
+
+TEST_CASE("Settings: Esc while editing a field discards the edit", "[tui][settings]") {
+    auto app = make_app();
+    auto handler = app->GetEventHandler();
+    handler->OnEvent(Event::Character("S"));
+    handler->OnEvent(Event::Return);
+    handler->OnEvent(Event::Character("X"));
+    handler->OnEvent(Event::Escape); // abandon the field edit
+    handler->OnEvent(Event::Escape); // save and close
+
+    REQUIRE(app->GetCore().GetConfig().get_download_dir() == "/tmp");
+}
+
+TEST_CASE("Settings: q undoes a theme preview", "[tui][settings][theme]") {
+    auto app = make_app();
+    auto handler = app->GetEventHandler();
+    const auto before = Arxiv::CurrentTheme().primary;
+    handler->OnEvent(Event::Character("S"));
+    for (int i = 0; i < 3; ++i)
+        handler->OnEvent(Event::Character("j")); // General -> Theme
+    handler->OnEvent(Event::Return);             // previews the next preset
+    REQUIRE_FALSE(Arxiv::CurrentTheme().primary == before);
+
+    handler->OnEvent(Event::Character("q"));
+
+    REQUIRE(Arxiv::CurrentTheme().primary == before);
+}
+
+// ---------------------------------------------------------------------------
+// Tags dialog (#): there was no way to create or apply tags from the TUI.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Tags dialog", "[tui][tags]") {
+    RealDbApp t;
+    auto handler = t.app->GetEventHandler();
+    auto& core = t.app->GetCore();
+    const auto focused = core.GetCurrentArticles()[0].link;
+    auto type = [&](const std::string& text) {
+        for (char c : text)
+            handler->OnEvent(Event::Character(std::string(1, c)));
+    };
+    auto has_tag = [&](const std::string& tag) {
+        auto tags = core.GetTagsForArticle(focused);
+        return std::find(tags.begin(), tags.end(), tag) != tags.end();
+    };
+
+    handler->OnEvent(Event::Character("#"));
+    REQUIRE_THAT(render(*t.app), Catch::Matchers::ContainsSubstring("Tags"));
+
+    handler->OnEvent(Event::Character("+"));
+    type("dark jets"); // letters such as d, j and k are text here
+    handler->OnEvent(Event::Return);
+
+    SECTION("a typed tag is created and applied") {
+        REQUIRE(has_tag("dark jets"));
+        REQUIRE_THAT(render(*t.app), Catch::Matchers::ContainsSubstring("[x] dark jets"));
+    }
+    SECTION("Enter on a tag toggles it") {
+        handler->OnEvent(Event::Return);
+        REQUIRE_FALSE(has_tag("dark jets"));
+    }
+    SECTION("Delete asks, then removes the tag everywhere") {
+        handler->OnEvent(Event::Delete);
+        REQUIRE(has_tag("dark jets")); // not yet: waiting for confirmation
+        handler->OnEvent(Event::Return);
+        const auto tags = core.GetTags();
+        REQUIRE(std::find(tags.begin(), tags.end(), "dark jets") == tags.end());
+    }
+    SECTION("Esc closes the dialog") {
+        handler->OnEvent(Event::Escape);
+        REQUIRE_THAT(render(*t.app), !Catch::Matchers::ContainsSubstring("[x] dark jets"));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The layout follows the area it is drawn in, not Terminal::Size() (which is
+// the 80x24 fallback when there is no terminal, e.g. in these tests).
+// ---------------------------------------------------------------------------
+
+namespace {
+std::vector<std::string> render_lines(ArxivApp& app, int w, int h) {
+    auto screen = Screen::Create(Dimension::Fixed(w), Dimension::Fixed(h));
+    for (int pass = 0; pass < 2; ++pass) // the second frame uses measured sizes
+        ftxui::Render(screen, app.GetEventHandler()->Render());
+    std::vector<std::string> lines;
+    std::istringstream in(screen.ToString());
+    std::string line;
+    while (std::getline(in, line))
+        lines.push_back(line);
+    return lines;
+}
+
+std::unique_ptr<ArxivApp> app_with_many_articles(int n) {
+    auto db = std::make_unique<Arxiv::DatabaseManager>(":memory:");
+    auto base = arxiv_tui::test::fixtures::sample_articles[0];
+    for (int i = 0; i < n; ++i) {
+        auto a = base;
+        a.link = "https://arxiv.org/abs/2607." + std::to_string(10000 + i);
+        a.title = "Paper number " + std::to_string(i);
+        db->AddArticle(a);
+    }
+    KeyBindings kb{std::vector<Config::KeyMapping>{}};
+    auto app = std::make_unique<ArxivApp>(
+        make_test_config(), std::move(db), std::make_unique<FetcherMock>(), std::move(kb));
+    app->GetCore().SetFilterIndex(Arxiv::AppCore::FilterView::All);
+    return app;
+}
+} // namespace
+
+TEST_CASE("Layout fills a wide screen", "[tui][layout][regression]") {
+    auto app = app_with_many_articles(5);
+    auto lines = render_lines(*app, 160, 30);
+    // The article pane's top-right corner sits at the right edge.
+    REQUIRE(lines[0].rfind("╮") != std::string::npos);
+    const std::string& top = lines[0];
+    // Count display columns up to the last corner (box-drawing chars are 3 bytes).
+    std::size_t cols = 0;
+    for (std::size_t i = 0; i < top.rfind("╮"); ++i)
+        if ((static_cast<unsigned char>(top[i]) & 0xC0) != 0x80)
+            ++cols;
+    REQUIRE(cols >= 150);
+}
+
+TEST_CASE("Layout shows as many rows as the screen is tall", "[tui][layout][regression]") {
+    auto app = app_with_many_articles(60);
+    auto lines = render_lines(*app, 120, 50);
+    int rows = 0;
+    for (const auto& line : lines)
+        if (line.find("Paper number") != std::string::npos)
+            ++rows;
+    REQUIRE(rows >= 40); // 24-line fallback gave 19
+}
+
+TEST_CASE("Layout splits the width evenly with the detail pane open", "[tui][layout]") {
+    auto app = app_with_many_articles(5);
+    app->GetEventHandler()->OnEvent(Event::Character("a")); // open the detail pane
+    std::vector<std::string> lines;
+    for (int frame = 0; frame < 5; ++frame) // stable over several frames
+        lines = render_lines(*app, 160, 30);
+    // Corners of the three panes on the top line, in display columns.
+    std::vector<std::size_t> corners;
+    std::size_t col = 0;
+    const std::string& top = lines[0];
+    for (std::size_t i = 0; i < top.size(); ++i) {
+        if ((static_cast<unsigned char>(top[i]) & 0xC0) == 0x80)
+            continue;
+        if (top.compare(i, 3, "╮") == 0)
+            corners.push_back(col);
+        ++col;
+    }
+    REQUIRE(corners.size() == 3);
+    const auto articles = corners[1] - corners[0];
+    const auto detail = corners[2] - corners[1];
+    REQUIRE(articles + 2 >= detail);
+    REQUIRE(detail + 2 >= articles);
+}
+
+// ---------------------------------------------------------------------------
+// Status markers live in their own column: as title prefixes ("[*] ", a
+// double-width emoji) they pushed titles out of line.
+// ---------------------------------------------------------------------------
+
+namespace {
+// Display column (not byte offset) of `needle` in `line`.
+std::size_t display_col(const std::string& line, const std::string& needle) {
+    const auto at = line.find(needle);
+    if (at == std::string::npos)
+        return std::string::npos;
+    std::size_t col = 0;
+    for (std::size_t i = 0; i < at; ++i)
+        if ((static_cast<unsigned char>(line[i]) & 0xC0) != 0x80)
+            ++col;
+    return col;
+}
+} // namespace
+
+TEST_CASE("Article titles line up whatever their markers", "[tui][layout]") {
+    RealDbApp t; // sample_articles[1] is bookmarked
+    const auto& fx = arxiv_tui::test::fixtures::sample_articles;
+    t.app->GetCore().ToggleSelection(fx[0].link);
+    auto lines = render_lines(*t.app, 160, 30);
+    std::size_t col0 = std::string::npos, col1 = std::string::npos;
+    std::string row1;
+    for (const auto& line : lines) {
+        if (line.find(fx[0].title.substr(0, 20)) != std::string::npos)
+            col0 = display_col(line, fx[0].title.substr(0, 20));
+        if (line.find(fx[1].title.substr(0, 20)) != std::string::npos) {
+            col1 = display_col(line, fx[1].title.substr(0, 20));
+            row1 = line;
+        }
+    }
+    REQUIRE(col0 != std::string::npos);
+    REQUIRE(col0 == col1);
+    REQUIRE_THAT(row1, !Catch::Matchers::ContainsSubstring("⭐"));
+}
+
+// ---------------------------------------------------------------------------
+// Success messages are toasts: shown, but they do not take the next key.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Success messages do not block the next key", "[tui][toast]") {
+    auto db = std::make_unique<Arxiv::DatabaseManager>(":memory:");
+    for (const auto& a : arxiv_tui::test::fixtures::sample_articles)
+        db->AddArticle(a);
+    auto fetcher = std::make_unique<FetcherMock>();
+    ALLOW_CALL(*fetcher, FetchBibTeX(ANY(std::string))).RETURN(std::string{});
+    Config cfg = make_test_config();
+    cfg.set_clipboard_backend("true"); // a "clipboard" that always succeeds
+    KeyBindings kb{std::vector<Config::KeyMapping>{}};
+    ArxivApp app(std::move(cfg), std::move(db), std::move(fetcher), std::move(kb));
+    app.GetCore().SetFilterIndex(Arxiv::AppCore::FilterView::All);
+    auto handler = app.GetEventHandler();
+    handler->OnEvent(Event::Character("l")); // article list
+
+    handler->OnEvent(Event::Character("c")); // copy BibTeX
+
+    SECTION("the message is shown") {
+        REQUIRE_THAT(render(app), Catch::Matchers::ContainsSubstring("BibTeX copied"));
+    }
+    SECTION("the next key still works") {
+        handler->OnEvent(Event::Character("j"));
+        REQUIRE(app.GetCore().GetArticleIndex() == 1);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The footer suggests the keys that make sense where the focus is.
+// ---------------------------------------------------------------------------
+
+namespace {
+// The footer line without colour codes.
+std::string footer_of(ArxivApp& app) {
+    auto lines = render_lines(app, 160, 30);
+    std::string plain;
+    const std::string& line = lines.back();
+    for (std::size_t i = 0; i < line.size(); ++i) {
+        if (line[i] == '\x1b') {
+            while (i < line.size() && line[i] != 'm')
+                ++i;
+            continue;
+        }
+        plain += line[i];
+    }
+    return plain;
+}
+} // namespace
+
+TEST_CASE("Footer hints follow the focus", "[tui][footer]") {
+    RealDbApp t;
+    auto handler = t.app->GetEventHandler();
+
+    SECTION("filter pane: views and projects") {
+        const auto footer = footer_of(*t.app);
+        REQUIRE_THAT(footer, Catch::Matchers::ContainsSubstring("new project"));
+        REQUIRE_THAT(footer, !Catch::Matchers::ContainsSubstring("bookmark"));
+    }
+    SECTION("article list: article actions") {
+        handler->OnEvent(Event::Character("l"));
+        const auto footer = footer_of(*t.app);
+        REQUIRE_THAT(footer, Catch::Matchers::ContainsSubstring("bookmark"));
+        REQUIRE_THAT(footer, Catch::Matchers::ContainsSubstring("tags"));
+    }
+    SECTION("with a selection: selection actions") {
+        handler->OnEvent(Event::Character("l"));
+        handler->OnEvent(Event::Character(" "));
+        REQUIRE_THAT(footer_of(*t.app), Catch::Matchers::ContainsSubstring("rate selection"));
+    }
+    SECTION("rebound keys are shown as bound") {
+        Config cfg = make_test_config();
+        cfg.set_key_mappings({{"bookmark", "B"}});
+        auto db = std::make_unique<Arxiv::DatabaseManager>(":memory:");
+        for (const auto& a : arxiv_tui::test::fixtures::sample_articles)
+            db->AddArticle(a);
+        ArxivApp app(cfg,
+                     std::move(db),
+                     std::make_unique<FetcherMock>(),
+                     KeyBindings{cfg.get_key_mappings()});
+        app.GetCore().SetFilterIndex(Arxiv::AppCore::FilterView::All);
+        app.GetEventHandler()->OnEvent(Event::Character("l"));
+        REQUIRE_THAT(footer_of(app), Catch::Matchers::ContainsSubstring("B bookmark"));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The filter pane says how many papers each view holds and labels the tag and
+// project sections.
+// ---------------------------------------------------------------------------
+
+namespace {
+std::vector<std::string> plain_lines(ArxivApp& app) {
+    std::vector<std::string> out;
+    for (const auto& line : render_lines(app, 160, 30)) {
+        std::string plain;
+        for (std::size_t i = 0; i < line.size(); ++i) {
+            if (line[i] == '\x1b') {
+                while (i < line.size() && line[i] != 'm')
+                    ++i;
+                continue;
+            }
+            plain += line[i];
+        }
+        out.push_back(plain);
+    }
+    return out;
+}
+
+bool any_line_matches(const std::vector<std::string>& lines, const std::string& pattern) {
+    const std::regex re(pattern);
+    return std::any_of(
+        lines.begin(), lines.end(), [&](const auto& l) { return std::regex_search(l, re); });
+}
+} // namespace
+
+TEST_CASE("Filter pane shows counts and section headers", "[tui][filters]") {
+    RealDbApp t; // sample_articles[1] is bookmarked, nothing is read
+    const auto& fx = arxiv_tui::test::fixtures::sample_articles;
+    auto& core = t.app->GetCore();
+    const auto all = std::to_string(fx.size());
+
+    SECTION("Bookmarks has its count") {
+        REQUIRE(any_line_matches(plain_lines(*t.app), "Bookmarks +1 "));
+    }
+    SECTION("Unread has its count") {
+        REQUIRE(any_line_matches(plain_lines(*t.app), "Unread +" + all + " "));
+    }
+    SECTION("counts follow changes") {
+        core.ToggleBookmark(fx[0].link);
+        REQUIRE(any_line_matches(plain_lines(*t.app), "Bookmarks +2 "));
+    }
+    SECTION("no section headers without tags or projects") {
+        const auto lines = plain_lines(*t.app);
+        REQUIRE_FALSE(any_line_matches(lines, "│ *Tags *│"));
+        REQUIRE_FALSE(any_line_matches(lines, "│ *Projects *│"));
+    }
+    SECTION("tags and projects get headers and counts") {
+        core.LinkArticleToTag(fx[0].link, "qcd");
+        core.AddProject("thesis");
+        core.LinkArticleToProject(fx[0].link, "thesis");
+        core.LinkArticleToProject(fx[1].link, "thesis");
+        const auto lines = plain_lines(*t.app);
+        REQUIRE(any_line_matches(lines, "│ *Tags *│"));
+        REQUIRE(any_line_matches(lines, "│ *Projects *│"));
+        REQUIRE(any_line_matches(lines, "#qcd +1 "));
+        REQUIRE(any_line_matches(lines, "thesis +2 "));
+    }
+    SECTION("headers are skipped by navigation") {
+        core.LinkArticleToTag(fx[0].link, "qcd");
+        core.SetFilterIndex(Arxiv::AppCore::FilterView::Unread);
+        t.app->GetEventHandler()->OnEvent(Event::Character("j"));
+        REQUIRE(core.CurrentTag() == "qcd");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The detail pane shows what is known about the paper, not just its text.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Detail pane shows id, category, rating, tags and projects", "[tui][detail]") {
+    RealDbApp t;
+    auto& core = t.app->GetCore();
+    const auto focused = core.GetCurrentArticles().front();
+    t.db->SetRating(focused.link, 4);
+    core.LinkArticleToTag(focused.link, "qcd");
+    core.AddProject("thesis");
+    core.LinkArticleToProject(focused.link, "thesis");
+    core.SetFilterIndex(Arxiv::AppCore::FilterView::All);
+    t.app->GetEventHandler()->OnEvent(Event::Character("a")); // open the detail pane
+    const auto lines = plain_lines(*t.app);
+
+    SECTION("arXiv id") { REQUIRE(any_line_matches(lines, "arXiv:" + focused.id())); }
+    SECTION("category") { REQUIRE(any_line_matches(lines, "Category: " + focused.category)); }
+    SECTION("rating") { REQUIRE(any_line_matches(lines, "Rating: ★★★★☆")); }
+    SECTION("tags") { REQUIRE(any_line_matches(lines, "Tags: #qcd")); }
+    SECTION("projects") { REQUIRE(any_line_matches(lines, "Projects: thesis")); }
+}
+
+TEST_CASE("Detail pane leaves out what a paper does not have", "[tui][detail]") {
+    RealDbApp t;
+    t.app->GetEventHandler()->OnEvent(Event::Character("a"));
+    const auto lines = plain_lines(*t.app);
+    REQUIRE_FALSE(any_line_matches(lines, "Tags:"));
+    REQUIRE_FALSE(any_line_matches(lines, "Projects:"));
+    REQUIRE(any_line_matches(lines, "Rating: not rated"));
+}
+
+// ---------------------------------------------------------------------------
+// Mouse: click a view or an article to select it, wheel to move.
+// ---------------------------------------------------------------------------
+
+namespace {
+// Screen position of the first cell of `needle`, after a 160x30 render.
+std::pair<int, int> where(ArxivApp& app, const std::string& needle) {
+    const auto lines = plain_lines(app);
+    for (int y = 0; y < static_cast<int>(lines.size()); ++y)
+        if (auto x = display_col(lines[static_cast<std::size_t>(y)], needle);
+            x != std::string::npos)
+            return {static_cast<int>(x), y};
+    return {-1, -1};
+}
+
+Event mouse(ftxui::Mouse::Button button, int x, int y) {
+    ftxui::Mouse m;
+    m.button = button;
+    m.motion = ftxui::Mouse::Pressed;
+    m.x = x;
+    m.y = y;
+    return Event::Mouse("", m);
+}
+} // namespace
+
+TEST_CASE("Mouse selects views and articles", "[tui][mouse]") {
+    RealDbApp t;
+    auto& core = t.app->GetCore();
+    auto handler = t.app->GetEventHandler();
+    const auto second = core.GetCurrentArticles().at(1);
+
+    SECTION("clicking a view selects it and focuses the filter pane") {
+        handler->OnEvent(Event::Character("l")); // focus the article list first
+        auto [x, y] = where(*t.app, "Bookmarks");
+        REQUIRE(x >= 0);
+        handler->OnEvent(mouse(ftxui::Mouse::Left, x + 1, y));
+        REQUIRE(core.GetFilterView() == Arxiv::AppCore::FilterView::Bookmarks);
+        REQUIRE_THAT(footer_of(*t.app), Catch::Matchers::ContainsSubstring("new project"));
+    }
+    SECTION("clicking an article selects it and focuses the list") {
+        auto [x, y] = where(*t.app, second.title.substr(0, 15));
+        REQUIRE(x >= 0);
+        handler->OnEvent(mouse(ftxui::Mouse::Left, x + 1, y));
+        REQUIRE(core.GetArticleIndex() == 1);
+        REQUIRE_THAT(footer_of(*t.app), Catch::Matchers::ContainsSubstring("bookmark"));
+    }
+    SECTION("the wheel over the list moves the cursor") {
+        auto [x, y] = where(*t.app, second.title.substr(0, 15));
+        handler->OnEvent(mouse(ftxui::Mouse::WheelDown, x + 1, y));
+        REQUIRE(core.GetArticleIndex() == 1);
+    }
+    SECTION("the wheel over the filters changes view") {
+        auto [x, y] = where(*t.app, "Bookmarks");
+        handler->OnEvent(mouse(ftxui::Mouse::WheelDown, x + 1, y));
+        REQUIRE(core.GetFilterView() == Arxiv::AppCore::FilterView::Bookmarks);
+    }
+    SECTION("an open dialog keeps clicks from reaching the panes") {
+        auto [x, y] = where(*t.app, second.title.substr(0, 15));
+        handler->OnEvent(Event::Character("/")); // search dialog
+        handler->OnEvent(mouse(ftxui::Mouse::Left, x + 1, y));
+        REQUIRE(core.GetArticleIndex() == 0);
+    }
 }

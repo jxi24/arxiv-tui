@@ -66,6 +66,10 @@ void ArxivApp::SelectArticle(int index) {
         core.MarkArticleRead(articles[static_cast<size_t>(idx)].link);
 }
 
+namespace {
+constexpr int kStatusWidth = 2;
+} // namespace
+
 void ArxivApp::SetupArticlePane() {
     MenuOption option;
     option.on_change = [&] { SelectArticle(article_menu_index); };
@@ -162,10 +166,17 @@ void ArxivApp::SetupArticlePane() {
                    borderStyled(ROUNDED, TextColors::border());
         }
 
-        int filter_width = FilterPaneWidth();
-        int remaining_width = Terminal::Size().dimx - filter_width - border_size;
-        int articles_width = show_detail ? remaining_width / 2 : remaining_width;
-        visible_rows = Terminal::Size().dimy - 5;
+        // The pane's own size last frame; before the first frame, estimate
+        // it from the screen.
+        int articles_width = m_article_box.x_max - m_article_box.x_min + 1;
+        int pane_height = m_article_box.y_max - m_article_box.y_min + 1;
+        if (articles_width <= 1 || pane_height <= 1) {
+            const int remaining = ScreenWidth() - FilterPaneWidth();
+            articles_width = show_detail ? remaining / 2 : remaining;
+            pane_height = ScreenHeight() - 1; // footer
+        }
+        // Border (2), header, separator, column header, separator.
+        visible_rows = std::max(1, pane_height - 6);
 
         UpdateVisibleRange();
 
@@ -196,7 +207,8 @@ void ArxivApp::SetupArticlePane() {
         std::vector<std::string> configured_cols = core.GetConfig().get_article_columns();
         const bool has_title = std::find(configured_cols.begin(), configured_cols.end(), "title") !=
                                configured_cols.end();
-        const int usable = articles_width - 3; // 2 border + 1 scroll indicator
+        // 2 border + 1 scroll indicator + the 2-cell status column.
+        const int usable = articles_width - 3 - kStatusWidth;
         const int min_title = std::max(24, usable * 45 / 100);
         auto title_width = [&] {
             int fixed = 0;
@@ -233,8 +245,9 @@ void ArxivApp::SetupArticlePane() {
             return s.substr(0, static_cast<size_t>(w - 1)) + "…";
         };
 
-        // Build column header row.
-        Elements header_cells;
+        // Build column header row (blank over the status column).
+        Elements header_cells = {text(std::string(kStatusWidth, ' ')) |
+                                 size(WIDTH, EQUAL, kStatusWidth)};
         for (size_t ci = 0; ci < configured_cols.size(); ++ci) {
             const auto& col = configured_cols[ci];
             int w = (col == "title") ? title_w : col_width(col);
@@ -268,11 +281,6 @@ void ArxivApp::SetupArticlePane() {
             std::string title_cell;
             if (has_title) {
                 std::string title = article.title;
-                if (is_selected) {
-                    title = "[*] " + title;
-                } else if (article.bookmarked) {
-                    title = "⭐ " + title;
-                }
                 if (is_current) {
                     size_t start_pos = static_cast<size_t>(std::floor(title_start_position)) %
                                        article.title.length();
@@ -285,8 +293,12 @@ void ArxivApp::SetupArticlePane() {
                 }
             }
 
-            // Build the row as an hbox of column cells.
-            Elements cells;
+            // Build the row as an hbox of column cells, after a status column:
+            // "+" selected, "★" bookmarked (single-width, so titles line up).
+            Elements cells = {
+                hbox({text(is_selected ? "+" : " ") | color(TextColors::secondary()),
+                      text(article.bookmarked ? "★" : " ") | color(TextColors::secondary())}) |
+                size(WIDTH, EQUAL, kStatusWidth)};
             for (size_t ci = 0; ci < configured_cols.size(); ++ci) {
                 const auto& col = configured_cols[ci];
                 int w = (col == "title") ? title_w : col_width(col);
@@ -341,6 +353,6 @@ void ArxivApp::SetupArticlePane() {
                      col_header,
                      separator() | color(TextColors::border()),
                      vbox(menu_items) | vscroll_indicator | frame}) |
-               borderStyled(ROUNDED, TextColors::border());
+               borderStyled(ROUNDED, TextColors::border()) | reflect(m_article_box);
     });
 }

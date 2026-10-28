@@ -39,7 +39,10 @@ Filtering
 ---------
 
 The left pane lists all available filters. Switch between them with ``h``/``l``
-to move focus to the filter pane, then ``j``/``k`` to select:
+to move focus to the filter pane, then ``j``/``k`` to select. Bookmarks,
+Unread, each tag and each project show how many papers they hold (the whole
+database, before any category filter), and tags and projects are listed under
+their own **Tags** and **Projects** headings:
 
 .. list-table::
    :header-rows: 1
@@ -204,6 +207,16 @@ Set ``max_article_age_days`` in ``config.yml`` to automatically remove old
 articles on startup. Articles are exempt from pruning if they are bookmarked,
 rated, or assigned to a project. Set the value to ``0`` (the default) to
 disable pruning entirely.
+
+Tags
+----
+
+Press ``#`` to tag the focused article, or every selected article. The dialog
+lists your tags with ``[x]`` (all targets have it), ``[-]`` (some do) or
+``[ ]``; ``Enter`` or ``Space`` adds the tag to all targets, or removes it
+when they all have it. ``+`` creates a new tag and applies it; ``Del`` deletes
+a tag from every paper after asking. Each tag gets a ``#name`` entry in the
+filter pane.
 
 Undo delete
 -----------
