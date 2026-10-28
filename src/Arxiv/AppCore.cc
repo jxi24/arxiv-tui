@@ -166,7 +166,9 @@ AppCore::AppCore(const Config& config,
             // Leave last_fetch_date alone so the next launch retries the
             // same backfill window instead of skipping the missed days.
             spdlog::error("[AppCore]: Fetch failed: {}", e.what());
+            SetFetchError(e.what());
             Record("appcore/bg_fetch_failed", e.what());
+            m_needs_refetch.store(true); // repaint: the footer shows the failure
             m_fetching.store(false);
             return;
         }
@@ -186,6 +188,7 @@ AppCore::AppCore(const Config& config,
         m_db->SetMetadata("last_fetch_end_ts", end_ts);
         // Only now are the days up to today covered.
         m_db->SetMetadata("last_fetch_date", today);
+        SetFetchError("");
         if (!headless) {
             // What the next session's New Articles window starts from.
             m_db->SetMetadata("last_view_end_ts", end_ts);
@@ -1488,9 +1491,11 @@ void AppCore::RefreshFromNetwork() {
         m_db->AddArticles(articles);
         m_db->SetMetadata("last_fetch_end_ts", std::to_string(now_ts()));
         m_last_fetch_ok.store(true);
+        SetFetchError("");
         spdlog::info("[AppCore]: Auto-refresh stored {} article(s)", articles.size());
     } catch (const std::exception& e) {
         m_last_fetch_ok.store(false);
+        SetFetchError(e.what());
         spdlog::error("[AppCore]: Auto-refresh failed: {}", e.what());
     }
     m_fetching.store(false);

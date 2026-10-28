@@ -244,6 +244,12 @@ class AppCore {
     // True once the most recent network fetch (initial or auto-refresh)
     // completed and was stored.
     bool LastFetchSucceeded() const { return m_last_fetch_ok.load(); }
+    /// Why the last fetch (initial or auto-refresh) failed; empty once one
+    /// succeeds. Thread-safe.
+    std::string LastFetchError() const {
+        std::lock_guard<std::mutex> lock(m_fetch_error_mutex);
+        return m_fetch_error;
+    }
     void WaitForInitialFetch();
 
     // Category (arxiv tag) filter applied across every view. The set is
@@ -479,6 +485,12 @@ class AppCore {
     std::thread m_initial_fetch_thread;
     std::atomic<bool> m_fetching{false};
     std::atomic<bool> m_last_fetch_ok{false};
+    mutable std::mutex m_fetch_error_mutex;
+    std::string m_fetch_error; // guarded by m_fetch_error_mutex
+    void SetFetchError(std::string error) {
+        std::lock_guard<std::mutex> lock(m_fetch_error_mutex);
+        m_fetch_error = std::move(error);
+    }
     ReplayRecorder* m_recorder = nullptr;
 
     // Active arxiv categories — empty = no filter. Initialised in the

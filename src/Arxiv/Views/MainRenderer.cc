@@ -146,7 +146,13 @@ void ArxivApp::SetupMainRenderer() {
         const std::size_t left_width = quit_key.size() + help_key.size() + filter_label.size() +
                                        (filter_detail.empty() ? 0 : filter_detail.size() + 2) +
                                        position.size() + hints_width + 34;
-        if (left_width + topics_str.size() + 2 <= static_cast<std::size_t>(ScreenWidth()))
+        // A failed fetch takes the topics' place: the list is not current.
+        const std::string offline = core.IsFetching() || core.LastFetchError().empty()
+                                        ? ""
+                                        : "Offline: showing stored papers ";
+        if (!offline.empty())
+            footer_els.push_back(text(offline) | bold | color(TextColors::error()));
+        else if (left_width + topics_str.size() + 2 <= static_cast<std::size_t>(ScreenWidth()))
             footer_els.push_back(text(topics_str) | color(TextColors::subtext()));
         footer_els.push_back(text(" "));
 

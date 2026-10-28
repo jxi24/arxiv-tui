@@ -1434,3 +1434,31 @@ TEST_CASE("Deleting a project asks first", "[tui][projects][regression]") {
         REQUIRE(core.GetProjects() == std::vector<std::string>{"thesis"});
     }
 }
+
+// ---------------------------------------------------------------------------
+// A failed fetch is visible: the list used to keep showing old papers with
+// nothing to say they were not current.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("The footer says when arXiv could not be reached", "[tui][fetch]") {
+    auto db = std::make_unique<Arxiv::DatabaseManager>(":memory:");
+    for (const auto& a : arxiv_tui::test::fixtures::sample_articles)
+        db->AddArticle(a);
+    auto fetcher = std::make_unique<FetcherMock>();
+    ALLOW_CALL(*fetcher, Fetch()).THROW(Arxiv::FetchError("RSS feed returned HTTP 503"));
+    KeyBindings kb{std::vector<Config::KeyMapping>{}};
+    ArxivApp app(make_test_config(), std::move(db), std::move(fetcher), std::move(kb));
+
+    SECTION("the core reports the failure") {
+        REQUIRE(app.GetCore().LastFetchError().find("503") != std::string::npos);
+    }
+    SECTION("the footer shows it") {
+        REQUIRE_THAT(footer_of(app), Catch::Matchers::ContainsSubstring("Offline"));
+    }
+}
+
+TEST_CASE("No offline notice after a successful fetch", "[tui][fetch]") {
+    RealDbApp t;
+    REQUIRE(t.app->GetCore().LastFetchError().empty());
+    REQUIRE_THAT(footer_of(*t.app), !Catch::Matchers::ContainsSubstring("Offline"));
+}

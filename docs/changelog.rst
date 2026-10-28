@@ -7,6 +7,10 @@ Changelog
 Unreleased
 ----------
 
+- **Offline notice** — when arXiv cannot be reached (at start-up or on an
+  auto refresh) the footer says "Offline: showing stored papers" until a
+  fetch succeeds; before, the list just stayed as it was.
+
 - **Accented names and titles are cut cleanly** — the article list
   truncated author names and other columns, and scrolled long titles, by
   byte, so a cut could fall inside a character (``Schr\xC3…``). Both now work
