@@ -2629,3 +2629,25 @@ TEST_CASE("Project JSON import: missing dates and blank names", "[appcore][impor
     }
     std::filesystem::remove_all(dir);
 }
+
+TEST_CASE("StartRefresh fetches in the background", "[appcore][fetch]") {
+    // The GUI's Refresh only re-read the database; a network refresh existed
+    // only as the timed auto-refresh.
+    auto fetcher = std::make_unique<FetcherMock>();
+    const auto paper = arxiv_tui::test::fixtures::sample_articles[0];
+    ALLOW_CALL(*fetcher, Fetch()).RETURN(std::vector<Arxiv::Article>{paper});
+    Arxiv::Config cfg;
+    cfg.set_topics({"hep-ph"});
+    Arxiv::AppCore core(cfg,
+                        std::make_unique<Arxiv::DatabaseManager>(":memory:"),
+                        std::move(fetcher),
+                        Arxiv::AppCore::FetchMode::Offline);
+    core.SetFilterIndex(Arxiv::AppCore::FilterView::All);
+    REQUIRE(core.GetCurrentArticles().empty());
+
+    REQUIRE(core.StartRefresh());
+    core.WaitForRefresh();
+    core.TryRefetchIfNeeded();
+
+    REQUIRE(core.GetCurrentArticles().size() == 1);
+}

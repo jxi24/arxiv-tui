@@ -225,6 +225,7 @@ AppCore::AppCore(const Config& config,
 AppCore::~AppCore() {
     Record("appcore/dtor_begin", std::string("fetching=") + (m_fetching.load() ? "1" : "0"));
     StopAutoRefresh();
+    WaitForRefresh();
     WaitForInitialFetch();
     WaitForBackgroundTask();
     // The training thread's completion callback uses this object.
@@ -1576,6 +1577,21 @@ void AppCore::RefreshFromNetwork() {
     }
     m_fetching.store(false);
     m_needs_refetch.store(true);
+}
+
+bool AppCore::StartRefresh() {
+    if (m_fetching.load())
+        return false;
+    WaitForRefresh(); // the previous one has finished (m_fetching is false)
+    // RefreshFromNetwork only touches the fetcher and the DB; the UI thread
+    // picks the result up through TryRefetchIfNeeded.
+    m_refresh_once_thread = std::thread([this] { RefreshFromNetwork(); });
+    return true;
+}
+
+void AppCore::WaitForRefresh() {
+    if (m_refresh_once_thread.joinable())
+        m_refresh_once_thread.join();
 }
 
 void AppCore::StopAutoRefresh() {

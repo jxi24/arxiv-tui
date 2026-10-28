@@ -243,6 +243,11 @@ class AppCore {
     // Test hook: refresh on a custom interval instead of auto_refresh_minutes.
     void StartAutoRefresh(std::chrono::milliseconds interval);
     void StopAutoRefresh();
+    /// One network refresh on a background thread (the GUI's Refresh). False
+    /// if a fetch is already running. The list updates through
+    /// TryRefetchIfNeeded, like the auto-refresh.
+    bool StartRefresh();
+    void WaitForRefresh();
     bool IsAutoRefreshing() const;
     int GetAutoRefreshMinutes() const;
 
@@ -486,6 +491,7 @@ class AppCore {
 
     // Background auto-refresh
     std::thread m_refresh_thread;
+    std::thread m_refresh_once_thread; // StartRefresh
     std::atomic<bool> m_refresh_running{false};
     std::condition_variable m_refresh_cv;
     std::mutex m_refresh_mutex;
