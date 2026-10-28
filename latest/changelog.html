@@ -6,7 +6,7 @@
 <link rel="index" title="Index" href="genindex.html"><link rel="search" title="Search" href="search.html"><link rel="prev" title="Contributing" href="contributing.html">
         <link rel="prefetch" href="_static/logo.svg" as="image">
 
-    <link rel="shortcut icon" href="_static/logo.svg"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+    <link rel="shortcut icon" href="_static/logo.svg"><!-- Generated with Sphinx 9.1.1 and Furo 2025.12.19 -->
         <title>Changelog - arxiv-tui</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo.css?v=7bdb33bb" />
@@ -310,6 +310,11 @@
 <section id="unreleased">
 <h2>Unreleased<a class="headerlink" href="#unreleased" title="Link to this heading">¶</a></h2>
 <ul class="simple">
+<li><p><strong>Settings take effect immediately</strong> — the Obsidian vault, <em>Download
+PDFs</em>, recommend threshold and retrain interval changed in the Settings
+dialog now apply as soon as the dialog closes instead of after a restart.
+Topics, the auto-refresh interval and the directory <code class="docutils literal notranslate"><span class="pre">d</span></code> downloads into
+still need a restart.</p></li>
 <li><p><strong>Obsidian export without PDFs</strong> — <code class="docutils literal notranslate"><span class="pre">o</span></code> no longer downloads each PDF into
 the vault. Notes link to the PDF on arXiv instead
 (<code class="docutils literal notranslate"><span class="pre">[PDF</span> <span class="pre">on</span> <span class="pre">arXiv](https://arxiv.org/pdf/&lt;id&gt;)</span></code>), keeping git-synced vaults
