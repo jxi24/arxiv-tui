@@ -1556,3 +1556,121 @@ TEST_CASE("A new sub-project with spaces around its name keeps its parent",
 
     REQUIRE(t.db->GetProjectParent("ch") == "thesis");
 }
+
+// ---------------------------------------------------------------------------
+// Vim-like jumps: gg / G move to the ends of the focused pane's list.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("gg and G jump to the ends of the article list", "[tui][jump]") {
+    RealDbApp t;
+    auto handler = t.app->GetEventHandler();
+    auto& core = t.app->GetCore();
+    // Enough articles that the top, the bottom and the row before it differ.
+    Arxiv::Article extra = arxiv_tui::test::fixtures::sample_articles.front();
+    for (const char* id : {"2403.90001", "2403.90002", "2403.90003"}) {
+        extra.link = std::string("https://arxiv.org/abs/") + id;
+        t.db->AddArticle(extra);
+    }
+    core.SetFilterIndex(Arxiv::AppCore::FilterView::All);
+    core.FetchArticles();
+    const int last = static_cast<int>(core.GetCurrentArticles().size()) - 1;
+    REQUIRE(last >= 2);
+    handler->OnEvent(Event::Character("l")); // focus the article pane
+    auto press = [&](const char* key) { handler->OnEvent(Event::Character(key)); };
+
+    SECTION("G goes to the last article") {
+        press("G");
+        REQUIRE(core.GetArticleIndex() == last);
+    }
+    SECTION("gg goes to the first article") {
+        press("G");
+        press("g");
+        press("g");
+        REQUIRE(core.GetArticleIndex() == 0);
+    }
+    SECTION("one g does not move") {
+        press("G");
+        press("g");
+        REQUIRE(core.GetArticleIndex() == last);
+    }
+    SECTION("a periodic refresh event does not interrupt gg") {
+        press("G");
+        press("g");
+        handler->OnEvent(Event::Custom);
+        press("g");
+        REQUIRE(core.GetArticleIndex() == 0);
+    }
+    SECTION("another key after g acts normally and cancels gg") {
+        press("G");
+        press("g");
+        press("k");
+        press("g");
+        REQUIRE(core.GetArticleIndex() == last - 1);
+    }
+    SECTION("G right after g still goes to the bottom") {
+        press("j");
+        press("g");
+        press("G");
+        REQUIRE(core.GetArticleIndex() == last);
+    }
+    SECTION("a third g starts over") {
+        press("G");
+        press("g");
+        press("g");
+        press("G");
+        press("g");
+        REQUIRE(core.GetArticleIndex() == last);
+    }
+}
+
+TEST_CASE("Esc after g cancels the pending jump", "[tui][jump]") {
+    RealDbApp t;
+    auto handler = t.app->GetEventHandler();
+    handler->OnEvent(Event::Character("l"));
+    handler->OnEvent(Event::Character("G"));
+    handler->OnEvent(Event::Character("g"));
+    handler->OnEvent(Event::Escape);
+    handler->OnEvent(Event::Character("g"));
+    REQUIRE(t.app->GetCore().GetArticleIndex() ==
+            static_cast<int>(t.app->GetCore().GetCurrentArticles().size()) - 1);
+}
+
+TEST_CASE("gg and G move through the filter list when it has focus", "[tui][jump]") {
+    RealDbApp t;
+    auto handler = t.app->GetEventHandler();
+    auto& core = t.app->GetCore();
+    const int last = static_cast<int>(core.GetFilterOptions().size()) - 1;
+
+    handler->OnEvent(Event::Character("G"));
+    REQUIRE(core.GetFilterIndex() == last);
+
+    handler->OnEvent(Event::Character("g"));
+    handler->OnEvent(Event::Character("g"));
+    REQUIRE(core.GetFilterIndex() == 0);
+}
+
+TEST_CASE("Jump keys go to an open dialog as text", "[tui][jump]") {
+    RealDbApp t;
+    auto handler = t.app->GetEventHandler();
+    handler->OnEvent(Event::Character("p")); // new project (filter pane)
+    handler->OnEvent(Event::Character("g"));
+    handler->OnEvent(Event::Character("G"));
+    handler->OnEvent(Event::Return);
+    REQUIRE(t.app->GetCore().GetProjects() == std::vector<std::string>{"gG"});
+}
+
+TEST_CASE("A remapped jump key takes effect", "[tui][jump]") {
+    auto owned = std::make_unique<Arxiv::DatabaseManager>(":memory:");
+    for (const auto& a : arxiv_tui::test::fixtures::sample_articles)
+        owned->AddArticle(a);
+    KeyBindings kb{std::vector<Config::KeyMapping>{{"go_to_bottom", "ge"}}};
+    ArxivApp app(
+        make_test_config(), std::move(owned), std::make_unique<FetcherMock>(), std::move(kb));
+    app.GetCore().SetFilterIndex(Arxiv::AppCore::FilterView::All);
+    auto handler = app.GetEventHandler();
+    handler->OnEvent(Event::Character("l"));
+    handler->OnEvent(Event::Character("g"));
+    handler->OnEvent(Event::Character("e"));
+    REQUIRE(app.GetCore().GetArticleIndex() ==
+            static_cast<int>(app.GetCore().GetCurrentArticles().size()) - 1);
+}

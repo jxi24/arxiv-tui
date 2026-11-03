@@ -199,7 +199,8 @@ class ArxivApp {
     // Size of the drawing area last frame (the terminal before the first).
     int ScreenWidth() const;
     int ScreenHeight() const;
-    int top_article_index = 0; // Index of the article at the top of the visible area
+    int top_article_index = 0;  // Index of the article at the top of the visible area
+    std::string m_pending_keys; // start of a jump key sequence ("g" of "gg")
 
     // Components
     Component filter_menu;
@@ -286,6 +287,8 @@ class ArxivApp {
     bool HandleCategoryFilterEvent(ftxui::Event event);
     bool HandleSettingsEvent(ftxui::Event event);
     bool HandleGlobalEvent(ftxui::Event event);
+    // gg / G: move to the ends of the focused pane's list.
+    bool HandleJumpKeys(const ftxui::Event& event);
     // The open dialog's keys; it is modal, so this consumes every key.
     bool HandleDialogEvent(ftxui::Event event);
     // Clicks and the wheel over the filter pane and the article list.

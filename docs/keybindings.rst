@@ -24,6 +24,12 @@ Navigation
    * - ``k``
      - ``previous``
      - Move to the previous article
+   * - ``gg``
+     - ``go_to_top``
+     - Jump to the top of the focused list (articles or filters)
+   * - ``G``
+     - ``go_to_bottom``
+     - Jump to the bottom of the focused list (articles or filters)
    * - ``a``
      - ``show_detail``
      - Toggle the detail (abstract) pane
@@ -121,7 +127,7 @@ switching views). While a selection is active the article pane header shows
      - Delete every selected article (with confirmation)
    * - ``O``
      - Open every selected article in the browser
-   * - ``g`` / ``G`` / ``o``
+   * - ``z`` / ``Z`` / ``o``
      - Export the selection (digest, digest archive, Obsidian)
 
 Projects
@@ -169,12 +175,12 @@ Export & share
    * - ``X``
      - ``export_digest``
      - Write today's articles to ``digest-YYYY-MM-DD.md``
-   * - ``g``
+   * - ``z``
      - ``export_selected_digest``
      - Export the selection as a Markdown digest plus PDFs (background)
-   * - ``G``
+   * - ``Z``
      - ``export_digest_archive``
-     - As ``g``, then pack it into a ``.tar.gz`` (background)
+     - As ``z``, then pack it into a ``.tar.gz`` (background)
    * - ``o``
      - ``export_to_obsidian``
      - Export the selection to the Obsidian vault (background)
@@ -230,9 +236,10 @@ Add or override an entry in the ``key_mappings`` section of
      - action: quit
        key: Q          # quit with Q, so a stray q does not exit
 
-Keys are single characters and case-sensitive. If two actions end up on the
-same key only one of them fires; the help overlay (``?``) lists any such
-conflict.
+Keys are single characters and case-sensitive; ``go_to_top`` and
+``go_to_bottom`` may also be a sequence such as ``gg``. If two actions end up on
+the same key only one of them fires, and a key that starts a sequence does not
+fire at all; the help overlay (``?``) lists any such conflict.
 
 Mouse
 -----

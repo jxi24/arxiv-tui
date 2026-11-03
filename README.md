@@ -43,7 +43,7 @@ A keyboard-driven terminal user interface for browsing, managing, and downloadin
 - **Link deduplication** — incoming RSS and Atom feeds are normalised to a canonical URL form on ingestion, and any existing duplicates are cleaned up automatically on first run
 - **Undo delete** — press `u` to restore the last deleted article (or entire bulk-deleted selection) including its rating, project memberships, notes, and tags; a configurable ring buffer (default 10 steps) keeps the last N operations available for undo
 - **Help overlay search** — type while the `?` overlay is open to filter key bindings in real time; Backspace trims the query, Escape clears it, a second Escape closes the overlay
-- **Export digest as archive** — `G` packs the selected-articles digest (Markdown + PDFs) into a portable `.tar.gz` file
+- **Export digest as archive** — `Z` packs the selected-articles digest (Markdown + PDFs) into a portable `.tar.gz` file
 - **Desktop GUI** — optional `arxiv-gui` window (Dear ImGui) with the same views, search, ratings, tags, projects and downloads; dark theme, and icons when a Nerd Font is installed
 - **Careful with your files** — every file the app writes is written atomically (a full disk never leaves a half-written config or export); the database, logs and replay log are private to you (mode 0600); external programs are started without a shell; network responses, redirects and API paging are bounded
 
@@ -242,6 +242,7 @@ article_columns:
 | Key | Action |
 |-----|--------|
 | `j` / `k` | Next / previous article |
+| `gg` / `G` | Jump to the top / bottom of the focused list |
 | `h` / `l` | Move focus left / right between panes |
 | `a` | Toggle detail view |
 | `?` | Toggle help overlay (type to filter bindings) |
@@ -276,8 +277,8 @@ Select any number of articles with `Space`. While a selection is active, the art
 | `O` | Open all selected articles in the default browser |
 | `p` | Open project dialog in bulk-add mode — confirm links all selected to the checked projects |
 | `D` | Delete all selected articles (confirmation required) |
-| `g` | Export selected articles as a Markdown digest + PDF bundle |
-| `G` | Pack the digest output into a `.tar.gz` archive |
+| `z` | Export selected articles as a Markdown digest + PDF bundle |
+| `Z` | Pack the digest output into a `.tar.gz` archive |
 | `o` | Export selected articles to an Obsidian vault |
 
 ### Filtering and search
