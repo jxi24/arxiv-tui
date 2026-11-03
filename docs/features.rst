@@ -171,7 +171,7 @@ are selected the article pane header shows ``[N selected]``. Bulk actions:
 - ``W`` — rate all selected with a single score (``n`` rates only the focused one)
 - ``p`` — assign all selected to projects
 - ``D`` — delete all selected (with confirmation)
-- ``g`` — export as a Markdown digest + PDF bundle
+- ``z`` — export as a Markdown digest + PDF bundle
 - ``o`` — export to an Obsidian vault
 
 Clipboard integration

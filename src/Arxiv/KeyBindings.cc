@@ -27,7 +27,7 @@ struct ActionInfo {
 
 using Action = KeyBindings::Action;
 
-constexpr std::array<ActionInfo, 36> kActionTable = {{
+constexpr std::array<ActionInfo, 38> kActionTable = {{
     {Action::Next, "next", "j", "Next", "Navigation"},
     {Action::Previous, "previous", "k", "Previous", "Navigation"},
     {Action::Quit, "quit", "q", "Quit", "App"},
@@ -54,7 +54,7 @@ constexpr std::array<ActionInfo, 36> kActionTable = {{
     {Action::ClearSelection, "clear_selection", "C", "Clear Selection", "Selection"},
     {Action::ExportSelectedDigest,
      "export_selected_digest",
-     "g",
+     "z",
      "Export Selected Digest",
      "Export & share"},
     {Action::ExportToObsidian, "export_to_obsidian", "o", "Export to Obsidian", "Export & share"},
@@ -63,7 +63,7 @@ constexpr std::array<ActionInfo, 36> kActionTable = {{
     {Action::UndoDelete, "undo_delete", "u", "Undo Delete", "Articles"},
     {Action::ExportDigestArchive,
      "export_digest_archive",
-     "G",
+     "Z",
      "Export Digest Archive",
      "Export & share"},
     {Action::OpenInBrowser, "open_in_browser", "O", "Open in Browser", "Navigation"},
@@ -72,6 +72,8 @@ constexpr std::array<ActionInfo, 36> kActionTable = {{
     {Action::TagArticle, "tag_article", "#", "Tags", "Articles"},
     {Action::Rename, "rename", "E", "Rename Project/Tag", "Projects"},
     {Action::MoveProject, "move_project", "M", "Move Project", "Projects"},
+    {Action::GoToTop, "go_to_top", "gg", "Go to Top", "Navigation"},
+    {Action::GoToBottom, "go_to_bottom", "G", "Go to Bottom", "Navigation"},
 }};
 
 const ActionInfo* find_by_config_name(std::string_view name) {
@@ -180,6 +182,14 @@ bool KeyBindings::matches(const ftxui::Event& event, Action action) const {
     return event.character() == get_key(action);
 }
 
+KeyBindings::SequenceMatch KeyBindings::match_sequence(const std::string& typed,
+                                                       Action action) const {
+    const std::string key = get_key(action);
+    if (typed.empty() || key.compare(0, typed.size(), typed) != 0)
+        return SequenceMatch::None;
+    return key.size() == typed.size() ? SequenceMatch::Full : SequenceMatch::Partial;
+}
+
 std::vector<KeyBindings::BindingInfo>
 KeyBindings::grouped_bindings(const std::string& query) const {
     static constexpr std::array<std::string_view, 7> kGroupOrder = {
@@ -209,6 +219,14 @@ std::vector<KeyBindings::Conflict> KeyBindings::Conflicts() const {
     for (const auto& [action, key] : bindings_)
         if (!key.empty())
             by_key[key].push_back(get_action_name(action));
+    // A key that starts a jump sequence never fires: the app waits for the
+    // rest of the sequence.
+    for (const Action jump : {Action::GoToTop, Action::GoToBottom}) {
+        const std::string sequence = get_key(jump);
+        for (auto& [key, actions] : by_key)
+            if (key.size() < sequence.size() && sequence.compare(0, key.size(), key) == 0)
+                actions.push_back(get_action_name(jump));
+    }
     std::vector<Conflict> conflicts;
     for (auto& [key, actions] : by_key)
         if (actions.size() > 1)

@@ -10,6 +10,7 @@
 #include <chrono>
 #include <cstdio>
 #include <ctime>
+#include <utility>
 
 #include "spdlog/spdlog.h"
 
@@ -318,6 +319,8 @@ void ArxivApp::SetupEventHandler() {
         if (dialog_depth != Dialog::None)
             return HandleDialogEvent(event);
 
+        if (HandleJumpKeys(event))
+            return true;
         if (key_bindings.matches(event, KeyBindings::Action::ShowHelp)) {
             ToggleHelp();
             return true;
@@ -450,6 +453,40 @@ bool ArxivApp::HandleMouseEvent(ftxui::Event event) {
         return true;
     }
     return false;
+}
+
+bool ArxivApp::HandleJumpKeys(const ftxui::Event& event) {
+    // Posted by the refresh thread: not a key, so it must not interrupt "gg".
+    if (event == Event::Custom)
+        return false;
+    const std::string pending = std::exchange(m_pending_keys, {});
+    if (!event.is_character())
+        return !pending.empty() && event == Event::Escape; // Esc cancels, not quits
+
+    auto jump = [&](bool to_top) {
+        if (focused_pane == 0) {
+            SelectFilter(to_top ? 0 : static_cast<int>(core.GetFilterOptions().size()) - 1);
+        } else {
+            SelectArticle(to_top ? 0 : static_cast<int>(core.GetCurrentArticles().size()) - 1);
+        }
+    };
+    auto try_keys = [&](const std::string& typed) {
+        using Match = KeyBindings::SequenceMatch;
+        const Match top = key_bindings.match_sequence(typed, KeyBindings::Action::GoToTop);
+        const Match bottom = key_bindings.match_sequence(typed, KeyBindings::Action::GoToBottom);
+        if (top == Match::Full || bottom == Match::Full) {
+            jump(top == Match::Full);
+            return true;
+        }
+        if (top == Match::Partial || bottom == Match::Partial) {
+            m_pending_keys = typed;
+            return true;
+        }
+        return false;
+    };
+    // A key that does not continue the sequence counts on its own.
+    return (!pending.empty() && try_keys(pending + event.character())) ||
+           try_keys(event.character());
 }
 
 bool ArxivApp::HandleGlobalEvent(ftxui::Event event) {

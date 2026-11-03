@@ -51,7 +51,9 @@ class KeyBindings {
         TagArticle,
         ClearSelection,
         Rename,
-        MoveProject
+        MoveProject,
+        GoToTop,
+        GoToBottom
     };
 
     KeyBindings() = default;
@@ -98,6 +100,11 @@ class KeyBindings {
 
     // Check if an event matches a specific action
     bool matches(const ftxui::Event& event, Action action) const;
+
+    // How the keys typed so far compare with `action`'s binding, for actions
+    // that may be bound to a key sequence ("gg"); matches() is single-key.
+    enum class SequenceMatch { None, Partial, Full };
+    SequenceMatch match_sequence(const std::string& typed, Action action) const;
 
   private:
     std::map<Action, std::string> bindings_;

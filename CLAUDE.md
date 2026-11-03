@@ -244,6 +244,7 @@ error. Add a new migration as the next version, not as another
 | Key | Action |
 |-----|--------|
 | `j` / `k` | Next / previous article |
+| `gg` / `G` | Jump to the top / bottom of the focused list (`ArxivApp::HandleJumpKeys`; only these two actions can be key sequences) |
 | `h` / `l` | Move focus left / right between panes |
 | `b` | Toggle bookmark |
 | `d` | Download article PDF |

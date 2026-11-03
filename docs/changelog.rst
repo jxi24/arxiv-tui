@@ -4,6 +4,15 @@
 Changelog
 =========
 
+Unreleased
+----------
+
+- **Jump to the top or bottom** — ``gg`` and ``G`` move to the ends of the
+  focused list, as in vim (``go_to_top``, ``go_to_bottom``). This changes two
+  default keys: the selected digest moves from ``g`` to ``z`` and the digest
+  archive from ``G`` to ``Z``. If your ``config.yml`` binds an action to ``g``,
+  it no longer fires, and the help overlay (``?``) lists the conflict.
+
 v1.2.0
 ------
 

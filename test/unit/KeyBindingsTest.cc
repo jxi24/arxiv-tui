@@ -326,3 +326,42 @@ TEST_CASE("KeyBindings honours mappings saved under a display name", "[keybindin
     Arxiv::KeyBindings kb({{"Rate Article", "Z"}});
     REQUIRE(kb.get_key(Arxiv::KeyBindings::Action::RateArticle) == "Z");
 }
+
+TEST_CASE("KeyBindings: jump keys are vim-like by default", "[keybindings][jump]") {
+    KeyBindings kb(std::vector<Config::KeyMapping>{});
+    SECTION("gg goes to the top") { REQUIRE(kb.get_key(Action::GoToTop) == "gg"); }
+    SECTION("G goes to the bottom") { REQUIRE(kb.get_key(Action::GoToBottom) == "G"); }
+    SECTION("the digest exports moved off g and G") {
+        REQUIRE(kb.get_key(Action::ExportSelectedDigest) == "z");
+        REQUIRE(kb.get_key(Action::ExportDigestArchive) == "Z");
+    }
+}
+
+TEST_CASE("KeyBindings::match_sequence", "[keybindings][jump]") {
+    using Match = KeyBindings::SequenceMatch;
+    KeyBindings kb(std::vector<Config::KeyMapping>{});
+    SECTION("the first key of a sequence is partial") {
+        REQUIRE(kb.match_sequence("g", Action::GoToTop) == Match::Partial);
+    }
+    SECTION("the whole sequence is full") {
+        REQUIRE(kb.match_sequence("gg", Action::GoToTop) == Match::Full);
+    }
+    SECTION("a single-key binding is full at once") {
+        REQUIRE(kb.match_sequence("G", Action::GoToBottom) == Match::Full);
+    }
+    SECTION("other keys do not match") {
+        REQUIRE(kb.match_sequence("x", Action::GoToTop) == Match::None);
+    }
+    SECTION("keys past the end do not match") {
+        REQUIRE(kb.match_sequence("ggg", Action::GoToTop) == Match::None);
+    }
+}
+
+TEST_CASE("KeyBindings: a single key that starts a sequence is reported", "[keybindings][jump]") {
+    // "g" would never fire: the app waits for the second key of "gg".
+    KeyBindings kb(std::vector<Config::KeyMapping>{{"export_selected_digest", "g"}});
+    const auto conflicts = kb.Conflicts();
+    REQUIRE(conflicts.size() == 1);
+    REQUIRE(conflicts[0].key == "g");
+    REQUIRE(conflicts[0].actions.size() == 2);
+}
