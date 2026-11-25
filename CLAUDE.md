@@ -141,7 +141,7 @@ Resolves all runtime file locations at startup following the XDG Base Directory 
 Maps string action names to `ftxui::Event` instances from the config.
 
 **`Article`** (`Article.hh`)
-Plain data struct: `link`, `title`, `authors`, `abstract`, `date` (Unix timestamp), `bookmarked`. `id()` is everything after `/abs/` (old-style ids keep their archive prefix); use `file_stem()` for file names.
+Plain data struct: `link`, `title`, `authors`, `abstract`, `date` (Unix timestamp), `bookmarked`. `id()` is everything after `/abs/` (old-style ids keep their archive prefix); use `file_stem()` for file names. Convert stored or imported Unix seconds with `FromUnixSeconds` (nullopt past `system_clock`'s 1678–2262 range), never `from_time_t`.
 
 **Background tasks** (`AppCore::Start*`)
 Obsidian export, selected digest (and archive) and PDF download run on one worker thread (`StartTask`). Inputs are captured on the UI thread; the worker only uses the fetcher, the filesystem and the DB, and reports via `GetBackgroundTaskStatus()`, which the main renderer shows as a badge. Worker threads (fetch, auto-refresh, training, tasks) never touch `m_current_articles` or invoke the update callback — they set `m_needs_refetch` / `m_pending_read` for the UI thread's `TryRefetchIfNeeded()`.

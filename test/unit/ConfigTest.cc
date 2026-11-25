@@ -455,3 +455,35 @@ TEST_CASE("Config regression: an empty key_mappings list survives save and load"
 
     REQUIRE(again.get_key_mappings().empty());
 }
+
+TEST_CASE("Config regression: a path with control characters is refused",
+          "[config][warnings][regression]") {
+    // Found by fuzz_config: yaml-cpp writes "\x17" escaped, and on reading it
+    // back turns a following U+FFFF into U+FFFD, so the value did not survive
+    // save and load. No real path holds control characters.
+    const std::string key = GENERATE(
+        std::string("obsidian_vault"), std::string("export_dir"), std::string("keywords_file"));
+    CAPTURE(key);
+    TempConfig tmp;
+    std::ofstream(tmp.path) << "article_settings:\n  download_dir: \"/tmp/a\\x17\xEF\xBF\xBF\"\n"
+                            << key << ": \"/tmp/b\\x08c\"\n";
+
+    Config cfg(tmp.path);
+
+    SECTION("download_dir keeps the default") { REQUIRE(cfg.get_download_dir().empty()); }
+    SECTION("the other path keeps the default") {
+        const std::string& value = key == "obsidian_vault" ? cfg.get_obsidian_vault()
+                                   : key == "export_dir"   ? cfg.get_export_dir()
+                                                           : cfg.get_keywords_file();
+        REQUIRE(value.empty());
+    }
+    SECTION("it is reported") { REQUIRE(cfg.get_warnings().size() == 2); }
+}
+
+TEST_CASE("Config: a path with non-ASCII characters is kept", "[config]") {
+    TempConfig tmp;
+    std::ofstream(tmp.path) << "article_settings:\n  download_dir: /tmp/Papiere/Übersicht\n";
+    Config cfg(tmp.path);
+    REQUIRE(cfg.get_download_dir() == "/tmp/Papiere/Übersicht");
+    REQUIRE(cfg.get_warnings().empty());
+}

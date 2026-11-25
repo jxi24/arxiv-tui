@@ -2719,3 +2719,23 @@ TEST_CASE("StartRefresh fetches in the background", "[appcore][fetch]") {
 
     REQUIRE(core.GetCurrentArticles().size() == 1);
 }
+
+TEST_CASE("AppCore regression: ImportProjectJSON ignores a date past year 2262",
+          "[app][import][regression]") {
+    // Found by fuzz_import_json: from_time_t(17000000000) overflowed the
+    // nanosecond count of system_clock (signed overflow, UB).
+    auto core = make_memory_core();
+    auto path = write_temp_json("huge_date",
+                                R"({"name": "p", "articles": [
+                                      {"link": "https://arxiv.org/abs/2401.00001", "date": 17000000000}
+                                    ]})");
+    const auto before = std::chrono::system_clock::now();
+
+    REQUIRE(core->ImportProjectJSON(path));
+    std::filesystem::remove(path);
+    auto imported = core->GetArticlesForProject("p");
+    REQUIRE(imported.size() == 1);
+    // Treated like a missing date: now.
+    REQUIRE(imported[0].date >= before - std::chrono::seconds(1));
+    REQUIRE(imported[0].date <= std::chrono::system_clock::now() + std::chrono::seconds(1));
+}

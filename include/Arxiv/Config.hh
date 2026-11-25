@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <map>
 #include <optional>
 #include <string>
@@ -66,6 +67,13 @@ class Config {
     static bool ValidRecommendThreshold(float t) { return t >= 1.0f && t <= 5.0f; }
     static bool ValidRetrainInterval(int n) { return n > 0; }
     static bool ValidNonNegative(int n) { return n >= 0; }
+    /// No ASCII control characters: no real path has them, and yaml-cpp does
+    /// not read every escaped one back byte for byte.
+    static bool ValidPath(const std::string& path) {
+        return std::none_of(path.begin(), path.end(), [](char c) {
+            return static_cast<unsigned char>(c) < 0x20 || c == 0x7F;
+        });
+    }
 
     void set_recommend_threshold(float t) { recommend_threshold_ = t; }
     void set_retrain_interval(int n) { retrain_interval_ = n; }
