@@ -24,7 +24,8 @@ inline std::optional<time_point> FromUnixSeconds(std::int64_t seconds) {
         std::chrono::duration_cast<std::chrono::seconds>(time_point::duration::max()).count();
     if (seconds > limit || seconds < -limit)
         return std::nullopt;
-    return time_point(std::chrono::duration_cast<time_point::duration>(std::chrono::seconds(seconds)));
+    return time_point(
+        std::chrono::duration_cast<time_point::duration>(std::chrono::seconds(seconds)));
 }
 
 struct Article {

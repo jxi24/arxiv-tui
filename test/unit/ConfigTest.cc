@@ -461,9 +461,8 @@ TEST_CASE("Config regression: a path with control characters is refused",
     // Found by fuzz_config: yaml-cpp writes "\x17" escaped, and on reading it
     // back turns a following U+FFFF into U+FFFD, so the value did not survive
     // save and load. No real path holds control characters.
-    const std::string key = GENERATE(std::string("obsidian_vault"),
-                                     std::string("export_dir"),
-                                     std::string("keywords_file"));
+    const std::string key = GENERATE(
+        std::string("obsidian_vault"), std::string("export_dir"), std::string("keywords_file"));
     CAPTURE(key);
     TempConfig tmp;
     std::ofstream(tmp.path) << "article_settings:\n  download_dir: \"/tmp/a\\x17\xEF\xBF\xBF\"\n"

@@ -790,7 +790,8 @@ TEST_CASE("Fetcher regression: a link with an embedded NUL is not an arXiv link"
     // checked only the bytes before the NUL and let the rest through.
     using namespace std::string_literals;
     SECTION("NUL after a valid id") {
-        REQUIRE_FALSE(Fetcher::IsArxivLink("https://arxiv.org/pdf/h\0\0\nr76https://arxiv.org/abs/"s));
+        REQUIRE_FALSE(
+            Fetcher::IsArxivLink("https://arxiv.org/pdf/h\0\0\nr76https://arxiv.org/abs/"s));
     }
     SECTION("NUL then a shell command") {
         REQUIRE_FALSE(Fetcher::IsArxivLink("https://arxiv.org/abs/2401.00001\0; rm -rf ~"s));
