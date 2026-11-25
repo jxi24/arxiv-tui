@@ -1508,3 +1508,23 @@ TEST_CASE("Projects and tags can be renamed", "[database][real][rename]") {
         REQUIRE_FALSE(db.RenameTag("qcd", "other"));
     }
 }
+
+TEST_CASE("Real DB regression: a stored date past year 2262 reads as the epoch",
+          "[database][real][regression]") {
+    // from_time_t on such a value overflows system_clock (signed overflow, UB).
+    TempDb tmp;
+    sqlite3_close(tmp.handle);
+    tmp.handle = nullptr;
+
+    DatabaseManager db(tmp.path.string());
+    db.AddArticle(sample_articles[0]);
+
+    sqlite3_open(tmp.path.c_str(), &tmp.handle);
+    tmp.exec("UPDATE articles SET date = 17000000000");
+    sqlite3_close(tmp.handle);
+    tmp.handle = nullptr;
+
+    auto stored = db.GetArticle(sample_articles[0].link);
+    REQUIRE(stored);
+    REQUIRE(stored->date == Arxiv::time_point{});
+}
