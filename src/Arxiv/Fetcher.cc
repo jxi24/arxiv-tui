@@ -293,7 +293,9 @@ bool Fetcher::IsArxivLink(const std::string& link) {
     constexpr std::string_view host = "https://arxiv.org/";
     if (link.size() > kMaxLinkLength || link.compare(0, host.size(), host) != 0)
         return false;
-    const std::string_view path(link.c_str() + host.size());
+    // Not c_str(): that view would end at an embedded NUL and leave the
+    // bytes after it unchecked.
+    const std::string_view path = std::string_view(link).substr(host.size());
     std::string_view id;
     for (std::string_view kind : {"abs/", "pdf/"})
         if (path.substr(0, kind.size()) == kind)

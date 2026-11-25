@@ -12,6 +12,7 @@
 #include <nlohmann/json.hpp>
 
 #include <chrono>
+#include <cstdint>
 #include <ctime>
 #include <filesystem>
 #include <fstream>
@@ -203,8 +204,13 @@ std::optional<std::string> ProjectService::ImportJSON(const std::string& path) {
                 // No date in the file: now, rather than 1 January 1970.
                 article.date = std::chrono::system_clock::now();
                 auto date = entry.find("date");
-                if (date != entry.end() && date->is_number_integer())
-                    article.date = std::chrono::system_clock::from_time_t(date->get<std::time_t>());
+                // Integers system_clock cannot hold count as no date, too.
+                if (date != entry.end() && date->is_number_integer() &&
+                    !(date->is_number_unsigned() &&
+                      date->get<std::uint64_t>() > std::uint64_t(INT64_MAX))) {
+                    if (auto tp = FromUnixSeconds(date->get<std::int64_t>()))
+                        article.date = *tp;
+                }
                 m_db.AddArticle(article);
             }
             m_db.LinkArticleToProject(link, project);

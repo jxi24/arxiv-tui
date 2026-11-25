@@ -1045,7 +1045,8 @@ Arxiv::Article DatabaseManager::RowToArticle(sqlite3_stmt* stmt) {
     article.abstract = ExtractColumn(stmt, 3);
 
     int64_t timestamp = sqlite3_column_int64(stmt, 4);
-    article.date = std::chrono::system_clock::from_time_t(timestamp);
+    // Out of system_clock's range only in a hand-edited database: the epoch.
+    article.date = Arxiv::FromUnixSeconds(timestamp).value_or(Arxiv::time_point{});
 
     article.bookmarked = sqlite3_column_int(stmt, 5) != 0;
     article.category = ExtractColumn(stmt, 6);

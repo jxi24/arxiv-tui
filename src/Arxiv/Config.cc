@@ -101,17 +101,18 @@ void Config::load_from_file(const std::string& config_file) {
     auto any = [](const auto&) { return true; };
     auto positive = [](int v) { return ValidRetrainInterval(v); };
     auto non_negative = [](int v) { return ValidNonNegative(v); };
+    auto path = [](const std::string& v) { return ValidPath(v); };
 
-    read(settings_node, "download_dir", article_settings_.download_dir, any);
+    read(settings_node, "download_dir", article_settings_.download_dir, path);
     read(settings_node, "topics", article_settings_.topics, any);
     read(config, "recommend_threshold", recommend_threshold_, [](float v) {
         return ValidRecommendThreshold(v);
     });
     read(config, "retrain_interval", retrain_interval_, positive);
     read(config, "auto_refresh_minutes", auto_refresh_minutes_, non_negative);
-    read(config, "obsidian_vault", obsidian_vault_, any);
-    read(config, "export_dir", export_dir_, any);
-    read(config, "keywords_file", keywords_file_, any);
+    read(config, "obsidian_vault", obsidian_vault_, path);
+    read(config, "export_dir", export_dir_, path);
+    read(config, "keywords_file", keywords_file_, path);
     read(config, "obsidian_download_pdfs", obsidian_download_pdfs_, any);
     read(config, "scroll_margin", scroll_margin_, non_negative);
     read(config, "max_article_age_days", max_article_age_days_, non_negative);

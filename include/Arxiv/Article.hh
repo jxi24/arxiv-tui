@@ -7,12 +7,25 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 
 namespace Arxiv {
 
 using time_point = std::chrono::system_clock::time_point;
+
+/// Unix seconds as a time_point, or nullopt when system_clock cannot hold it
+/// (it counts nanoseconds in 64 bits: about 1678-2262). from_time_t on such a
+/// value is signed overflow.
+inline std::optional<time_point> FromUnixSeconds(std::int64_t seconds) {
+    constexpr auto limit =
+        std::chrono::duration_cast<std::chrono::seconds>(time_point::duration::max()).count();
+    if (seconds > limit || seconds < -limit)
+        return std::nullopt;
+    return time_point(std::chrono::duration_cast<time_point::duration>(std::chrono::seconds(seconds)));
+}
 
 struct Article {
     std::string title;
